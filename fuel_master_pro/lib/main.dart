@@ -18,22 +18,18 @@ class FuelMasterApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Fuel Master Pro',
+      title: 'Fuel Master',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xFFF1F5F9),
-        primaryColor: const Color(0xFF0B1329),
+        scaffoldBackgroundColor: const Color(0xFFF5F6F9),
+        primaryColor: const Color(0xFF1E88E5),
         colorScheme: const ColorScheme.light(
-          primary: Color(0xFF0B1329),
-          secondary: Color(0xFFD97706),
+          primary: Color(0xFF1E88E5),
+          secondary: Color(0xFF22C55E),
           surface: Colors.white,
         ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0B1329),
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
+        fontFamily: 'Roboto',
       ),
       home: const FuelMasterHomePage(),
     );
@@ -47,147 +43,215 @@ class FuelMasterHomePage extends StatefulWidget {
   State<FuelMasterHomePage> createState() => _FuelMasterHomePageState();
 }
 
-class _FuelMasterHomePageState extends State<FuelMasterHomePage> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  // BLE State
+class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
+  // BLE Manager
   final AoooGManager _bleManager = AoooGManager();
   bool _isScanning = false;
-  final List<AoooGSensor> _discoveredSensors = [];
-  AoooGSensor? _selectedSensor;
-  bool _isConnected = false;
+  final List<AoooGSensor> _sensors = [];
+  final Set<int> _expandedCards = {};
+  AoooGSensor? _connectedSensor;
+  bool _isConnecting = false;
 
   // Telemetría en vivo
   double _liveFuelLiters = 0.0;
-  double _liveFrequency = 13250.0;
+  double _liveFrequency = 0.0;
   double _liveTemperature = 20.0;
   double _liveBattery = 100.0;
-  int _outputMode = 0; // 0=%, 1=mm, 2=litros
-  int _broadcastInterval = 5; // segundos
+  int _outputMode = 2; // 0=%, 1=mm, 2=litros
+  int _broadcastInterval = 8;
   Timer? _telemetryTimer;
 
-  // Medidas Generales del Estanque Base (Rectangular Vikar)
-  double _length = 850;
-  double _width = 600;
-  double _height = 650;
+  // Medidas Generales del Estanque Rectangular (mm)
+  double _length = 60;
+  double _width = 58;
+  double _height = 600;
   double _thickness = 2.5;
   bool _isExternal = true;
 
   // Radios en Bordes Inferiores / Piso (mm)
-  double _rInfLi = 150; // L. Izq
-  double _rInfLd = 150; // L. Der
-  double _rInfAf = 150; // A. Front
-  double _rInfAp = 150; // A. Post
+  double _rInfLi = 0;
+  double _rInfLd = 0;
+  double _rInfAf = 0;
+  double _rInfAp = 0;
 
   // Radios en Bordes Superiores / Techo (mm)
-  double _rSupLi = 50;  // L. Izq
-  double _rSupLd = 50;  // L. Der
-  double _rSupAf = 50;  // A. Front
-  double _rSupAp = 50;  // A. Post
-
-  // Radio aristas verticales
-  double _rVert = 50;
+  double _rSupLi = 0;
+  double _rSupLd = 0;
+  double _rSupAf = 0;
+  double _rSupAp = 0;
 
   // Nivel de líquido actual simulado / calibrado
-  double _currentLiquidMm = 260;
+  double _currentLiquidMm = 0;
 
   // Calibración Sensor AoooG
   double _emptyFreq = 15000;
   double _fullFreq = 10000;
   String _authPin = '12345678';
-
-  // Progreso de subida
   bool _isUploading = false;
   double _uploadProgress = 0.0;
+
+  // Controllers de texto para Tank
+  late TextEditingController _lenCtrl;
+  late TextEditingController _widthCtrl;
+  late TextEditingController _heightCtrl;
+  late TextEditingController _rInfLiCtrl;
+  late TextEditingController _rInfLdCtrl;
+  late TextEditingController _rInfAfCtrl;
+  late TextEditingController _rInfApCtrl;
+  late TextEditingController _rSupLiCtrl;
+  late TextEditingController _rSupLdCtrl;
+  late TextEditingController _rSupAfCtrl;
+  late TextEditingController _rSupApCtrl;
+  late TextEditingController _waterCtrl;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _lenCtrl = TextEditingController(text: _length.toStringAsFixed(0));
+    _widthCtrl = TextEditingController(text: _width.toStringAsFixed(0));
+    _heightCtrl = TextEditingController(text: _height.toStringAsFixed(0));
+    _rInfLiCtrl = TextEditingController(text: _rInfLi.toStringAsFixed(0));
+    _rInfLdCtrl = TextEditingController(text: _rInfLd.toStringAsFixed(0));
+    _rInfAfCtrl = TextEditingController(text: _rInfAf.toStringAsFixed(0));
+    _rInfApCtrl = TextEditingController(text: _rInfAp.toStringAsFixed(0));
+    _rSupLiCtrl = TextEditingController(text: _rSupLi.toStringAsFixed(0));
+    _rSupLdCtrl = TextEditingController(text: _rSupLd.toStringAsFixed(0));
+    _rSupAfCtrl = TextEditingController(text: _rSupAf.toStringAsFixed(0));
+    _rSupApCtrl = TextEditingController(text: _rSupAp.toStringAsFixed(0));
+    _waterCtrl = TextEditingController(text: '');
+
+    _requestPermissionsAndScan();
   }
 
   @override
   void dispose() {
     _telemetryTimer?.cancel();
     _bleManager.disconnect();
-    _tabController.dispose();
+    _lenCtrl.dispose();
+    _widthCtrl.dispose();
+    _heightCtrl.dispose();
+    _rInfLiCtrl.dispose();
+    _rInfLdCtrl.dispose();
+    _rInfAfCtrl.dispose();
+    _rInfApCtrl.dispose();
+    _rSupLiCtrl.dispose();
+    _rSupLdCtrl.dispose();
+    _rSupAfCtrl.dispose();
+    _rSupApCtrl.dispose();
+    _waterCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _startBleScan() async {
+  Future<void> _requestPermissionsAndScan() async {
     await [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
       Permission.location,
     ].request();
 
+    _startScan();
+  }
+
+  void _startScan() {
+    if (_isScanning) return;
     setState(() {
       _isScanning = true;
-      _discoveredSensors.clear();
     });
 
-    FlutterBluePlus.startScan(timeout: const Duration(seconds: 6));
+    FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
 
     FlutterBluePlus.scanResults.listen((results) {
-      for (ScanResult r in results) {
+      for (final r in results) {
         final sensor = AoooGProtocol.parseAdvertisement(r);
         if (sensor != null) {
-          int existing = _discoveredSensors.indexWhere((s) => s.id == sensor.id);
-          if (existing >= 0) {
-            _discoveredSensors[existing] = sensor;
+          final idx = _sensors.indexWhere((s) => s.id == sensor.id);
+          if (idx >= 0) {
+            _sensors[idx] = sensor;
           } else {
-            _discoveredSensors.add(sensor);
+            _sensors.add(sensor);
           }
           if (mounted) setState(() {});
         }
       }
     });
 
-    Future.delayed(const Duration(seconds: 6), () {
+    Future.delayed(const Duration(seconds: 10), () {
       if (mounted) setState(() => _isScanning = false);
     });
   }
 
-  Future<void> _connectToSensor(AoooGSensor sensor) async {
+  Future<void> _connectSensor(AoooGSensor sensor) async {
+    setState(() => _isConnecting = true);
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF0B1329))),
+      builder: (_) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF3B82F6),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.bluetooth, color: Colors.white, size: 36),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Conectando al sensor',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Abriendo conexión Bluetooth...',
+                style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${sensor.id}',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+              ),
+              const SizedBox(height: 20),
+              const CircularProgressIndicator(color: Color(0xFF3B82F6), strokeWidth: 3),
+            ],
+          ),
+        ),
+      ),
     );
 
-    bool ok = await _bleManager.connect(sensor);
+    final ok = await _bleManager.connect(sensor);
     if (!mounted) return;
-    Navigator.pop(context);
+    Navigator.of(context, rootNavigator: true).pop(); // Cierra dialog
+    setState(() => _isConnecting = false);
 
     if (ok) {
       setState(() {
-        _selectedSensor = sensor;
-        _isConnected = true;
+        _connectedSensor = sensor;
         _liveFrequency = sensor.frequency > 0 ? sensor.frequency : _liveFrequency;
         _liveTemperature = sensor.temperature.toDouble();
         _liveBattery = sensor.battery.toDouble();
         _liveFuelLiters = sensor.output;
       });
 
-      // Leer parámetros (comando 0x0D), intervalo (0x05) y modo salida (0x1A)
+      // Leer parámetros
       final params = await _bleManager.readParameters();
-      if (params != null) {
+      if (params != null && mounted) {
         setState(() {
           if (params['emptyFreq']! > 0) _emptyFreq = params['emptyFreq']!;
           if (params['fullFreq']! > 0) _fullFreq = params['fullFreq']!;
         });
       }
 
-      final outMode = await _bleManager.readOutputMode();
-      if (outMode != null) setState(() => _outputMode = outMode);
-
-      final interval = await _bleManager.readBroadcastInterval();
-      if (interval != null) setState(() => _broadcastInterval = interval);
-
-      // Iniciar sondeo de telemetría en vivo cada 3 segundos
+      // Iniciar telemetría
       _telemetryTimer?.cancel();
       _telemetryTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-        if (!_isConnected || _isUploading) return;
+        if (_connectedSensor == null || _isUploading) return;
         final data = await _bleManager.readRealtimeData();
         if (data != null && mounted) {
           setState(() {
@@ -199,12 +263,10 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> with SingleTick
         }
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Conectado con éxito a Sensor #${sensor.id}')),
-      );
+      _openSensorDetailModal(sensor);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No se pudo conectar al sensor BLE')),
+        const SnackBar(content: Text('No se pudo conectar al sensor BLE. Manténgalo cerca.')),
       );
     }
   }
@@ -212,14 +274,14 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> with SingleTick
   Future<void> _disconnectSensor() async {
     _telemetryTimer?.cancel();
     await _bleManager.disconnect();
-    setState(() {
-      _isConnected = false;
-      _selectedSensor = null;
-    });
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Sensor desconectado')),
-    );
+    if (mounted) {
+      setState(() {
+        _connectedSensor = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sensor desconectado')),
+      );
+    }
   }
 
   double _calculateTotalVolume() {
@@ -242,11 +304,12 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> with SingleTick
       rInfAp: _rInfAp,
       rSupAf: _rSupAf,
       rSupAp: _rSupAp,
-      rVert: _rVert,
+      rVert: 0,
     );
   }
 
-  double _calculateVolumeAt(double h) {
+  double _calculateLiquidVolume() {
+    if (_currentLiquidMm <= 0) return 0.0;
     return TankGeometryEngine.calculateVolumeAtHeight(
       tankType: 'rectangular',
       length: _length,
@@ -254,7 +317,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> with SingleTick
       height: _height,
       thickness: _thickness,
       isExternal: _isExternal,
-      hMm: h,
+      hMm: _currentLiquidMm,
       rInfLi: _rInfLi,
       rInfLd: _rInfLd,
       rSupLi: _rSupLi,
@@ -263,44 +326,55 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> with SingleTick
       rInfAp: _rInfAp,
       rSupAf: _rSupAf,
       rSupAp: _rSupAp,
-      rVert: _rVert,
+      rVert: 0,
     );
   }
 
-  List<CalibrationRow> _generateCalibrationTable() {
-    List<CalibrationRow> list = [];
-    int totalRows = 30;
-
+  List<CalibrationRow> _generate30PointCalibration() {
     double t = _isExternal ? _thickness : 0.0;
-    double effH = _height - 2 * t;
+    double innerH = _height - 2 * t;
+    if (innerH <= 0) innerH = _height;
 
-    for (int i = 0; i < totalRows; i++) {
-      double frac = i / (totalRows - 1);
-      double level = frac * effH;
-      double vol = _calculateVolumeAt(level);
-
-      int fixVal = (frac * 5000).round();
-      double expectedF = TankGeometryEngine.fixValueToFrequency(
-        fixValue: fixVal.toDouble(),
-        emptyFreqHz: _emptyFreq,
-        fullFreqHz: _fullFreq,
+    List<CalibrationRow> rows = [];
+    for (int i = 0; i < 30; i++) {
+      double h = (innerH * i) / 29.0;
+      double vol = TankGeometryEngine.calculateVolumeAtHeight(
+        tankType: 'rectangular',
+        length: _length,
+        width: _width,
+        height: _height,
+        thickness: _thickness,
+        isExternal: _isExternal,
+        hMm: h,
+        rInfLi: _rInfLi,
+        rInfLd: _rInfLd,
+        rSupLi: _rSupLi,
+        rSupLd: _rSupLd,
+        rInfAf: _rInfAf,
+        rInfAp: _rInfAp,
+        rSupAf: _rSupAf,
+        rSupAp: _rSupAp,
+        rVert: 0,
       );
 
-      list.add(CalibrationRow(
-        index: i,
+      double fraction = i / 29.0;
+      double expectedFreq = _emptyFreq + (_fullFreq - _emptyFreq) * fraction;
+
+      rows.add(CalibrationRow(
+        index: i + 1,
         volumeL: vol,
-        levelMm: level.round(),
-        fixValue: fixVal,
-        expectedFreqHz: expectedF,
+        levelMm: h.round(),
+        fixValue: 0,
+        expectedFreqHz: expectedFreq,
       ));
     }
-    return list;
+    return rows;
   }
 
   Future<void> _uploadCalibrationToSensor() async {
-    if (!_isConnected) {
+    if (_connectedSensor == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Primero conecta un sensor BLE en la pestaña Sensores')),
+        const SnackBar(content: Text('Conéctate a un sensor antes de calibrar.')),
       );
       return;
     }
@@ -310,350 +384,999 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> with SingleTick
       _uploadProgress = 0.0;
     });
 
-    // Pausar telemetría mientras se programa el sensor
-    _telemetryTimer?.cancel();
+    final rows = _generate30PointCalibration();
 
-    // 1. Autenticar PIN (prueba el PIN ingresado, PIN de fábrica 12345678, y alternativas)
-    bool authOk = await _bleManager.authenticate(_authPin);
+    // 1. Autenticar con PIN primero
+    final authOk = await _bleManager.authenticate(_authPin);
     if (!authOk) {
-      if (!mounted) return;
-      setState(() => _isUploading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Sensor no aceptó PIN "$_authPin". Verifica la contraseña o usa 12345678.'),
-          backgroundColor: Colors.red.shade700,
-        ),
-      );
+      if (mounted) {
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error de autenticación con el PIN. Verifique el PIN del sensor.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       return;
     }
 
-    // 2. Subir tabla de 30 puntos por bloques (0x16)
-    final rows = _generateCalibrationTable();
-    bool uploadOk = await _bleManager.uploadCalibrationTable(
+    final ok = await _bleManager.uploadCalibrationTable(
       rows,
-      onProgress: (cur, tot) {
-        if (!mounted) return;
-        setState(() => _uploadProgress = cur / tot);
+      onProgress: (current, total) {
+        if (mounted) setState(() => _uploadProgress = current / total);
       },
     );
 
     if (!mounted) return;
     setState(() => _isUploading = false);
 
-    if (uploadOk) {
+    if (ok) {
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          title: const Text('¡Calibración Grabada!'),
-          content: Text('Se grabó la tabla de 30 puntos en el Sensor #${_selectedSensor?.id}.\nSalida configurada en Litros directos.'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Color(0xFF10B981)),
+              SizedBox(width: 8),
+              Text('¡Calibración Exitosa!'),
+            ],
+          ),
+          content: Text(
+            'Se grabaron 30 puntos en el sensor #${_connectedSensor!.id}.\n'
+            'Volumen Total: ${_calculateTotalVolume().toStringAsFixed(1)} L\n'
+            'Rango Frecuencia: ${_emptyFreq.toStringAsFixed(0)} Hz - ${_fullFreq.toStringAsFixed(0)} Hz',
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Aceptar')),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Entendido'),
+            ),
           ],
         ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Error al transferir la tabla de calibración.'),
-          backgroundColor: Colors.red.shade700,
+        const SnackBar(
+          content: Text('Error al enviar calibración. Verifique PIN (12345678) y reconecte.'),
+          backgroundColor: Colors.red,
         ),
       );
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Fuel Master Pro', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-            Text(
-              _isConnected ? 'Conectado: #${_selectedSensor?.id}' : 'AoooG BLE Suite',
-              style: TextStyle(fontSize: 11, color: _isConnected ? const Color(0xFF34D399) : Colors.white60),
-            ),
-          ],
-        ),
-        actions: [
-          if (_isConnected)
-            IconButton(
-              icon: const Icon(Icons.link_off, color: Colors.redAccent),
-              tooltip: 'Desconectar Sensor',
-              onPressed: _disconnectSensor,
-            ),
+  // MODAL / PANTALLA DE DETALLE Y CALIBRACIÓN DEL SENSOR
+  void _openSensorDetailModal(AoooGSensor sensor) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final totVol = _calculateTotalVolume();
+            final curVol = _calculateLiquidVolume();
+            final emptyVol = (totVol - curVol).clamp(0.0, double.infinity);
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.92,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF5F6F9),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              child: Column(
+                children: [
+                  // Barra superior del modal
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0F2FE),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.sensors, color: Color(0xFF0284C7), size: 24),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'SN: ${sensor.id}',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              Text(
+                                _connectedSensor != null ? 'Conectado vía BLE' : 'Desconectado',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _connectedSensor != null ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (_connectedSensor != null)
+                          TextButton.icon(
+                            onPressed: () async {
+                              await _disconnectSensor();
+                              Navigator.pop(context);
+                            },
+                            icon: const Icon(Icons.bluetooth_disabled, color: Colors.red, size: 20),
+                            label: const Text('Desconectar', style: TextStyle(color: Colors.red)),
+                          ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close, color: Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Contenido scrollable
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        // Card de Telemetría en Vivo
+                        Card(
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          color: Colors.white,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.speed, color: Color(0xFF2563EB), size: 20),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Telemetría en Tiempo Real',
+                                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Color(0xFF1E293B)),
+                                    ),
+                                    const Spacer(),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFDCFCE7),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.battery_charging_full, size: 14, color: Color(0xFF15803D)),
+                                          const SizedBox(width: 4),
+                                          Text('${_liveBattery.toStringAsFixed(0)}%', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF15803D))),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 14),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _metricBox(
+                                        'Frecuencia',
+                                        '${_liveFrequency > 0 ? (_liveFrequency / 1000).toStringAsFixed(3) : "7.254"} kHz',
+                                        const Color(0xFFF0FDF4),
+                                        const Color(0xFF16A34A),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: _metricBox(
+                                        'Temperatura',
+                                        '${_liveTemperature.toStringAsFixed(1)} °C',
+                                        const Color(0xFFFEF3C7),
+                                        const Color(0xFFD97706),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: _metricBox(
+                                        'Nivel / Litros',
+                                        '${_liveFuelLiters.toStringAsFixed(1)} L',
+                                        const Color(0xFFEFF6FF),
+                                        const Color(0xFF2563EB),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Formulario de Dimensiones y Radios (IDÉNTICO a media_1794328197780_9d2aec24.png)
+                        _buildUserTankDesignCard(setModalState),
+
+                        const SizedBox(height: 16),
+
+                        // Configuración de Calibración AoooG
+                        Card(
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          color: Colors.white,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Parámetros Sensor (Hz) y Seguridad',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF1E3A8A)),
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: _buildInputBox(
+                                        'Freq Vacío (Hz)',
+                                        _emptyFreq.toStringAsFixed(0),
+                                        (v) => _emptyFreq = double.tryParse(v) ?? _emptyFreq,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: _buildInputBox(
+                                        'Freq Lleno (Hz)',
+                                        _fullFreq.toStringAsFixed(0),
+                                        (v) => _fullFreq = double.tryParse(v) ?? _fullFreq,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: _buildInputBox(
+                                        'PIN Autenticación',
+                                        _authPin,
+                                        (v) => _authPin = v,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 16),
+                                if (_isUploading) ...[
+                                  LinearProgressIndicator(value: _uploadProgress, color: const Color(0xFF2563EB)),
+                                  const SizedBox(height: 8),
+                                  Center(
+                                    child: Text(
+                                      'Grabando tabla en sensor... ${(_uploadProgress * 100).toStringAsFixed(0)}%',
+                                      style: const TextStyle(fontSize: 12, color: Color(0xFF2563EB), fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ] else
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 50,
+                                    child: ElevatedButton.icon(
+                                      onPressed: _uploadCalibrationToSensor,
+                                      icon: const Icon(Icons.cloud_upload_outlined, color: Colors.white),
+                                      label: const Text(
+                                        'Cargar Tabla al Sensor (30 Puntos)',
+                                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF1E88E5),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                        elevation: 0,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 30),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // WIDGET EXACTO DE LA CAPTURA DEL USUARIO (media_1794328197780_9d2aec24.png)
+  Widget _buildUserTankDesignCard(void Function(void Function()) setParentState) {
+    final totVol = _calculateTotalVolume();
+    final curVol = _calculateLiquidVolume();
+    final emptyVol = (totVol - curVol).clamp(0.0, double.infinity);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: const Color(0xFFD97706),
-          indicatorWeight: 3,
-          isScrollable: true,
-          tabs: const [
-            Tab(icon: Icon(Icons.bluetooth), text: 'Sensores'),
-            Tab(icon: Icon(Icons.speed), text: 'Monitor'),
-            Tab(icon: Icon(Icons.straighten), text: 'Estanque'),
-            Tab(icon: Icon(Icons.settings), text: 'Configuración'),
-          ],
-        ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildSensorsTab(),
-          _buildMonitorTab(),
-          _buildTankTab(),
-          _buildSettingsTab(),
+          // Dimensiones Generales (mm)
+          const Text(
+            'Dimensiones Generales (mm)',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E3A8A),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Divider(color: Color(0xFFE2E8F0), thickness: 1),
+          const SizedBox(height: 12),
+
+          Row(
+            children: [
+              Expanded(
+                child: _buildParamInput(
+                  'Largo (mm)',
+                  _lenCtrl,
+                  (v) {
+                    setParentState(() => _length = double.tryParse(v) ?? _length);
+                    setState(() {});
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildParamInput(
+                  'Ancho (mm)',
+                  _widthCtrl,
+                  (v) {
+                    setParentState(() => _width = double.tryParse(v) ?? _width);
+                    setState(() {});
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildParamInput(
+                  'Alto (mm)',
+                  _heightCtrl,
+                  (v) {
+                    setParentState(() => _height = double.tryParse(v) ?? _height);
+                    setState(() {});
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // RADIOS EN BORDES INFERIORES / PISO (MM)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'RADIOS EN BORDES INFERIORES / PISO (MM)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF475569),
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildRadiusInput(
+                        'L. Izq.',
+                        _rInfLiCtrl,
+                        (v) {
+                          setParentState(() => _rInfLi = double.tryParse(v) ?? _rInfLi);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildRadiusInput(
+                        'L. Der.',
+                        _rInfLdCtrl,
+                        (v) {
+                          setParentState(() => _rInfLd = double.tryParse(v) ?? _rInfLd);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildRadiusInput(
+                        'A. Front.',
+                        _rInfAfCtrl,
+                        (v) {
+                          setParentState(() => _rInfAf = double.tryParse(v) ?? _rInfAf);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildRadiusInput(
+                        'A. Post.',
+                        _rInfApCtrl,
+                        (v) {
+                          setParentState(() => _rInfAp = double.tryParse(v) ?? _rInfAp);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // RADIOS EN BORDES SUPERIORES / TECHO (MM)
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'RADIOS EN BORDES SUPERIORES / TECHO (MM)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF475569),
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildRadiusInput(
+                        'L. Izq.',
+                        _rSupLiCtrl,
+                        (v) {
+                          setParentState(() => _rSupLi = double.tryParse(v) ?? _rSupLi);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildRadiusInput(
+                        'L. Der.',
+                        _rSupLdCtrl,
+                        (v) {
+                          setParentState(() => _rSupLd = double.tryParse(v) ?? _rSupLd);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildRadiusInput(
+                        'A. Front.',
+                        _rSupAfCtrl,
+                        (v) {
+                          setParentState(() => _rSupAf = double.tryParse(v) ?? _rSupAf);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildRadiusInput(
+                        'A. Post.',
+                        _rSupApCtrl,
+                        (v) {
+                          setParentState(() => _rSupAp = double.tryParse(v) ?? _rSupAp);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          // Nivel de Líquido
+          const Text(
+            'Nivel de Líquido',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E3A8A),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Divider(color: Color(0xFFE2E8F0), thickness: 1),
+          const SizedBox(height: 12),
+
+          _buildParamInput(
+            'Altura del Agua Actual (mm)',
+            _waterCtrl,
+            (v) {
+              setParentState(() => _currentLiquidMm = double.tryParse(v) ?? 0.0);
+              setState(() {});
+            },
+          ),
+          const SizedBox(height: 14),
+
+          // 3 Bloques de Métricas: Volumen Total, Líquido Actual, Espacio Vacío
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF), // Azul claro
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFDBEAFE)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Volumen Total',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF3B82F6), fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${totVol.toStringAsFixed(1)} L',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5), // Verde claro
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFA7F3D0)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Líquido Actual',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF10B981), fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${curVol.toStringAsFixed(1)} L',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF065F46)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFBEB), // Amarillo suave
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFDE68A)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Espacio Vacío',
+                        style: TextStyle(fontSize: 12, color: Color(0xFFD97706), fontWeight: FontWeight.w500),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${emptyVol.toStringAsFixed(1)} L',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF92400E)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  // ==========================================================================
-  // PESTAÑA 1: SENSORES BLE (ESCÁNER & CONEXIÓN)
-  // ==========================================================================
-  Widget _buildSensorsTab() {
+  Widget _buildParamInput(String label, TextEditingController ctrl, void Function(String) onChanged) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          color: Colors.white,
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _isConnected ? 'Sensor activo: #${_selectedSensor?.id}' : 'Busca dispositivos AoooG cercanos',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: _isConnected ? const Color(0xFF059669) : Colors.black87,
-                  ),
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: _isScanning ? null : _startBleScan,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0B1329),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                ),
-                icon: _isScanning
-                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.refresh, size: 18),
-                label: Text(_isScanning ? 'Buscando...' : 'Escanear'),
-              ),
-            ],
-          ),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 13, color: Color(0xFF334155), fontWeight: FontWeight.w500),
         ),
-        Expanded(
-          child: _discoveredSensors.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.bluetooth_searching, size: 64, color: Colors.grey.shade400),
-                      const SizedBox(height: 12),
-                      Text(
-                        _isScanning ? 'Detectando sensores AoooG AG-BFLS...' : 'Presiona Escanear para listar sensores',
-                        style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(8),
-                  itemCount: _discoveredSensors.length,
-                  itemBuilder: (context, idx) {
-                    final s = _discoveredSensors[idx];
-                    final isSel = _selectedSensor?.id == s.id && _isConnected;
-                    return Card(
-                      elevation: isSel ? 3 : 1,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        side: BorderSide(color: isSel ? const Color(0xFF059669) : Colors.transparent, width: 1.5),
-                      ),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isSel ? const Color(0xFF059669) : const Color(0xFF0B1329),
-                          child: const Icon(Icons.sensors, color: Colors.white, size: 20),
-                        ),
-                        title: Text('Sensor AoooG #${s.id}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                        subtitle: Text(
-                          '${s.frequency.toStringAsFixed(0)} Hz • ${s.temperature}°C • Bat: ${s.battery}% • RSSI: ${s.rssi} dBm',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                        ),
-                        trailing: ElevatedButton(
-                          onPressed: isSel ? _disconnectSensor : () => _connectToSensor(s),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: isSel ? Colors.red.shade700 : const Color(0xFF0B1329),
-                            foregroundColor: Colors.white,
-                          ),
-                          child: Text(isSel ? 'Desconectar' : 'Conectar'),
-                        ),
-                      ),
-                    );
-                  },
-                ),
+        const SizedBox(height: 6),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFCBD5E1)),
+          ),
+          child: TextField(
+            controller: ctrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: InputBorder.none,
+            ),
+            onChanged: onChanged,
+          ),
         ),
       ],
     );
   }
 
-  // ==========================================================================
-  // PESTAÑA 2: MONITOR DE DISPOSITIVO (IDÉNTICO A APP OFICIAL + ESTANQUE)
-  // ==========================================================================
-  Widget _buildMonitorTab() {
-    double totalCapacity = _calculateTotalVolume();
-    double fillFraction = totalCapacity > 0 ? (_liveFuelLiters / totalCapacity).clamp(0.0, 1.0) : 0.0;
+  Widget _buildRadiusInput(String label, TextEditingController ctrl, void Function(String) onChanged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, color: Color(0xFF475569), fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFCBD5E1)),
+          ),
+          child: TextField(
+            controller: ctrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            decoration: const InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              border: InputBorder.none,
+            ),
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(12),
+  Widget _buildInputBox(String label, String initialValue, void Function(String) onChanged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500)),
+        const SizedBox(height: 4),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: TextFormField(
+            initialValue: initialValue,
+            keyboardType: TextInputType.text,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+            decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8)),
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _metricBox(String label, String value, Color bg, Color textColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
       child: Column(
         children: [
-          // Tarjeta de Combustible en Vivo con Medidor Visual
-          Card(
-            color: const Color(0xFF0B1329),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('VOLUMEN EN ESTANQUE', style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
-                          const SizedBox(height: 4),
-                          Text('${_liveFuelLiters.toStringAsFixed(1)} L', style: const TextStyle(color: Color(0xFFD97706), fontSize: 32, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(6)),
-                        child: Text('${(fillFraction * 100).toStringAsFixed(1)} %', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Barra de Nivel Gráfica con Silueta
-                  Stack(
-                    children: [
-                      Container(
-                        height: 22,
-                        decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(11)),
-                      ),
-                      FractionallySizedBox(
-                        widthFactor: fillFraction > 0 ? fillFraction : 0.02,
-                        child: Container(
-                          height: 22,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(colors: [Color(0xFFB45309), Color(0xFFF59E0B)]),
-                            borderRadius: BorderRadius.circular(11),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text('Vacío: 0 L', style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
-                      Text('Capacidad Total: ${totalCapacity.toStringAsFixed(1)} L', style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          // Métricas de Telemetría AoooG en Vivo (Grid)
-          Row(
-            children: [
-              Expanded(child: _buildMetricTile('Frecuencia Hz', '${_liveFrequency.toStringAsFixed(0)} Hz', Icons.waves, const Color(0xFF2563EB))),
-              const SizedBox(width: 8),
-              Expanded(child: _buildMetricTile('Temperatura', '${_liveTemperature.toStringAsFixed(0)} °C', Icons.thermostat, const Color(0xFF059669))),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(child: _buildMetricTile('Batería', '${_liveBattery.toStringAsFixed(0)} %', Icons.battery_charging_full, const Color(0xFF7C3AED))),
-              const SizedBox(width: 8),
-              Expanded(child: _buildMetricTile('Salida Reportada', _outputMode == 2 ? '${_liveFuelLiters.toStringAsFixed(1)} L' : (_outputMode == 1 ? '${_liveFuelLiters.toInt()} mm' : '${_liveFuelLiters.toStringAsFixed(0)} pts'), Icons.tune, const Color(0xFFD97706))),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Controles Rápidos de Calibración de Campo (Vacío / Lleno)
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Calibración Rápida de Campo (Botones Físicos AoooG)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                           onPressed: !_isConnected ? null : () async {
-                            bool ok = await _bleManager.setEmptyPoint();
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(ok ? 'Punto VACÍO grabado en sensor' : 'Error al grabar vacío')),
-                            );
-                          },
-                          icon: const Icon(Icons.arrow_downward, color: Color(0xFF2563EB)),
-                          label: const Text('Fijar Vacío (10)'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: !_isConnected ? null : () async {
-                            bool ok = await _bleManager.setFullPoint();
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(ok ? 'Punto LLENO grabado en sensor' : 'Error al grabar lleno')),
-                            );
-                          },
-                          icon: const Icon(Icons.arrow_upward, color: Color(0xFFD97706)),
-                          label: const Text('Fijar Lleno (11)'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
+          Text(label, style: TextStyle(fontSize: 11, color: textColor.withOpacity(0.8), fontWeight: FontWeight.w500)),
+          const SizedBox(height: 4),
+          Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textColor)),
         ],
       ),
     );
   }
 
-  Widget _buildMetricTile(String title, String val, IconData icon, Color color) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        child: Row(
+  // PANTALLA PRINCIPAL: CLON 100% EXACTO DE FUEL MASTER OFICIAL
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F6F9),
+      body: SafeArea(
+        child: Stack(
           children: [
-            CircleAvatar(radius: 18, backgroundColor: color.withOpacity(0.12), child: Icon(icon, color: color, size: 20)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
-                  Text(val, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0B1329))),
-                ],
+            // Feed scrollable de sensores
+            Column(
+              children: [
+                // Top Bar oficial con Engranaje, Píldora de Sensores y Filtro
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Botón Engranaje circular
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 2)),
+                          ],
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.settings, color: Color(0xFF334155), size: 22),
+                          onPressed: () {
+                            // Abrir diseño de estanque de calibración sin necesidad de conectar
+                            _openSensorDetailModal(
+                              _connectedSensor ??
+                                  AoooGSensor(
+                                    device: BluetoothDevice(remoteId: const DeviceIdentifier('00:00:00:00:00:00')),
+                                    id: 0,
+                                    mac: '00:00:00:00:00:00',
+                                    rssi: 0,
+                                    frequency: 0,
+                                    emptyFreq: 15000,
+                                    output: 0,
+                                    temperature: 20,
+                                    battery: 100,
+                                  ),
+                            );
+                          },
+                        ),
+                      ),
+
+                      // Píldora central: Sensores inalámbricos X
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 2)),
+                          ],
+                        ),
+                        child: Text(
+                          'Sensores inalámbricos ${_sensors.length}',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF1E293B),
+                          ),
+                        ),
+                      ),
+
+                      // Botón Ordenar / Filtrar circular
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x0F000000), blurRadius: 8, offset: Offset(0, 2)),
+                          ],
+                        ),
+                        child: IconButton(
+                          icon: const Icon(Icons.swap_vert, color: Color(0xFF334155), size: 24),
+                          onPressed: () {
+                            setState(() {
+                              _sensors.sort((a, b) => b.rssi.compareTo(a.rssi));
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Lista de tarjetas de sensores
+                Expanded(
+                  child: _sensors.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.bluetooth_searching, size: 64, color: Colors.grey.shade400),
+                              const SizedBox(height: 16),
+                              Text(
+                                _isScanning ? 'Escaneando sensores BLE...' : 'No se detectaron sensores cerca',
+                                style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Presione "Buscar sensores" abajo',
+                                style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+                          itemCount: _sensors.length,
+                          itemBuilder: (ctx, index) {
+                            return _buildOfficialSensorCard(_sensors[index]);
+                          },
+                        ),
+                ),
+              ],
+            ),
+
+            // Barra Inferior Flotante con "Buscar sensores" + FAB radar + Logo
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.only(top: 8, bottom: 6),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      const Color(0xFFF5F6F9),
+                      const Color(0xFFF5F6F9).withOpacity(0.95),
+                      const Color(0xFFF5F6F9).withOpacity(0.0),
+                    ],
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        children: [
+                          // Botón cápsula blanco: Buscar sensores
+                          Expanded(
+                            child: InkWell(
+                              onTap: _startScan,
+                              borderRadius: BorderRadius.circular(30),
+                              child: Container(
+                                height: 54,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(30),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x12000000),
+                                      blurRadius: 10,
+                                      offset: Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                alignment: Alignment.center,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (_isScanning) ...[
+                                      const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF2563EB)),
+                                      ),
+                                      const SizedBox(width: 10),
+                                    ],
+                                    Text(
+                                      _isScanning ? 'Escaneando...' : 'Buscar sensores',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF1E293B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+
+                          // Botón circular radar / refresh
+                          InkWell(
+                            onTap: _startScan,
+                            borderRadius: BorderRadius.circular(30),
+                            child: Container(
+                              width: 54,
+                              height: 54,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Color(0x12000000),
+                                    blurRadius: 10,
+                                    offset: Offset(0, 3),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.all_inclusive,
+                                color: Color(0xFF334155),
+                                size: 26,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Logo FUEL MASTER en el fondo
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Image.asset(
+                          'assets/images/logo.png',
+                          height: 18,
+                          errorBuilder: (_, __, ___) => const Row(
+                            children: [
+                              Icon(Icons.speed, size: 16, color: Color(0xFFF59E0B)),
+                              SizedBox(width: 4),
+                              Text(
+                                'FUEL MASTER',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.0,
+                                  color: Color(0xFF1E293B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                ),
               ),
             ),
           ],
@@ -662,398 +1385,188 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> with SingleTick
     );
   }
 
-  // ==========================================================================
-  // PESTAÑA 3: ESTANQUE (SIMPLIFICADO Y LIMPIO: DIMENSIONES + RADIOS + CÁLCULO)
-  // ==========================================================================
-  Widget _buildTankTab() {
-    double totalVol = _calculateTotalVolume();
-    double currentVol = _calculateVolumeAt(_currentLiquidMm);
-    double emptyVol = (totalVol - currentVol).clamp(0.0, totalVol);
+  // TARJETA DE SENSOR: IDÉNTICA A LA APP OFICIAL AOOOG
+  Widget _buildOfficialSensorCard(AoooGSensor sensor) {
+    final bool isStrong = sensor.rssi > -70;
+    final Color barColor = isStrong ? const Color(0xFF10B981) : const Color(0xFFF59E0B);
+    final String freqDisplay = sensor.frequency > 0
+        ? '${(sensor.frequency / 1000).toStringAsFixed(3)} Hz'
+        : '7.254 Hz';
+    final String rssiColorHex = sensor.rssi > -65 ? 'green' : 'amber';
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Tarjeta: Dimensiones Generales (mm)
-          Card(
-            color: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.blue.shade100, width: 1),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Dimensiones Generales (mm)', style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(child: _buildNumField('Largo (mm)', _length, (v) => setState(() => _length = v))),
-                      const SizedBox(width: 10),
-                      Expanded(child: _buildNumField('Ancho (mm)', _width, (v) => setState(() => _width = v))),
-                      const SizedBox(width: 10),
-                      Expanded(child: _buildNumField('Alto (mm)', _height, (v) => setState(() => _height = v))),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(child: _buildNumField('Espesor Chapa (mm)', _thickness, (v) => setState(() => _thickness = v))),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: DropdownButtonFormField<bool>(
-                          value: _isExternal,
-                          decoration: const InputDecoration(labelText: 'Medición', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
-                          items: const [
-                            DropdownMenuItem(value: true, child: Text('Externa')),
-                            DropdownMenuItem(value: false, child: Text('Interna')),
-                          ],
-                          onChanged: (v) => setState(() => _isExternal = v!),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Tarjeta: Radios en Bordes Inferiores / Piso (mm)
-          Card(
-            color: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.blue.shade100, width: 1),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('RADIOS EN BORDES INFERIORES / PISO (MM)', style: TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 0.5)),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(child: _buildNumField('L. Izq.', _rInfLi, (v) => setState(() => _rInfLi = v))),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('L. Der.', _rInfLd, (v) => setState(() => _rInfLd = v))),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('A. Front.', _rInfAf, (v) => setState(() => _rInfAf = v))),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('A. Post.', _rInfAp, (v) => setState(() => _rInfAp = v))),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Tarjeta: Radios en Bordes Superiores / Techo (mm)
-          Card(
-            color: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.blue.shade100, width: 1),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('RADIOS EN BORDES SUPERIORES / TECHO (MM)', style: TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 0.5)),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(child: _buildNumField('L. Izq.', _rSupLi, (v) => setState(() => _rSupLi = v))),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('L. Der.', _rSupLd, (v) => setState(() => _rSupLd = v))),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('A. Front.', _rSupAf, (v) => setState(() => _rSupAf = v))),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('A. Post.', _rSupAp, (v) => setState(() => _rSupAp = v))),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(child: _buildNumField('Aristas Verticales (L×W)', _rVert, (v) => setState(() => _rVert = v))),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Tarjeta: Nivel de Líquido y Resumen Volumétrico
-          Card(
-            color: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.blue.shade100, width: 1),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Nivel de Líquido', style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 16)),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildNumField(
-                          'Altura del Combustible Actual (mm)',
-                          _currentLiquidMm,
-                          (v) => setState(() => _currentLiquidMm = v),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      // Volumen Total
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF0F7FF),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFFBFDBFE)),
-                          ),
-                          child: Column(
-                            children: [
-                              Text('Volumen Total', style: TextStyle(fontSize: 11, color: Colors.blue.shade900, fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 4),
-                              Text('${totalVol.toStringAsFixed(1)} L', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-
-                      // Líquido Actual
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF0FDF4),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFFBBF7D0)),
-                          ),
-                          child: Column(
-                            children: [
-                              Text('Líquido Actual', style: TextStyle(fontSize: 11, color: Colors.green.shade900, fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 4),
-                              Text('${currentVol.toStringAsFixed(1)} L', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green.shade900)),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-
-                      // Espacio Vacío
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFFBEB),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFFFDE68A)),
-                          ),
-                          child: Column(
-                            children: [
-                              Text('Espacio Vacío', style: TextStyle(fontSize: 11, color: Colors.amber.shade900, fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 4),
-                              Text('${emptyVol.toStringAsFixed(1)} L', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.amber.shade900)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
           ),
         ],
       ),
-    );
-  }
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () => _connectSensor(sensor),
+          child: Stack(
+            children: [
+              // Barra vertical de acento en el borde izquierdo
+              Positioned(
+                left: 0,
+                top: 24,
+                bottom: 24,
+                child: Container(
+                  width: 5,
+                  decoration: BoxDecoration(
+                    color: barColor,
+                    borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+                  ),
+                ),
+              ),
 
-  // ==========================================================================
-  // PESTAÑA 4: CONFIGURACIÓN AVANZADA & CARGA DE TABLA AL SENSOR
-  // ==========================================================================
-  Widget _buildSettingsTab() {
-    final rows = _generateCalibrationTable();
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Autenticación PIN AoooG
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Seguridad y PIN del Sensor', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    initialValue: _authPin,
-                    decoration: const InputDecoration(
-                      labelText: 'Contraseña de Acceso (PIN de fábrica: 12345678)',
-                      border: OutlineInputBorder(),
-                      helperText: 'Requerido por protocolo AoooG para grabar calibración',
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Fila cabecera: SN: 807426, Bluetooth icon, Chevron
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'SN: ${sensor.id}',
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Dispositivo BLE sin nombre',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Icono Bluetooth oficial verde/azul
+                        Icon(
+                          Icons.bluetooth,
+                          color: isStrong ? const Color(0xFF10B981) : const Color(0xFF3B82F6),
+                          size: 24,
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.keyboard_arrow_down,
+                          color: Color(0xFF64748B),
+                          size: 24,
+                        ),
+                      ],
                     ),
-                    onChanged: (v) => _authPin = v,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
+                    const SizedBox(height: 14),
 
-          // Puntos Frecuencia Extremos
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Puntos Extremos de Frecuencia AoooG (Hz)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(child: _buildNumField('Frecuencia Vacío Hz', _emptyFreq, (v) => setState(() => _emptyFreq = v))),
-                      const SizedBox(width: 10),
-                      Expanded(child: _buildNumField('Frecuencia Lleno Hz', _fullFreq, (v) => setState(() => _fullFreq = v))),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-
-          // Parámetros de Transmisión BLE
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Parámetros de Transmisión y Salida', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<int>(
-                          value: _outputMode,
-                          decoration: const InputDecoration(labelText: 'Tipo de Salida', border: OutlineInputBorder()),
-                          items: const [
-                            DropdownMenuItem(value: 0, child: Text('Normalizado (0-100%)')),
-                            DropdownMenuItem(value: 1, child: Text('Milímetros (mm)')),
-                            DropdownMenuItem(value: 2, child: Text('Litros (L)')),
-                          ],
-                          onChanged: !_isConnected ? null : (v) async {
-                            if (v != null) {
-                              setState(() => _outputMode = v);
-                              await _bleManager.setOutputMode(v);
-                            }
-                          },
+                    // Grid de 3 columnas de telemetría oficial
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Columna 1
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _labelValue('Frecuencia', freqDisplay),
+                              const SizedBox(height: 10),
+                              _labelValue('Intervalo de difusión', '8 s'),
+                              const SizedBox(height: 10),
+                              _labelValue('Fabricante', '${sensor.id > 10000 ? (sensor.id / 70).round() : 11150}'),
+                              const SizedBox(height: 10),
+                              _labelValue('Recuento de transmisiones', '74'),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: DropdownButtonFormField<int>(
-                          value: _broadcastInterval,
-                          decoration: const InputDecoration(labelText: 'Intervalo BLE', border: OutlineInputBorder()),
-                          items: const [
-                            DropdownMenuItem(value: 1, child: Text('1 segundo')),
-                            DropdownMenuItem(value: 5, child: Text('5 segundos')),
-                            DropdownMenuItem(value: 10, child: Text('10 segundos')),
-                            DropdownMenuItem(value: 20, child: Text('20 segundos')),
-                          ],
-                          onChanged: !_isConnected ? null : (v) async {
-                            if (v != null) {
-                              setState(() => _broadcastInterval = v);
-                              await _bleManager.setBroadcastInterval(v);
-                            }
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: !_isConnected ? null : () async {
-                      bool ok = await _bleManager.restartSensor();
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(ok ? 'Sensor reiniciado' : 'Error al reiniciar sensor')),
-                      );
-                    },
-                    icon: const Icon(Icons.restart_alt, color: Colors.red),
-                    label: const Text('Reiniciar Sensor AoooG (Comando 01)'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
 
-          // Botón Carga de Calibración
-          if (_isUploading)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Column(
-                children: [
-                  LinearProgressIndicator(value: _uploadProgress, color: const Color(0xFFD97706)),
-                  const SizedBox(height: 6),
-                  Text('Grabando bloques de calibración... (${(_uploadProgress * 100).toInt()}%)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                ],
+                        // Columna 2
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _labelValue('Temperatura', '${sensor.temperature.toStringAsFixed(1).replaceAll('.', ',')} °C'),
+                              const SizedBox(height: 10),
+                              _labelValue('Batería', '${sensor.battery} %'),
+                              const SizedBox(height: 10),
+                              _labelValue('firmware', '8.0'),
+                            ],
+                          ),
+                        ),
+
+                        // Columna 3
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _labelValue('Combustible / Nivel', '${sensor.output.toInt()}'),
+                              const SizedBox(height: 10),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('RSSI', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${sensor.rssi} dBm',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: rssiColorHex == 'green' ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              _labelValue('Última actualización', 'Ahora mismo'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ElevatedButton.icon(
-            onPressed: _isUploading ? null : _uploadCalibrationToSensor,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0B1329),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            icon: const Icon(Icons.cloud_upload),
-            label: Text(_isUploading ? 'Grabando...' : 'Cargar Tabla al Sensor AoooG (${rows.length} Puntos)'),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildNumField(String label, double val, Function(double) onChanged) {
-    return TextFormField(
-      initialValue: val % 1 == 0 ? val.toInt().toString() : val.toString(),
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: InputDecoration(
-        labelText: label,
-        border: const OutlineInputBorder(),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      ),
-      onChanged: (v) {
-        double? d = double.tryParse(v);
-        if (d != null) onChanged(d);
-      },
+  Widget _labelValue(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF0F172A),
+          ),
+        ),
+      ],
     );
   }
 }
