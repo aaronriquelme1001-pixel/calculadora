@@ -18,6 +18,8 @@ class FuelMasterApp extends StatelessWidget {
   void dispose() {
     _scanTimer?.cancel();
     _scanSubscription?.cancel();
+    _sensorConnectionSubscription?.cancel();
+    FlutterBluePlus.stopScan();
     _bleManager.disconnect();
     _tabController.dispose();
     super.dispose();
@@ -63,6 +65,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   final List<AoooGSensor> _discoveredSensors = [];
   StreamSubscription<List<ScanResult>>? _scanSubscription;
   Timer? _scanTimer;
+  StreamSubscription<BluetoothConnectionState>? _sensorConnectionSubscription;
   AoooGSensor? _selectedSensor;
   bool _isConnected = false;
 
@@ -145,10 +148,17 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       }
       });
       await FlutterBluePlus.startScan(timeout: const Duration(seconds: 6));
-      _scanTimer = Timer(const Duration(seconds: 7), () {
+      _scanTimer = Timer(const Duration(seconds: 7), () async {
+        try {
+          await FlutterBluePlus.stopScan();
+        } catch (_) {}
+        await _scanSubscription?.cancel();
+        _scanSubscription = null;
         if (mounted) setState(() => _isScanning = false);
       });
     } catch (error) {
+      await _scanSubscription?.cancel();
+      _scanSubscription = null;
       if (mounted) {
         setState(() => _isScanning = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -170,6 +180,15 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     Navigator.pop(context);
 
     if (ok) {
+      await _sensorConnectionSubscription?.cancel();
+      _sensorConnectionSubscription = sensor.device.connectionState.listen((connectionState) {
+        if (connectionState == BluetoothConnectionState.disconnected && mounted) {
+          setState(() {
+            _isConnected = false;
+            _selectedSensor = null;
+          });
+        }
+      });
       setState(() {
         _selectedSensor = sensor;
         _isConnected = true;
@@ -294,6 +313,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     bool uploadOk = await _bleManager.uploadCalibrationTable(
       rows,
       onProgress: (cur, tot) {
+        if (!mounted) return;
         setState(() {
           _uploadProgress = cur / tot;
         });
