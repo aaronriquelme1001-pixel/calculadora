@@ -252,7 +252,7 @@ class TankGeometryEngine {
     double invCur = 1.0 / freqHz;
 
     double frac = (invCur - invEmpty) / (invFull - invEmpty);
-    frac = math.max(0.0, math.min(1.0, frac));
+    frac = math.max(0.0, math.min(1.0, frac)).toDouble();
 
     return frac * 5000.0; // Rango de fix_value del protocolo AoooG
   }
