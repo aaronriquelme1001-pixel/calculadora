@@ -1,10 +1,44 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fuel_master_pro/services/tank_geometry.dart';
 import 'package:fuel_master_pro/services/aooog_ble.dart';
+import 'package:fuel_master_pro/services/aooog_manager.dart';
 
 void main() {
+
+  group('AoooG calibration record serialization', () {
+    test('serializes each point as float32 LE + uint16 LE + uint16 LE', () {
+      final row = CalibrationRow(
+        index: 0,
+        volumeL: 12.5,
+        levelMm: 256,
+        fixValue: 1234,
+        expectedFreqHz: 12000,
+      );
+      final bytes = row.toBytes();
+      final data = ByteData.sublistView(bytes);
+
+      expect(bytes.length, 8);
+      expect(data.getFloat32(0, Endian.little), closeTo(12.5, 1e-6));
+      expect(data.getUint16(4, Endian.little), 256);
+      expect(data.getUint16(6, Endian.little), 1234);
+    });
+
+    test('rejects values that cannot be represented by the device fields', () {
+      final row = CalibrationRow(
+        index: 0,
+        volumeL: 1,
+        levelMm: 100,
+        fixValue: 5001,
+        expectedFreqHz: 10000,
+      );
+
+      expect(row.toBytes, throwsArgumentError);
+    });
+  });
+
   group('AoooGProtocol framing', () {
     test('builds a frame with a consistent length and valid CRC', () {
       final frame = AoooGProtocol.buildFrame(
