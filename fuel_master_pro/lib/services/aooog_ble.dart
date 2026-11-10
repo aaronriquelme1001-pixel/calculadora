@@ -42,7 +42,25 @@ class AoooGProtocol {
     return crc & 0xFF;
   }
 
+  static bool isValidFrame(List<int> data, {int? expectedSensorId, int? expectedCommand}) {
+    if (data.length < 7 || data[0] != 0x0C) return false;
+    final declaredLength = data[1];
+    if (declaredLength != data.length - 2) return false;
+    final command = data[5];
+    if (expectedCommand != null && command != expectedCommand) return false;
+    final sensorId = (data[2] << 16) | (data[3] << 8) | data[4];
+    if (expectedSensorId != null && sensorId != expectedSensorId) return false;
+    return crc8(data.sublist(1, data.length - 1)) == data.last;
+  }
+
   static Uint8List buildFrame(int sensorId, int cmd, List<int> payload) {
+    if (sensorId < 0 || sensorId > 0xFFFFFF) {
+      throw RangeError.range(sensorId, 0, 0xFFFFFF, 'sensorId');
+    }
+    if (cmd < 0 || cmd > 0xFF || payload.any((b) => b < 0 || b > 0xFF)) {
+      throw ArgumentError('El comando y el payload deben contener bytes válidos.');
+    }
+    if (payload.length > 250) throw ArgumentError('Payload BLE demasiado largo.');
     int id2 = (sensorId >> 16) & 0xFF;
     int id1 = (sensorId >> 8) & 0xFF;
     int id0 = sensorId & 0xFF;
