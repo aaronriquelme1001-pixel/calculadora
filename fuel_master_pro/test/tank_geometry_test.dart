@@ -1,0 +1,126 @@
+import 'dart:math' as math;
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:fuel_master_pro/services/tank_geometry.dart';
+
+void main() {
+  group('TankGeometryEngine', () {
+    test('rectangular tank returns zero, half and full volume correctly', () {
+      const length = 850.0;
+      const width = 600.0;
+      const height = 650.0;
+      const expectedFullLitres = length * width * height / 1000000.0;
+
+      double volumeAt(double level) => TankGeometryEngine.calculateVolumeAtHeight(
+            tankType: 'rectangular',
+            length: length,
+            width: width,
+            height: height,
+            thickness: 0,
+            isExternal: false,
+            hMm: level,
+          );
+
+      expect(volumeAt(0), closeTo(0, 1e-9));
+      expect(volumeAt(height / 2), closeTo(expectedFullLitres / 2, 1e-6));
+      expect(volumeAt(height), closeTo(expectedFullLitres, 1e-6));
+    });
+
+    test('double tank includes a taller secondary tank above primary height', () {
+      final volume = TankGeometryEngine.calculateVolumeAtHeight(
+        tankType: 'double_tank',
+        length: 100,
+        width: 100,
+        height: 100,
+        thickness: 0,
+        isExternal: false,
+        hMm: 200,
+        tank2Length: 100,
+        tank2Width: 100,
+        tank2Height: 200,
+      );
+
+      // Primary: 1 L. Secondary: 2 L. Equal liquid elevation in both tanks.
+      expect(volume, closeTo(3.0, 1e-6));
+    });
+
+    test('horizontal cylinder full volume matches analytical capacity', () {
+      const radius = 100.0;
+      const length = 1000.0;
+      final volume = TankGeometryEngine.calculateVolumeAtHeight(
+        tankType: 'cylinder_horizontal',
+        length: length,
+        width: radius * 2,
+        height: radius * 2,
+        thickness: 0,
+        isExternal: false,
+        hMm: radius * 2,
+      );
+      final expected = math.pi * radius * radius * length / 1000000.0;
+
+      expect(volume, closeTo(expected, 0.02));
+    });
+
+    test('invalid dimensions do not fabricate a minimum-size tank', () {
+      final volume = TankGeometryEngine.calculateVolumeAtHeight(
+        tankType: 'rectangular',
+        length: 0,
+        width: 600,
+        height: 650,
+        thickness: 2,
+        isExternal: true,
+        hMm: 300,
+      );
+
+      expect(volume, 0);
+    });
+  });
+
+  group('AoooG frequency conversion', () {
+    test('frequency endpoints map to empty and full calibration values', () {
+      expect(
+        TankGeometryEngine.frequencyToFixValue(
+          freqHz: 15000,
+          emptyFreqHz: 15000,
+          fullFreqHz: 10000,
+        ),
+        closeTo(0, 1e-9),
+      );
+      expect(
+        TankGeometryEngine.frequencyToFixValue(
+          freqHz: 10000,
+          emptyFreqHz: 15000,
+          fullFreqHz: 10000,
+        ),
+        closeTo(5000, 1e-9),
+      );
+      expect(
+        TankGeometryEngine.fixValueToFrequency(
+          fixValue: 2500,
+          emptyFreqHz: 15000,
+          fullFreqHz: 10000,
+        ),
+        closeTo(12000, 1e-6),
+      );
+    });
+
+    test('zero and invalid frequencies are handled without infinity', () {
+      expect(
+        TankGeometryEngine.frequencyToFixValue(
+          freqHz: 0,
+          emptyFreqHz: 15000,
+          fullFreqHz: 10000,
+        ),
+        0,
+      );
+      expect(
+        TankGeometryEngine.fixValueToFrequency(
+          fixValue: 2500,
+          emptyFreqHz: 0,
+          fullFreqHz: 10000,
+        ),
+        0,
+      );
+    });
+  });
+}
