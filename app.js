@@ -164,7 +164,7 @@
 
   function getAreaAtZ(z, eff) {
     const { L, W, H } = eff;
-    if (z < 0 || z > H) return 0;
+    if (z < 0 || (state.tank.type !== 'double_tank' && z > H)) return 0;
 
     switch (state.tank.type) {
       case 'rectangular': {
