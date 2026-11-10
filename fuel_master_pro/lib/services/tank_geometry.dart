@@ -48,10 +48,10 @@ class TankGeometryEngine {
     final effH = height - 2 * t;
     final hasSecondTank = tank2Length > 0 && tank2Width > 0 && tank2Height > 0;
     final effH2 = hasSecondTank
-        ? math.max(10.0, tank2Height - (isExternal ? 2 * thickness : 0.0))
+        ? math.max(10.0, tank2Height - (isExternal ? 2 * thickness : 0.0)).toDouble()
         : effH;
-    final integrationHeight = tankType == 'double_tank' ? math.max(effH, effH2) : effH;
-    final zClamped = math.max(0.0, math.min(integrationHeight, hMm));
+    final integrationHeight = (tankType == 'double_tank' ? math.max(effH, effH2) : effH).toDouble();
+    final zClamped = math.max(0.0, math.min(integrationHeight, hMm)).toDouble();
     if (zClamped <= 0.0) return 0.0;
 
     // Regla del trapecio compuesta con 400 intervalos para reducir el error de discretización.
@@ -161,8 +161,8 @@ class TankGeometryEngine {
       double chordW = 2.0 * a * math.sqrt(math.max(0.0, 1.0 - math.pow(dist / b, 2)));
       return chordW * L;
     } else if (type == 'step_notch') {
-      double sw = math.min(W * 0.9, stepWidth);
-      double sh = math.min(H * 0.9, stepHeight);
+      double sw = math.min(W * 0.9, stepWidth).toDouble();
+      double sh = math.min(H * 0.9, stepHeight).toDouble();
       double effW = W;
       if (stepSide == 'bottom_right' || stepSide == 'bottom_left') {
         effW = (z < sh) ? math.max(0.0, W - sw) : W;
@@ -172,9 +172,9 @@ class TankGeometryEngine {
       return effW * L;
     } else if (type == 'double_tank') {
       final hasSecondTank = tank2Length > 0 && tank2Width > 0 && tank2Height > 0;
-      double L2 = hasSecondTank ? math.max(10.0, tank2Length - 2 * t) : L;
-      double W2 = hasSecondTank ? math.max(10.0, tank2Width - 2 * t) : W;
-      double H2 = hasSecondTank ? math.max(10.0, tank2Height - 2 * t) : H;
+      double L2 = hasSecondTank ? math.max(10.0, tank2Length - 2 * t).toDouble() : L;
+      double W2 = hasSecondTank ? math.max(10.0, tank2Width - 2 * t).toDouble() : W;
+      double H2 = hasSecondTank ? math.max(10.0, tank2Height - 2 * t).toDouble() : H;
       double a1 = (z <= H) ? (W * L) : 0.0;
       double a2 = (z <= H2) ? (W2 * L2) : 0.0;
       return a1 + a2;
@@ -194,7 +194,7 @@ class TankGeometryEngine {
         double dz = z - (H - dRBackCorners);
         dxBack = dRBackCorners - math.sqrt(math.max(0.0, dRBackCorners * dRBackCorners - dz * dz));
       }
-      double effW = math.max(0.0, W - dxFront - dxBack);
+      double effW = math.max(0.0, W - dxFront - dxBack).toDouble();
       return effW * L;
     } else {
       // Rectangular con radios
@@ -230,8 +230,8 @@ class TankGeometryEngine {
         dyB = rSupAp - math.sqrt(math.max(0.0, rSupAp * rSupAp - dz * dz));
       }
 
-      double effW = math.max(0.0, W - dxL - dxR);
-      double effL = math.max(0.0, L - dyF - dyB);
+      double effW = math.max(0.0, W - dxL - dxR).toDouble();
+      double effL = math.max(0.0, L - dyF - dyB).toDouble();
       double area = effW * effL;
 
       if (rVert > 0) {
@@ -273,7 +273,7 @@ class TankGeometryEngine {
         emptyFreqHz <= 0 || fullFreqHz <= 0) {
       return 0.0;
     }
-    double frac = math.max(0.0, math.min(1.0, fixValue / 5000.0));
+    double frac = math.max(0.0, math.min(1.0, fixValue / 5000.0)).toDouble();
     double invEmpty = 1.0 / emptyFreqHz;
     double invFull = 1.0 / fullFreqHz;
     double invCur = invEmpty + (invFull - invEmpty) * frac;
