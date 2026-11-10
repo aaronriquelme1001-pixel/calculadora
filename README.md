@@ -111,4 +111,4 @@ El cálculo de estanques conectados supone que ambos comparten la misma cota inf
 
 ### Validación pendiente en terreno
 
-Las pruebas automatizadas verifican el motor matemático y el formato de las tramas, pero no sustituyen una prueba con un sensor AoooG real. Antes de usar la escritura BLE en producción, se debe validar con un sensor de prueba que acepte los bloques, confirme el ACK y mantenga la salida en litros después de desconectar y reconectar.
+Las pruebas automatizadas definidas cubren el motor matemático y el formato de las tramas, pero aún deben ejecutarse y no sustituyen una prueba con un sensor AoooG real. Antes de usar la escritura BLE en producción, se debe validar con un sensor de prueba que acepte los bloques, confirme el ACK y mantenga la salida en litros después de desconectar y reconectar.
