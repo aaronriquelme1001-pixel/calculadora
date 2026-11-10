@@ -1925,37 +1925,102 @@
 
     const w = W;
     const h = H;
-    const r1 = Math.min(Number(state.tank.r_inf_li) || 0, w / 2 - 1, h / 2 - 1);
-    const r2 = Math.min(Number(state.tank.r_inf_ld) || 0, w / 2 - 1, h / 2 - 1);
-    const r3 = Math.min(Number(state.tank.r_sup_ld) || 0, w / 2 - 1, h / 2 - 1);
-    const r4 = Math.min(Number(state.tank.r_sup_li) || 0, w / 2 - 1, h / 2 - 1);
-
-    const x0 = -w / 2;
-    const y0 = 0;
-    const x1 = w / 2;
-    const y1 = h;
-
-    const tankShape = new THREE.Shape();
-    tankShape.moveTo(x0 + r1, y0);
-    tankShape.lineTo(x1 - r2, y0);
-    if (r2 > 0) tankShape.quadraticCurveTo(x1, y0, x1, y0 + r2);
-    tankShape.lineTo(x1, y1 - r3);
-    if (r3 > 0) tankShape.quadraticCurveTo(x1, y1, x1 - r3, y1);
-    tankShape.lineTo(x0 + r4, y1);
-    if (r4 > 0) tankShape.quadraticCurveTo(x0, y1, x0, y1 - r4);
-    tankShape.lineTo(x0, y0 + r1);
-    if (r1 > 0) tankShape.quadraticCurveTo(x0, y0, x0 + r1, y0);
-
-    const extrudeSettings = {
-      depth: L,
-      bevelEnabled: false,
-      steps: 1,
-      curveSegments: 16
+    const rInf = {
+      li: Math.min(Number(state.tank.r_inf_li) || 0, W / 2 - 1, H / 2 - 1),
+      ld: Math.min(Number(state.tank.r_inf_ld) || 0, W / 2 - 1, H / 2 - 1),
+      af: Math.min(Number(state.tank.r_inf_af) || 0, L / 2 - 1, H / 2 - 1),
+      ap: Math.min(Number(state.tank.r_inf_ap) || 0, L / 2 - 1, H / 2 - 1)
+    };
+    const rSup = {
+      li: Math.min(Number(state.tank.r_sup_li) || 0, W / 2 - 1, H / 2 - 1),
+      ld: Math.min(Number(state.tank.r_sup_ld) || 0, W / 2 - 1, H / 2 - 1),
+      af: Math.min(Number(state.tank.r_sup_af) || 0, L / 2 - 1, H / 2 - 1),
+      ap: Math.min(Number(state.tank.r_sup_ap) || 0, L / 2 - 1, H / 2 - 1)
+    };
+    const rvGlobal = Number(state.tank.r_vert) || 0;
+    const rVerts = {
+      fi: Math.min(Number(state.tank.r_vert_fi) || rvGlobal, W / 2 - 1, L / 2 - 1),
+      fd: Math.min(Number(state.tank.r_vert_fd) || rvGlobal, W / 2 - 1, L / 2 - 1),
+      pi: Math.min(Number(state.tank.r_vert_pi) || rvGlobal, W / 2 - 1, L / 2 - 1),
+      pd: Math.min(Number(state.tank.r_vert_pd) || rvGlobal, W / 2 - 1, L / 2 - 1)
     };
 
-    const tankGeom = new THREE.ExtrudeGeometry(tankShape, extrudeSettings);
-    tankGeom.translate(0, 0, -L / 2);
+    function create3DTankGeometry(w, h, l, rI, rS, rV, seg = 28, isLiquid = false, liqH = h) {
+      const geom = new THREE.BoxGeometry(w, h, l, seg, seg, seg);
+      const pos = geom.attributes.position;
+      const v = new THREE.Vector3();
+      const maxR = Math.min(w / 2 - 0.5, l / 2 - 0.5, h / 2 - 0.5);
 
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i);
+
+        const isFront = v.z >= 0;
+        const isRight = v.x >= 0;
+        const isRoof = v.y >= 0;
+
+        // Radio vertical específico de la esquina (bajada)
+        let rv = 0;
+        if (isFront && !isRight) rv = rV.fi;
+        else if (isFront && isRight) rv = rV.fd;
+        else if (!isFront && !isRight) rv = rV.pi;
+        else rv = rV.pd;
+        rv = Math.max(0, Math.min(maxR, rv || 0));
+
+        let rx = 0, rz = 0, ry = 0;
+        if (isRoof) {
+          if (isLiquid && liqH < H - 1) {
+            rx = 0; rz = 0; ry = 0;
+          } else {
+            rx = isRight ? rS.ld : rS.li;
+            rz = isFront ? rS.af : rS.ap;
+            ry = Math.max(rx, rz);
+          }
+        } else {
+          rx = isRight ? rI.ld : rI.li;
+          rz = isFront ? rI.af : rI.ap;
+          ry = Math.max(rx, rz);
+        }
+
+        rx = Math.max(0, Math.min(maxR, rx || 0));
+        rz = Math.max(0, Math.min(maxR, rz || 0));
+        ry = Math.max(0, Math.min(maxR, ry || 0));
+
+        const effRx = Math.max(rx, rv);
+        const effRz = Math.max(rz, rv);
+        const effRy = ry;
+
+        if (effRx > 0 || effRy > 0 || effRz > 0) {
+          const halfX = w / 2 - effRx;
+          const halfZ = l / 2 - effRz;
+          const halfY = h / 2 - effRy;
+
+          const cx = Math.max(-halfX, Math.min(halfX, v.x));
+          const cy = Math.max(-halfY, Math.min(halfY, v.y));
+          const cz = Math.max(-halfZ, Math.min(halfZ, v.z));
+
+          const dx = v.x - cx;
+          const dy = v.y - cy;
+          const dz = v.z - cz;
+
+          const nx = effRx > 0 ? dx / effRx : 0;
+          const ny = effRy > 0 ? dy / effRy : 0;
+          const nz = effRz > 0 ? dz / effRz : 0;
+          const d = Math.sqrt(nx * nx + ny * ny + nz * nz);
+
+          if (d > 0.001) {
+            if (effRx > 0) v.x = cx + (nx / d) * effRx;
+            if (effRy > 0) v.y = cy + (ny / d) * effRy;
+            if (effRz > 0) v.z = cz + (nz / d) * effRz;
+            pos.setXYZ(i, v.x, v.y, v.z);
+          }
+        }
+      }
+      geom.translate(0, h / 2, 0);
+      geom.computeVertexNormals();
+      return geom;
+    }
+
+    const tankGeom = create3DTankGeometry(W, H, L, rInf, rSup, rVerts, 28);
     const tankMat = new THREE.MeshPhysicalMaterial({
       color: 0x94a3b8,
       metalness: 0.5,
@@ -1966,115 +2031,18 @@
       depthWrite: false,
       side: THREE.DoubleSide
     });
-
     threeTankMesh = new THREE.Mesh(tankGeom, tankMat);
     threeScene.add(threeTankMesh);
 
-    const edgesGeom = new THREE.EdgesGeometry(tankGeom, 25);
+    const edgesGeom = new THREE.EdgesGeometry(tankGeom, 8);
     const edgesMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2, transparent: true, opacity: 0.85 });
     threeTankEdges = new THREE.LineSegments(edgesGeom, edgesMat);
     threeScene.add(threeTankEdges);
 
-    // Líquido Diésel Ámbar - Contorno exacto que respeta curvatura superior e inferior
+    // Líquido Diésel Ámbar
     const curLevel = Math.max(0, Math.min(H, state.currentLevelMm));
     if (curLevel > 1) {
-      const liqH = curLevel;
-      const liqShape = new THREE.Shape();
-      const yL0 = 0.5;
-      const targetH = Math.min(h - 0.5, Math.max(yL0 + 0.5, liqH));
-
-      function getXLeft(y) {
-        if (y < yL0 + r1 && r1 > 0) {
-          const dy = (yL0 + r1) - y;
-          return x0 + r1 - Math.sqrt(Math.max(0, r1 * r1 - dy * dy));
-        }
-        if (y > h - r4 && r4 > 0) {
-          const dy = y - (h - r4);
-          return x0 + r4 - Math.sqrt(Math.max(0, r4 * r4 - dy * dy));
-        }
-        return x0;
-      }
-
-      function getXRight(y) {
-        if (y < yL0 + r2 && r2 > 0) {
-          const dy = (yL0 + r2) - y;
-          return x1 - r2 + Math.sqrt(Math.max(0, r2 * r2 - dy * dy));
-        }
-        if (y > h - r3 && r3 > 0) {
-          const dy = y - (h - r3);
-          return x1 - r3 + Math.sqrt(Math.max(0, r3 * r3 - dy * dy));
-        }
-        return x1;
-      }
-
-      if (targetH >= h - 1.0) {
-        // Lleno total: calca la geometría exacta del estanque
-        liqShape.moveTo(x0 + r1, yL0);
-        liqShape.lineTo(x1 - r2, yL0);
-        if (r2 > 0) liqShape.quadraticCurveTo(x1, yL0, x1, yL0 + r2);
-        liqShape.lineTo(x1, h - r3);
-        if (r3 > 0) liqShape.quadraticCurveTo(x1, h, x1 - r3, h);
-        liqShape.lineTo(x0 + r4, h);
-        if (r4 > 0) liqShape.quadraticCurveTo(x0, h, x0, h - r4);
-        liqShape.lineTo(x0, yL0 + r1);
-        if (r1 > 0) liqShape.quadraticCurveTo(x0, yL0, x0 + r1, yL0);
-      } else {
-        liqShape.moveTo(x0 + r1, yL0);
-        liqShape.lineTo(x1 - r2, yL0);
-
-        if (r2 > 0 && targetH <= yL0 + r2) {
-          const steps = 12;
-          for (let s = 1; s <= steps; s++) {
-            const y = yL0 + (targetH - yL0) * (s / steps);
-            liqShape.lineTo(getXRight(y), y);
-          }
-          liqShape.lineTo(getXLeft(targetH), targetH);
-          for (let s = steps; s >= 0; s--) {
-            const y = yL0 + (targetH - yL0) * (s / steps);
-            liqShape.lineTo(getXLeft(y), y);
-          }
-        } else {
-          if (r2 > 0) liqShape.quadraticCurveTo(x1, yL0, x1, yL0 + r2);
-          const rightStop = Math.min(targetH, h - r3);
-          if (rightStop > yL0 + r2) {
-            liqShape.lineTo(x1, rightStop);
-          }
-          if (targetH > h - r3 && r3 > 0) {
-            const steps = 12;
-            const startY = h - r3;
-            for (let s = 1; s <= steps; s++) {
-              const y = startY + (targetH - startY) * (s / steps);
-              liqShape.lineTo(getXRight(y), y);
-            }
-          }
-
-          liqShape.lineTo(getXLeft(targetH), targetH);
-
-          if (targetH > h - r4 && r4 > 0) {
-            const steps = 12;
-            const endY = h - r4;
-            for (let s = 1; s <= steps; s++) {
-              const y = targetH - (targetH - endY) * (s / steps);
-              liqShape.lineTo(getXLeft(y), y);
-            }
-          }
-
-          const leftStop = Math.max(yL0 + r1, yL0);
-          liqShape.lineTo(x0, leftStop);
-          if (r1 > 0) {
-            liqShape.quadraticCurveTo(x0, yL0, x0 + r1, yL0);
-          }
-        }
-      }
-
-      const liqGeom = new THREE.ExtrudeGeometry(liqShape, {
-        depth: L - 2,
-        bevelEnabled: false,
-        steps: 1,
-        curveSegments: 16
-      });
-      liqGeom.translate(0, 0, -(L - 2) / 2);
-
+      const liqGeom = create3DTankGeometry(W - 2, curLevel, L - 2, rInf, rSup, rVerts, 28, true, curLevel);
       const liqMat = new THREE.MeshStandardMaterial({
         color: 0xd97706,
         roughness: 0.15,
@@ -2083,7 +2051,6 @@
         opacity: 0.82,
         side: THREE.DoubleSide
       });
-
       threeLiquidMesh = new THREE.Mesh(liqGeom, liqMat);
       threeScene.add(threeLiquidMesh);
     }
