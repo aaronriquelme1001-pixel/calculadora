@@ -94,6 +94,26 @@ void main() {
       expect(volume, closeTo(expected, 0.02));
     });
 
+    test('hemispherical heads add one sphere to the cylindrical body', () {
+      const radius = 100.0;
+      const length = 1000.0;
+      final volume = TankGeometryEngine.calculateVolumeAtHeight(
+        tankType: 'cylinder_horizontal',
+        length: length,
+        width: radius * 2,
+        height: radius * 2,
+        thickness: 0,
+        isExternal: false,
+        hMm: radius * 2,
+        cylHead: 'hemispherical',
+      );
+      final expected = (math.pi * radius * radius * length +
+              (4.0 / 3.0) * math.pi * radius * radius * radius) /
+          1000000.0;
+
+      expect(volume, closeTo(expected, 0.02));
+    });
+
     test('invalid dimensions do not fabricate a minimum-size tank', () {
       final volume = TankGeometryEngine.calculateVolumeAtHeight(
         tankType: 'rectangular',
