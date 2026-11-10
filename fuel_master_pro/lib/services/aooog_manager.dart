@@ -95,6 +95,8 @@ class AoooGManager {
   }
 
   void _clearConnectionState() {
+    unawaited(_connectionSub?.cancel());
+    _connectionSub = null;
     unawaited(_notifySub?.cancel());
     _notifySub = null;
     writeChar = null;
