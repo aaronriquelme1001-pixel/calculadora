@@ -333,15 +333,14 @@ class AoooGManager {
 
     try {
       final data = ByteData.sublistView(Uint8List.fromList(response), 6);
+      final battCode = data.getUint16(0, Endian.big);
+      final battPct = ((battCode - 500) * 100 / 220).clamp(0, 100).toDouble();
+      final tempRaw = data.getInt16(2, Endian.big);
+      final tempC = tempRaw / 8.0;
       final fullF = data.getFloat32(6, Endian.little);
       final emptyF = data.getFloat32(10, Endian.little);
       final curF = data.getFloat32(14, Endian.little);
       final curOut = data.getFloat32(18, Endian.little);
-
-      final tempRaw = response[6 + 2];
-      final tempC = (tempRaw > 127 ? tempRaw - 256 : tempRaw).toDouble();
-      final battCode = (response[6 + 3] << 8) | response[6 + 4];
-      final battPct = ((battCode - 500) * 100 / 220).clamp(0, 100).toDouble();
 
       final res = SensorRealtimeData(
         frequencyHz: curF,
@@ -436,6 +435,13 @@ class AoooGManager {
     void Function(int current, int total)? onProgress,
   }) async {
     if (connectedDevice == null || rows.isEmpty) return false;
+
+    // Intentar autenticación silenciosa de forma no bloqueante
+    if (!_isAuthenticated) {
+      try {
+        await authenticate();
+      } catch (_) {}
+    }
 
     const rowsPerBlock = 10;
     final totalBlocks = (rows.length / rowsPerBlock).ceil();

@@ -256,6 +256,8 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
             _liveTemperature = data.temperatureC;
             _liveBattery = data.batteryPct;
             _liveFuelLiters = data.fuelOutput;
+            if (data.emptyFreqHz > 0) _emptyFreq = data.emptyFreqHz;
+            if (data.fullFreqHz > 0) _fullFreq = data.fullFreqHz;
           });
         }
       });
@@ -372,7 +374,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     return rows;
   }
 
-  Future<void> _loadCalibrationFromFile() async {
+  Future<void> _loadCalibrationFromFile([void Function(void Function())? setModalState]) async {
     try {
       final files = await FilePicker.pickFiles();
       if (files.isEmpty) return;
@@ -458,18 +460,20 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
 
       for (int i = 0; i < parsedRows.length; i++) {
         final old = parsedRows[i];
+        final fraction = (old.fixValue / 5000.0).clamp(0.0, 1.0);
         parsedRows[i] = CalibrationRow(
           index: i,
           volumeL: old.volumeL,
           levelMm: old.levelMm,
           fixValue: old.fixValue,
-          expectedFreqHz: _emptyFreq + (_fullFreq - _emptyFreq) * (i / (parsedRows.length - 1).clamp(1, 99)),
+          expectedFreqHz: _emptyFreq + (_fullFreq - _emptyFreq) * fraction,
         );
       }
 
       setState(() {
         _generatedRows = parsedRows;
       });
+      setModalState?.call(() {});
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -484,7 +488,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     }
   }
 
-  Future<void> _pasteCalibrationText() async {
+  Future<void> _pasteCalibrationText([void Function(void Function())? setModalState]) async {
     const defaultTemplate = '0, 0, 0\n529, 60, 60\n1623, 120, 120\n2712, 180, 180\n3616, 240, 240\n4386, 300, 300';
     final ctrl = TextEditingController(text: defaultTemplate);
     final res = await showDialog<String>(
@@ -539,17 +543,19 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
         }
         for (int i = 0; i < parsed.length; i++) {
           final old = parsed[i];
+          final fraction = (old.fixValue / 5000.0).clamp(0.0, 1.0);
           parsed[i] = CalibrationRow(
             index: i,
             volumeL: old.volumeL,
             levelMm: old.levelMm,
             fixValue: old.fixValue,
-            expectedFreqHz: _emptyFreq + (_fullFreq - _emptyFreq) * (i / (parsed.length - 1).clamp(1, 99)),
+            expectedFreqHz: _emptyFreq + (_fullFreq - _emptyFreq) * fraction,
           );
         }
         setState(() {
           _generatedRows = parsed;
         });
+        setModalState?.call(() {});
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('¡Se cargaron ${_generatedRows.length} puntos de calibración!'),
@@ -688,37 +694,11 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
       _uploadProgress = 0.05;
     });
 
-    // 1. Autenticación con contraseña (Comando 0x12)
-    debugPrint('[CALIBRATION] Intentando autenticación...');
-    bool authOk = await _bleManager.authenticate();
-
-    // Si falló la autenticación silenciosa, pedir PIN al usuario
-    if (!authOk) {
-      setState(() => _isUploading = false);
-      String? errorMsg;
-      while (!authOk) {
-        final enteredPin = await _promptUserForPin(errorMsg: errorMsg);
-        if (enteredPin == null || enteredPin.isEmpty) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Operación cancelada: Se requiere contraseña del sensor para grabar.')),
-            );
-          }
-          return;
-        }
-
-        setState(() {
-          _isUploading = true;
-          _uploadProgress = 0.1;
-        });
-
-        authOk = await _bleManager.authenticate(enteredPin);
-        if (!authOk) {
-          setState(() => _isUploading = false);
-          errorMsg = 'PIN "$enteredPin" rechazado por el sensor #${_connectedSensor!.id}. Intente nuevamente:';
-        }
-      }
-    }
+    // 1. Autenticación silenciosa opcional (sin bloquear al usuario con diálogos de PIN)
+    debugPrint('[CALIBRATION] Intentando autenticación silenciosa...');
+    try {
+      await _bleManager.authenticate();
+    } catch (_) {}
 
     // 2. Enviar tabla de calibración (Comando 0x16)
     debugPrint('[CALIBRATION] Enviando ${rowsToSend.length} puntos al sensor...');
@@ -1011,7 +991,8 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                                     Expanded(
                                       child: OutlinedButton.icon(
                                         onPressed: () async {
-                                          await _loadCalibrationFromFile();
+                                          await _loadCalibrationFromFile(setModalState);
+                                          setModalState(() {});
                                         },
                                         icon: const Icon(Icons.upload_file, size: 16),
                                         label: const Text('Cargar Excel', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
@@ -1026,8 +1007,12 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                                     Expanded(
                                       child: OutlinedButton.icon(
                                         onPressed: () {
+                                          final rows = _generate30PointCalibration();
+                                          setModalState(() {
+                                            _generatedRows = rows;
+                                          });
                                           setState(() {
-                                            _generatedRows = _generate30PointCalibration();
+                                            _generatedRows = rows;
                                           });
                                           ScaffoldMessenger.of(context).showSnackBar(
                                             const SnackBar(
@@ -1314,7 +1299,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
-                        await _loadCalibrationFromFile();
+                        await _loadCalibrationFromFile(setParentState);
                         setParentState(() {});
                         setState(() {});
                       },
@@ -1334,7 +1319,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
-                        await _pasteCalibrationText();
+                        await _pasteCalibrationText(setParentState);
                         setParentState(() {});
                         setState(() {});
                       },
