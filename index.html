@@ -249,16 +249,15 @@
           </div>
         </div>
 
-        <!-- VISOR CAD / 3D -->
+        <!-- VISOR CAD 2D -->
         <div class="viewport-card">
           <div class="viewport-header">
             <div class="view-btn-group">
-              <button id="btnPlaneTransverse" class="view-toggle active">Corte Transversal (W × H)</button>
-              <button id="btnPlaneLongitudinal" class="view-toggle">Corte Longitudinal (L × H)</button>
-              <button id="btnView3D" class="view-toggle">Vista 3D Interactiva</button>
+              <button id="btnPlaneTransverse" class="view-toggle active">Corte Transversal (Ancho × Alto)</button>
+              <button id="btnPlaneLongitudinal" class="view-toggle">Corte Longitudinal (Largo × Alto)</button>
             </div>
             <div class="view-hint" id="viewportHint">
-              Arrastra las esquinas para elegir el radio • Arrastra el nivel para aforar
+              Arrastra el nivel para aforar • Arrastra las esquinas para ajustar radios
             </div>
           </div>
 
@@ -301,7 +300,6 @@
   </main>
 
   <!-- LIBRERÍAS OFFLINE -->
-  <script src="lib/three.min.js"></script>
   <script src="lib/exceljs.min.js"></script>
   <!-- LÓGICA -->
   <script src="app.js"></script>
