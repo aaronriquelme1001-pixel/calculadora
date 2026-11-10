@@ -35,16 +35,24 @@ class TankGeometryEngine {
     double dRTopFront = 100,
     double dRBackCorners = 40,
   }) {
-    double t = isExternal ? thickness : 0.0;
-    double effL = math.max(10.0, length - 2 * t);
-    double effW = math.max(10.0, width - 2 * t);
-    double effH = math.max(10.0, height - 2 * t);
+    final dimensions = [length, width, height, thickness, hMm];
+    if (dimensions.any((value) => !value.isFinite) ||
+        length <= 0 || width <= 0 || height <= 0 || thickness < 0) {
+      return 0.0;
+    }
+    final t = isExternal ? thickness : 0.0;
+    if (2 * t >= length || 2 * t >= width || 2 * t >= height) return 0.0;
 
-    double zClamped = math.max(0.0, math.min(effH, hMm));
+    final effL = length - 2 * t;
+    final effW = width - 2 * t;
+    final effH = height - 2 * t;
+    final effH2 = math.max(0.0, tank2Height - (isExternal ? 2 * thickness : 0.0));
+    final integrationHeight = tankType == 'double_tank' ? math.max(effH, effH2) : effH;
+    final zClamped = math.max(0.0, math.min(integrationHeight, hMm));
     if (zClamped <= 0.0) return 0.0;
 
-    // Integración numérica de alta precisión (Simpsons / trapezoidal en 100 rodajas)
-    int steps = 100;
+    // Regla del trapecio compuesta con 400 intervalos para reducir el error de discretización.
+    const int steps = 400;
     double dz = zClamped / steps;
     double totalVolMm3 = 0.0;
 
@@ -236,7 +244,8 @@ class TankGeometryEngine {
     required double emptyFreqHz,
     required double fullFreqHz,
   }) {
-    if (emptyFreqHz <= 0 || fullFreqHz <= 0 || emptyFreqHz == fullFreqHz) {
+    if (!freqHz.isFinite || !emptyFreqHz.isFinite || !fullFreqHz.isFinite ||
+        freqHz <= 0 || emptyFreqHz <= 0 || fullFreqHz <= 0 || emptyFreqHz == fullFreqHz) {
       return 0.0;
     }
     // Capacidad C es proporcional a 1/f
@@ -256,6 +265,10 @@ class TankGeometryEngine {
     required double emptyFreqHz,
     required double fullFreqHz,
   }) {
+    if (!fixValue.isFinite || !emptyFreqHz.isFinite || !fullFreqHz.isFinite ||
+        emptyFreqHz <= 0 || fullFreqHz <= 0) {
+      return 0.0;
+    }
     double frac = math.max(0.0, math.min(1.0, fixValue / 5000.0));
     double invEmpty = 1.0 / emptyFreqHz;
     double invFull = 1.0 / fullFreqHz;
