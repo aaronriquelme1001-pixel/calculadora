@@ -229,7 +229,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 
     double t = _isExternal ? _thickness : 0.0;
     final primaryEffH = _height - 2 * t;
-    final secondaryEffH = _tank2Height - 2 * t;
+    final secondaryEffH = _tank2Height > 0 ? _tank2Height - 2 * t : primaryEffH;
     final double effH = (_tankType == 'double_tank'
         ? math.max(primaryEffH, secondaryEffH)
         : primaryEffH).toDouble();
