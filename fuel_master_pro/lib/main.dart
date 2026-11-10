@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -72,6 +73,9 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   double _height = 650;
   double _thickness = 2.5;
   bool _isExternal = true;
+  double _tank2Length = 850;
+  double _tank2Width = 600;
+  double _tank2Height = 650;
 
   // Radios esquinas
   double _rInfLi = 150;
@@ -197,7 +201,11 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     int totalRows = 30; // Fila 1 a 30
 
     double t = _isExternal ? _thickness : 0.0;
-    double effH = _height - 2 * t;
+    final primaryEffH = _height - 2 * t;
+    final secondaryEffH = _tank2Height - 2 * t;
+    final effH = _tankType == 'double_tank'
+        ? math.max(primaryEffH, secondaryEffH)
+        : primaryEffH;
 
     for (int i = 0; i < totalRows; i++) {
       double frac = i / (totalRows - 1);
@@ -219,6 +227,9 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         rSupAf: _rSupAf,
         rSupAp: _rSupAp,
         rVert: _rVert,
+        tank2Length: _tank2Length,
+        tank2Width: _tank2Width,
+        tank2Height: _tank2Height,
       );
 
       // Coordenada fix_value de 0 a 5000
@@ -417,7 +428,12 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       height: _height,
       thickness: _thickness,
       isExternal: _isExternal,
-      hMm: _height - (_isExternal ? _thickness * 2 : 0),
+      hMm: _tankType == 'double_tank'
+          ? math.max(
+              _height - (_isExternal ? _thickness * 2 : 0),
+              _tank2Height - (_isExternal ? _thickness * 2 : 0),
+            )
+          : _height - (_isExternal ? _thickness * 2 : 0),
       rInfLi: _rInfLi,
       rInfLd: _rInfLd,
       rSupLi: _rSupLi,
@@ -427,6 +443,9 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       rSupAf: _rSupAf,
       rSupAp: _rSupAp,
       rVert: _rVert,
+      tank2Length: _tank2Length,
+      tank2Width: _tank2Width,
+      tank2Height: _tank2Height,
     );
 
     return SingleChildScrollView(
@@ -506,6 +525,20 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                       ),
                     ],
                   ),
+                  if (_tankType == 'double_tank') ...[
+                    const SizedBox(height: 14),
+                    const Text('Segundo estanque conectado', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: _buildNumField('Largo 2 (mm)', _tank2Length, (v) => setState(() => _tank2Length = v))),
+                        const SizedBox(width: 8),
+                        Expanded(child: _buildNumField('Ancho 2 (mm)', _tank2Width, (v) => setState(() => _tank2Width = v))),
+                        const SizedBox(width: 8),
+                        Expanded(child: _buildNumField('Alto 2 (mm)', _tank2Height, (v) => setState(() => _tank2Height = v))),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
