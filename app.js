@@ -22,17 +22,17 @@
 
     tank: {
       type: 'rectangular', // rectangular simple
-      length: 60,
-      width: 58,
-      height: 600,
+      length: 1000,
+      width: 600,
+      height: 580,
       thickness: 0.0,
       dimType: 'internal', // interna directa
 
       // Radios transversales (W x H)
-      r_inf_li: 0,
-      r_inf_ld: 0,
-      r_sup_li: 0,
-      r_sup_ld: 0,
+      r_inf_li: 200,
+      r_inf_ld: 200,
+      r_sup_li: 200,
+      r_sup_ld: 200,
 
       // Radios longitudinales (L x H)
       r_inf_af: 0,
@@ -67,7 +67,7 @@
       bottomDeadZone: 0
     },
 
-    currentLevelMm: 0,
+    currentLevelMm: 580,
 
     calcCache: {
       effH: 650,
@@ -1958,21 +1958,97 @@
     threeTankEdges = new THREE.LineSegments(edgesGeom, edgesMat);
     threeScene.add(threeTankEdges);
 
-    // Líquido Diésel Ámbar
+    // Líquido Diésel Ámbar - Contorno exacto que respeta curvatura superior e inferior
     const curLevel = Math.max(0, Math.min(H, state.currentLevelMm));
     if (curLevel > 1) {
       const liqH = curLevel;
       const liqShape = new THREE.Shape();
-      const lr1 = Math.min(r1, liqH);
-      const lr2 = Math.min(r2, liqH);
+      const yL0 = 0.5;
+      const targetH = Math.min(h - 0.5, Math.max(yL0 + 0.5, liqH));
 
-      liqShape.moveTo(x0 + lr1, y0 + 0.5);
-      liqShape.lineTo(x1 - lr2, y0 + 0.5);
-      if (lr2 > 0) liqShape.quadraticCurveTo(x1, y0 + 0.5, x1, y0 + lr2);
-      liqShape.lineTo(x1, y0 + liqH);
-      liqShape.lineTo(x0, y0 + liqH);
-      liqShape.lineTo(x0, y0 + lr1);
-      if (lr1 > 0) liqShape.quadraticCurveTo(x0, y0 + 0.5, x0 + lr1, y0 + 0.5);
+      function getXLeft(y) {
+        if (y < yL0 + r1 && r1 > 0) {
+          const dy = (yL0 + r1) - y;
+          return x0 + r1 - Math.sqrt(Math.max(0, r1 * r1 - dy * dy));
+        }
+        if (y > h - r4 && r4 > 0) {
+          const dy = y - (h - r4);
+          return x0 + r4 - Math.sqrt(Math.max(0, r4 * r4 - dy * dy));
+        }
+        return x0;
+      }
+
+      function getXRight(y) {
+        if (y < yL0 + r2 && r2 > 0) {
+          const dy = (yL0 + r2) - y;
+          return x1 - r2 + Math.sqrt(Math.max(0, r2 * r2 - dy * dy));
+        }
+        if (y > h - r3 && r3 > 0) {
+          const dy = y - (h - r3);
+          return x1 - r3 + Math.sqrt(Math.max(0, r3 * r3 - dy * dy));
+        }
+        return x1;
+      }
+
+      if (targetH >= h - 1.0) {
+        // Lleno total: calca la geometría exacta del estanque
+        liqShape.moveTo(x0 + r1, yL0);
+        liqShape.lineTo(x1 - r2, yL0);
+        if (r2 > 0) liqShape.quadraticCurveTo(x1, yL0, x1, yL0 + r2);
+        liqShape.lineTo(x1, h - r3);
+        if (r3 > 0) liqShape.quadraticCurveTo(x1, h, x1 - r3, h);
+        liqShape.lineTo(x0 + r4, h);
+        if (r4 > 0) liqShape.quadraticCurveTo(x0, h, x0, h - r4);
+        liqShape.lineTo(x0, yL0 + r1);
+        if (r1 > 0) liqShape.quadraticCurveTo(x0, yL0, x0 + r1, yL0);
+      } else {
+        liqShape.moveTo(x0 + r1, yL0);
+        liqShape.lineTo(x1 - r2, yL0);
+
+        if (r2 > 0 && targetH <= yL0 + r2) {
+          const steps = 12;
+          for (let s = 1; s <= steps; s++) {
+            const y = yL0 + (targetH - yL0) * (s / steps);
+            liqShape.lineTo(getXRight(y), y);
+          }
+          liqShape.lineTo(getXLeft(targetH), targetH);
+          for (let s = steps; s >= 0; s--) {
+            const y = yL0 + (targetH - yL0) * (s / steps);
+            liqShape.lineTo(getXLeft(y), y);
+          }
+        } else {
+          if (r2 > 0) liqShape.quadraticCurveTo(x1, yL0, x1, yL0 + r2);
+          const rightStop = Math.min(targetH, h - r3);
+          if (rightStop > yL0 + r2) {
+            liqShape.lineTo(x1, rightStop);
+          }
+          if (targetH > h - r3 && r3 > 0) {
+            const steps = 12;
+            const startY = h - r3;
+            for (let s = 1; s <= steps; s++) {
+              const y = startY + (targetH - startY) * (s / steps);
+              liqShape.lineTo(getXRight(y), y);
+            }
+          }
+
+          liqShape.lineTo(getXLeft(targetH), targetH);
+
+          if (targetH > h - r4 && r4 > 0) {
+            const steps = 12;
+            const endY = h - r4;
+            for (let s = 1; s <= steps; s++) {
+              const y = targetH - (targetH - endY) * (s / steps);
+              liqShape.lineTo(getXLeft(y), y);
+            }
+          }
+
+          const leftStop = Math.max(yL0 + r1, yL0);
+          liqShape.lineTo(x0, leftStop);
+          if (r1 > 0) {
+            liqShape.quadraticCurveTo(x0, yL0, x0 + r1, yL0);
+          }
+        }
+      }
 
       const liqGeom = new THREE.ExtrudeGeometry(liqShape, {
         depth: L - 2,

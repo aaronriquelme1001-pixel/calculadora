@@ -65,21 +65,21 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   Timer? _telemetryTimer;
 
   // Medidas Generales del Estanque Rectangular (mm)
-  double _length = 60;
-  double _width = 58;
-  double _height = 600;
+  double _length = 1000.0;
+  double _width = 600.0;
+  double _height = 580.0;
   double _thickness = 0.0;
   bool _isExternal = false;
 
   // Radios en Bordes Inferiores / Piso (mm)
-  double _rInfLi = 0;
-  double _rInfLd = 0;
+  double _rInfLi = 200.0;
+  double _rInfLd = 200.0;
   double _rInfAf = 0;
   double _rInfAp = 0;
 
   // Radios en Bordes Superiores / Techo (mm)
-  double _rSupLi = 0;
-  double _rSupLd = 0;
+  double _rSupLi = 200.0;
+  double _rSupLd = 200.0;
   double _rSupAf = 0;
   double _rSupAp = 0;
 
