@@ -820,7 +820,9 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 
   Widget _buildNumField(String label, double val, Function(double) onChanged) {
     return TextFormField(
-      initialValue: val == val.roundToDouble() ? val.toInt().toString() : val.toString(),
+      initialValue: !val.isFinite
+          ? ''
+          : (val == val.roundToDouble() ? val.toInt().toString() : val.toString()),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         labelText: label,
@@ -828,8 +830,8 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       ),
       onChanged: (v) {
-        double? d = double.tryParse(v);
-        if (d != null) onChanged(d);
+        final parsed = double.tryParse(v);
+        if (parsed != null && parsed.isFinite) onChanged(parsed);
       },
     );
   }
