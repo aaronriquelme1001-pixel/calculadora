@@ -1,0 +1,250 @@
+html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Calculadora de Tanques - Bordes Horizontales</title>
+    <style>
+        :root {
+            --primary: #1e3a8a;
+            --primary-light: #3b82f6;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #0f172a;
+            --border: #e2e8f0;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 10px;
+        }
+        header h1 { margin: 0; color: var(--primary); font-size: 22px; }
+        
+        .main-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 1024px) {
+            .main-layout { grid-template-columns: 1fr; }
+        }
+        
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .card h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 16px;
+            color: var(--primary);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 8px;
+        }
+        
+        .form-group {
+            margin-bottom: 12px;
+        }
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        
+        .grid-3 {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+        .grid-4 {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+        
+        .radio-section {
+            background: #f1f5f9;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .radio-section h3 {
+            margin: 0 0 8px 0;
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #475569;
+        }
+        
+        .results-panel {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .result-box {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+        .result-box.highlight { background: #ecfdf5; border: 1px solid #a7f3d0; }
+        .result-box.empty { background: #fff7ed; border: 1px solid #ffedd5; }
+        .result-box .label { font-size: 11px; color: #475569; font-weight: 600; }
+        .result-box .value { font-size: 16px; font-weight: bold; margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Calculadora de Tanques Profesional</h1>
+    </header>
+
+    <div class="main-layout">
+        <!-- PANEL DE CONTROL -->
+        <div class="card">
+            <h2>Dimensiones Generales (mm)</h2>
+            
+            <div class="grid-3">
+                <div class="form-group">
+                    <label>Largo (mm)</label>
+                    <input type="number" id="largo" value="2000" oninput="calcular()">
+                </div>
+                <div class="form-group">
+                    <label>Ancho (mm)</label>
+                    <input type="number" id="ancho" value="1200" oninput="calcular()">
+                </div>
+                <div class="form-group">
+                    <label>Alto (mm)</label>
+                    <input type="number" id="alto" value="1500" oninput="calcular()">
+                </div>
+            </div>
+
+            <!-- RADIOS PISO -->
+            <div class="radio-section">
+                <h3>Radios en Bordes INFERIORES / PISO (mm)</h3>
+                <div class="grid-4">
+                    <div class="form-group"><label>L. Izq.</label><input type="number" id="r_inf_li" value="150" oninput="calcular()"></div>
+                    <div class="form-group"><label>L. Der.</label><input type="number" id="r_inf_ld" value="150" oninput="calcular()"></div>
+                    <div class="form-group"><label>A. Front.</label><input type="number" id="r_inf_af" value="150" oninput="calcular()"></div>
+                    <div class="form-group"><label>A. Post.</label><input type="number" id="r_inf_ap" value="150" oninput="calcular()"></div>
+                </div>
+            </div>
+
+            <!-- RADIOS TECHO -->
+            <div class="radio-section">
+                <h3>Radios en Bordes SUPERIORES / TECHO (mm)</h3>
+                <div class="grid-4">
+                    <div class="form-group"><label>L. Izq.</label><input type="number" id="r_sup_li" value="300" oninput="calcular()"></div>
+                    <div class="form-group"><label>L. Der.</label><input type="number" id="r_sup_ld" value="300" oninput="calcular()"></div>
+                    <div class="form-group"><label>A. Front.</label><input type="number" id="r_sup_af" value="300" oninput="calcular()"></div>
+                    <div class="form-group"><label>A. Post.</label><input type="number" id="r_sup_ap" value="300" oninput="calcular()"></div>
+                </div>
+            </div>
+
+            <h2>Nivel de Líquido</h2>
+            <div class="form-group">
+                <label>Altura del Agua Actual (mm)</label>
+                <input type="number" id="nivel" value="600" oninput="calcular()">
+            </div>
+
+            <div class="results-panel">
+                <div class="result-box">
+                    <div class="label">Volumen Total</div>
+                    <div class="value" id="resTotal">3573.9 L</div>
+                </div>
+                <div class="result-box highlight">
+                    <div class="label">Líquido Actual</div>
+                    <div class="value" id="resActual">1437.1 L</div>
+                </div>
+                <div class="result-box empty">
+                    <div class="label">Espacio Vacío</div>
+                    <div class="value" id="resVacio">2136.8 L</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function calcular() {
+        // Forzar conversión estricta a número para evitar textos vacíos
+        var L = Number(document.getElementById('largo').value) || 0;
+        var W = Number(document.getElementById('ancho').value) || 0;
+        var H = Number(document.getElementById('alto').value) || 0;
+        var hNivel = Number(document.getElementById('nivel').value) || 0;
+
+        if (hNivel > H) { hNivel = H; document.getElementById('nivel').value = H; }
+
+        var rIL_I = Number(document.getElementById('r_inf_li').value) || 0;
+        var rIL_D = Number(document.getElementById('r_inf_ld').value) || 0;
+        var rIA_F = Number(document.getElementById('r_inf_af').value) || 0;
+        var rIA_P = Number(document.getElementById('r_inf_ap').value) || 0;
+
+        var rSL_I = Number(document.getElementById('r_sup_li').value) || 0;
+        var rSL_D = Number(document.getElementById('r_sup_ld').value) || 0;
+        var rSA_F = Number(document.getElementById('r_sup_af').value) || 0;
+        var rSA_P = Number(document.getElementById('r_sup_ap').value) || 0;
+
+        var capas = 100;
+        var dH = H / capas;
+        var volTotal = 0;
+        var volLiquido = 0;
+
+        if (H > 0 && L > 0 && W > 0) {
+            for (var i = 0; i < capas; i++) {
+                var z = (i + 0.5) * dH;
+                var factorCurva = 0.2146; 
+                var cSI = 0, cSD = 0, cII = 0, cID = 0;
+
+                if (z < rIL_I) cII = rIL_I; else if (z > (H - rSL_I)) cII = rSL_I;
+                if (z < rIL_D) cID = rIL_D; else if (z > (H - rSL_D)) cID = rSL_D;
+                if (z < rIA_F) cSI = rIA_F; else if (z > (H - rSA_F)) cSI = rSA_F;
+                if (z < rIA_P) cSD = rIA_P; else if (z > (H - rSA_P)) cSD = rSA_P;
+
+                var areaCapa = (L * W) - ((cSI*cSI + cSD*cSD + cII*cII + cID*cID) * factorCurva);
+                if (areaCapa < 0) areaCapa = 0;
+
+                var volCapa = areaCapa * dH;
+                volTotal += volCapa;
+                if (z <= hNivel) { volLiquido += volCapa; }
+            }
+        }
+
+        var litrosTotal = volTotal / 1000000;
+        var litrosLiquido = volLiquido / 1000000;
+        var litrosVacio = litrosTotal - litrosLiquido;
+        if (litrosVacio < 0) litrosVacio = 0;
+
+        document.getElementById('resTotal').innerText = litrosTotal.toFixed(1) + " L";
+        document.getElementById('resActual').innerText = litrosLiquido.toFixed(1) + " L";
+        document.getElementById('resVacio').innerText = litrosVacio.toFixed(1) + " L";
+    }
+</script>
+</body>
+</html>

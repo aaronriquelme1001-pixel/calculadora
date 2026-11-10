@@ -1,0 +1,25 @@
+# Git ignore
+node_modules/
+*.bak
+.DS_Store
+Thumbs.db
+*.log
+
+# Flutter & Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+fuel_master_pro/build/
+fuel_master_pro/.dart_tool/
+fuel_master_pro/.packages
+fuel_master_pro/.flutter-plugins
+fuel_master_pro/.flutter-plugins-dependencies
+
+# Android build
+*.apk
+!Fuel_Master_Pro_AoooG.apk
+*.aab
+.gradle/
+local.properties
