@@ -21,27 +21,27 @@
     },
 
     tank: {
-      type: 'rectangular', // rectangular, cylinder_horizontal, elliptical_horizontal, d_shape, step_notch, double_tank
-      length: 850,
-      width: 600,
-      height: 650,
-      thickness: 2.5,
-      dimType: 'external', // external o internal
+      type: 'rectangular', // rectangular simple
+      length: 60,
+      width: 58,
+      height: 600,
+      thickness: 0.0,
+      dimType: 'internal', // interna directa
 
       // Radios transversales (W x H)
-      r_inf_li: 150,
-      r_inf_ld: 150,
-      r_sup_li: 50,
-      r_sup_ld: 50,
+      r_inf_li: 0,
+      r_inf_ld: 0,
+      r_sup_li: 0,
+      r_sup_ld: 0,
 
       // Radios longitudinales (L x H)
-      r_inf_af: 150,
-      r_inf_ap: 150,
-      r_sup_af: 50,
-      r_sup_ap: 50,
+      r_inf_af: 0,
+      r_inf_ap: 0,
+      r_sup_af: 0,
+      r_sup_ap: 0,
 
       // Radio aristas verticales (L x W)
-      r_vert: 50,
+      r_vert: 0,
 
       // Retroexcavadora con escalón
       stepWidth: 200,
@@ -62,12 +62,12 @@
     },
 
     sensor: {
-      dataMin: 100,
-      dataMax: 4660,
-      bottomDeadZone: 15
+      dataMin: 0,
+      dataMax: 5000,
+      bottomDeadZone: 0
     },
 
-    currentLevelMm: 314,
+    currentLevelMm: 0,
 
     calcCache: {
       effH: 650,
@@ -1711,6 +1711,10 @@
     setText('telemetryEmpty', `${emptyVol.toFixed(1)} L`);
     setText('telemetryPct', `${pct.toFixed(1)} %`);
     setText('telemetryRaw', `${curRaw}`);
+
+    setText('sideTotalVolume', `${totalVol.toFixed(1)} L`);
+    setText('sideCurrentLiquid', `${curVol.toFixed(1)} L`);
+    setText('sideEmptySpace', `${emptyVol.toFixed(1)} L`);
 
     renderTable();
     renderCad();

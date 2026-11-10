@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Calculadora de Estanques & Calibrador AoooG BL</title>
+  <title>Fuel Master Pro - Calculadora de Estanques & Calibrador AoooG BL</title>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -21,40 +21,15 @@
           </svg>
         </div>
         <div class="brand-title">
-          <h1>Calculadora de Estanques <span class="badge">AoooG BL</span></h1>
+          <h1>Fuel Master Pro <span class="badge">AoooG BL</span></h1>
         </div>
       </div>
 
+      <!-- Selectores de compatibilidad interna ocultos -->
+      <select id="tankTypeSelect" style="display:none;"><option value="rectangular" selected>Rectangular</option></select>
+      <select id="presetSelect" style="display:none;"></select>
+
       <div class="header-actions">
-        <!-- Selector Geometría -->
-        <div class="select-control no-print">
-          <label for="tankTypeSelect">Geometría:</label>
-          <select id="tankTypeSelect">
-            <option value="rectangular">Prisma Rectangular (Bordes Curvos)</option>
-            <option value="cylinder_horizontal">Cilíndrico Horizontal</option>
-            <option value="elliptical_horizontal">Elíptico / Ovalado</option>
-            <option value="d_shape">Forma D (Volvo / Scania)</option>
-            <option value="step_notch">Tipo Escalera (Retroexcavadora)</option>
-            <option value="double_tank">Doble Estanque (Conectados)</option>
-          </select>
-        </div>
-
-        <!-- Selector Plantilla -->
-        <div class="select-control no-print">
-          <label for="presetSelect">Plantilla:</label>
-          <select id="presetSelect">
-            <option value="excel_original" selected>Tanque Base Excel (650x600x850 mm - 312L)</option>
-            <option value="volvo_dshape">Volvo FH/FM Forma D (710x690x1450 mm - 600L)</option>
-            <option value="scania_r">Scania R/S (670x700x1200 mm - 500L)</option>
-            <option value="mercedes_actros">Mercedes Actros (650x700x1550 mm - 650L)</option>
-            <option value="man_tgx">MAN TGX (620x690x1300 mm - 510L)</option>
-            <option value="cylinder_standard">Cilíndrico Horizontal (Ø600x1500 mm - 424L)</option>
-            <option value="ellipse_standard">Elíptico Horizontal (600x800x1400 mm - 527L)</option>
-            <option value="step_retro">Retroexcavadora con Escalón</option>
-            <option value="double_standard">Doble Estanque (400L + 400L)</option>
-          </select>
-        </div>
-
         <!-- Botón Exportar Excel AoooG -->
         <button id="btnExportExcel" class="btn btn-primary no-print">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -83,320 +58,165 @@
     <div class="app-grid">
 
       <!-- ================================================================= -->
-      <!-- PANEL LATERAL COMPACTO                                            -->
+      <!-- PANEL LATERAL COMPACTO (IDÉNTICO AL CELULAR)                      -->
       <!-- ================================================================= -->
       <aside class="no-print">
-        <div class="card">
-          <div class="tab-row">
-            <button class="tab-btn active" data-tab="tab-geom">Medidas</button>
-            <button class="tab-btn" data-tab="tab-sens">Sensor AoooG</button>
-            <button class="tab-btn" data-tab="tab-veh">Vehículo</button>
-          </div>
-
-          <!-- TAB 1: GEOMETRÍA -->
-          <div id="tab-geom" class="tab-pane active">
-            <!-- Dimensiones Generales -->
-            <div class="section-box">
-              <div class="section-box-header">Dimensiones Generales</div>
-              <div class="grid-3">
-                <div class="form-item">
-                  <label for="tankLength">Largo (L)</label>
-                  <div class="input-wrap">
-                    <input type="number" id="tankLength" value="850">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="tankWidth">Ancho (W)</label>
-                  <div class="input-wrap">
-                    <input type="number" id="tankWidth" value="600">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="tankHeight">Alto (H)</label>
-                  <div class="input-wrap">
-                    <input type="number" id="tankHeight" value="650">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="grid-2" style="margin-top: 4px;">
-                <div class="form-item">
-                  <label for="tankThickness">Espesor Chapa</label>
-                  <div class="input-wrap">
-                    <input type="number" id="tankThickness" value="2.5" step="0.5">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="tankDimType">Medición</label>
-                  <div class="input-wrap">
-                    <select id="tankDimType">
-                      <option value="external" selected>Externa</option>
-                      <option value="internal">Interna</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
+        <div class="card" style="padding: 20px;">
+          
+          <!-- Dimensiones Generales (mm) -->
+          <div style="margin-bottom: 16px;">
+            <div style="font-size: 1.05rem; font-weight: 800; color: #1e3a8a; margin-bottom: 4px;">
+              Dimensiones Generales (mm)
             </div>
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin-bottom: 14px;">
 
-            <!-- SECCIÓN: TIPO ESCALERA (RETROEXCAVADORA) -->
-            <div id="secStepTank" class="section-box" style="display: none;">
-              <div class="section-box-header">Escalón / Muesca Retroexcavadora</div>
-              <div class="grid-3">
-                <div class="form-item">
-                  <label for="stepWidth">Ancho Escalón</label>
-                  <div class="input-wrap">
-                    <input type="number" id="stepWidth" value="200">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="stepHeight">Alto Escalón</label>
-                  <div class="input-wrap">
-                    <input type="number" id="stepHeight" value="250">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="stepSide">Posición</label>
-                  <div class="input-wrap">
-                    <select id="stepSide">
-                      <option value="bottom_right" selected>Inf. Der</option>
-                      <option value="bottom_left">Inf. Izq</option>
-                      <option value="top_right">Sup. Der</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- SECCIÓN: DOBLE ESTANQUE -->
-            <div id="secDoubleTank" class="section-box" style="display: none;">
-              <div class="section-box-header">Segundo Estanque Conectado (Medidas Independientes)</div>
-              <div class="grid-3">
-                <div class="form-item">
-                  <label for="tank2Length">Largo 2 (L2)</label>
-                  <div class="input-wrap">
-                    <input type="number" id="tank2Length" value="850">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="tank2Width">Ancho 2 (W2)</label>
-                  <div class="input-wrap">
-                    <input type="number" id="tank2Width" value="600">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="tank2Height">Alto 2 (H2)</label>
-                  <div class="input-wrap">
-                    <input type="number" id="tank2Height" value="650">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- SECCIÓN: FORMA D (VOLVO / SCANIA) -->
-            <div id="secDShapeTank" class="section-box" style="display: none;">
-              <div class="section-box-header">Bordes Curvos Forma D (Perfil Frontal/Posterior)</div>
-              <div class="grid-3">
-                <div class="form-item">
-                  <label for="d_r_bottom_front">Radio Frente Inf.</label>
-                  <div class="input-wrap">
-                    <input type="number" id="d_r_bottom_front" value="250">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="d_r_top_front">Radio Frente Sup.</label>
-                  <div class="input-wrap">
-                    <input type="number" id="d_r_top_front" value="120">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="d_r_back_corners">Radio Dorso (Chasis)</label>
-                  <div class="input-wrap">
-                    <input type="number" id="d_r_back_corners" value="40">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Radios Transversales -->
-            <div id="secRadiiTransverse" class="section-box">
-              <div class="section-box-header">Radios Corte Transversal (W × H)</div>
-              <div class="grid-2">
-                <div class="form-item">
-                  <label for="r_inf_li">Piso Izquierdo</label>
-                  <div class="input-wrap">
-                    <input type="number" id="r_inf_li" value="150">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="r_inf_ld">Piso Derecho</label>
-                  <div class="input-wrap">
-                    <input type="number" id="r_inf_ld" value="150">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-              </div>
-              <div class="grid-2">
-                <div class="form-item">
-                  <label for="r_sup_li">Techo Izquierdo</label>
-                  <div class="input-wrap">
-                    <input type="number" id="r_sup_li" value="50">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="r_sup_ld">Techo Derecho</label>
-                  <div class="input-wrap">
-                    <input type="number" id="r_sup_ld" value="50">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Radios Longitudinales -->
-            <div id="secRadiiLongitudinal" class="section-box">
-              <div class="section-box-header">Radios Corte Longitudinal (L × H)</div>
-              <div class="grid-2">
-                <div class="form-item">
-                  <label for="r_inf_af">Piso Frontal</label>
-                  <div class="input-wrap">
-                    <input type="number" id="r_inf_af" value="150">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="r_inf_ap">Piso Posterior</label>
-                  <div class="input-wrap">
-                    <input type="number" id="r_inf_ap" value="150">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-              </div>
-              <div class="grid-2">
-                <div class="form-item">
-                  <label for="r_sup_af">Techo Frontal</label>
-                  <div class="input-wrap">
-                    <input type="number" id="r_sup_af" value="50">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="r_sup_ap">Techo Posterior</label>
-                  <div class="input-wrap">
-                    <input type="number" id="r_sup_ap" value="50">
-                    <span class="unit-label">mm</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Radio Esquinas Verticales -->
-            <div id="secRadiiVertical" class="section-box">
-              <div class="section-box-header">Bordes Verticales (4 Esquinas Altura)</div>
+            <div class="grid-3">
               <div class="form-item">
-                <label for="r_vert">Radio Vertical (Largo × Ancho)</label>
+                <label for="tankLength" style="font-weight: 700; color: #334155;">Largo (mm)</label>
                 <div class="input-wrap">
-                  <input type="number" id="r_vert" value="50">
-                  <span class="unit-label">mm</span>
+                  <input type="number" id="tankLength" value="60">
                 </div>
               </div>
-            </div>
-          </div>
-
-          <!-- TAB 2: SENSOR -->
-          <div id="tab-sens" class="tab-pane">
-            <div class="section-box">
-              <div class="section-box-header">Calibración Sensor AoooG BL</div>
-              <div class="grid-2">
-                <div class="form-item">
-                  <label for="sensorDataMin">Raw Data Vacío</label>
-                  <div class="input-wrap">
-                    <input type="number" id="sensorDataMin" value="100">
-                    <span class="unit-label">pts</span>
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="sensorDataMax">Raw Data Lleno</label>
-                  <div class="input-wrap">
-                    <input type="number" id="sensorDataMax" value="4660">
-                    <span class="unit-label">pts</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="form-item" style="margin-top: 4px;">
-                <label for="sensorBottomDead">Despeje al Fondo</label>
-                <div class="input-wrap">
-                  <input type="number" id="sensorBottomDead" value="15">
-                  <span class="unit-label">mm</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- TAB 3: VEHÍCULO -->
-          <div id="tab-veh" class="tab-pane">
-            <div class="section-box">
-              <div class="section-box-header">Datos del Servicio</div>
               <div class="form-item">
-                <label for="vehClient">Cliente</label>
+                <label for="tankWidth" style="font-weight: 700; color: #334155;">Ancho (mm)</label>
                 <div class="input-wrap">
-                  <input type="text" id="vehClient" value="Transportes Vikar S.A.">
+                  <input type="number" id="tankWidth" value="58">
                 </div>
               </div>
-              <div class="grid-2">
-                <div class="form-item">
-                  <label for="vehPlate">Patente / ID</label>
-                  <div class="input-wrap">
-                    <input type="text" id="vehPlate" value="AA-123-BB">
-                  </div>
-                </div>
-                <div class="form-item">
-                  <label for="vehModel">Modelo</label>
-                  <div class="input-wrap">
-                    <input type="text" id="vehModel" value="Volvo FH 540">
-                  </div>
+              <div class="form-item">
+                <label for="tankHeight" style="font-weight: 700; color: #334155;">Alto (mm)</label>
+                <div class="input-wrap">
+                  <input type="number" id="tankHeight" value="600">
                 </div>
               </div>
             </div>
+
+            <div class="grid-2" style="margin-top: 10px;">
+              <div class="form-item">
+                <label for="tankThickness" style="font-size: 0.78rem; color: #64748b;">Espesor Chapa (mm)</label>
+                <div class="input-wrap">
+                  <input type="number" id="tankThickness" value="0" step="0.5">
+                </div>
+              </div>
+              <div class="form-item">
+                <label for="tankDimType" style="font-size: 0.78rem; color: #64748b;">Medición</label>
+                <div class="input-wrap">
+                  <select id="tankDimType">
+                    <option value="internal" selected>Interna</option>
+                    <option value="external">Externa</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RADIOS EN BORDES INFERIORES / PISO (MM) -->
+          <div style="background: #f1f5f9; padding: 12px; border-radius: 10px; margin-bottom: 12px;">
+            <div style="font-size: 0.74rem; font-weight: 800; color: #475569; letter-spacing: 0.5px; margin-bottom: 8px;">
+              RADIOS EN BORDES INFERIORES / PISO (MM)
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+              <div class="form-item">
+                <label for="r_inf_li" style="font-size: 0.72rem; color: #64748b;">L. Izq.</label>
+                <input type="number" id="r_inf_li" value="0" style="padding: 6px 2px; text-align: center; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%; font-weight: 700;">
+              </div>
+              <div class="form-item">
+                <label for="r_inf_ld" style="font-size: 0.72rem; color: #64748b;">L. Der.</label>
+                <input type="number" id="r_inf_ld" value="0" style="padding: 6px 2px; text-align: center; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%; font-weight: 700;">
+              </div>
+              <div class="form-item">
+                <label for="r_inf_af" style="font-size: 0.72rem; color: #64748b;">A. Front.</label>
+                <input type="number" id="r_inf_af" value="0" style="padding: 6px 2px; text-align: center; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%; font-weight: 700;">
+              </div>
+              <div class="form-item">
+                <label for="r_inf_ap" style="font-size: 0.72rem; color: #64748b;">A. Post.</label>
+                <input type="number" id="r_inf_ap" value="0" style="padding: 6px 2px; text-align: center; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%; font-weight: 700;">
+              </div>
+            </div>
+          </div>
+
+          <!-- RADIOS EN BORDES SUPERIORES / TECHO (MM) -->
+          <div style="background: #f1f5f9; padding: 12px; border-radius: 10px; margin-bottom: 16px;">
+            <div style="font-size: 0.74rem; font-weight: 800; color: #475569; letter-spacing: 0.5px; margin-bottom: 8px;">
+              RADIOS EN BORDES SUPERIORES / TECHO (MM)
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+              <div class="form-item">
+                <label for="r_sup_li" style="font-size: 0.72rem; color: #64748b;">L. Izq.</label>
+                <input type="number" id="r_sup_li" value="0" style="padding: 6px 2px; text-align: center; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%; font-weight: 700;">
+              </div>
+              <div class="form-item">
+                <label for="r_sup_ld" style="font-size: 0.72rem; color: #64748b;">L. Der.</label>
+                <input type="number" id="r_sup_ld" value="0" style="padding: 6px 2px; text-align: center; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%; font-weight: 700;">
+              </div>
+              <div class="form-item">
+                <label for="r_sup_af" style="font-size: 0.72rem; color: #64748b;">A. Front.</label>
+                <input type="number" id="r_sup_af" value="0" style="padding: 6px 2px; text-align: center; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%; font-weight: 700;">
+              </div>
+              <div class="form-item">
+                <label for="r_sup_ap" style="font-size: 0.72rem; color: #64748b;">A. Post.</label>
+                <input type="number" id="r_sup_ap" value="0" style="padding: 6px 2px; text-align: center; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%; font-weight: 700;">
+              </div>
+            </div>
+          </div>
+
+          <!-- Resumen de Capacidad estilo Celular (3 cajitas de métricas) -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 4px; text-align: center;">
+              <div style="font-size: 0.72rem; color: #1e40af; font-weight: 700;">Volumen Total</div>
+              <div id="sideTotalVolume" style="font-size: 1.15rem; font-weight: 800; color: #1e3a8a; margin-top: 2px;">2.1 L</div>
+            </div>
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 10px 4px; text-align: center;">
+              <div style="font-size: 0.72rem; color: #166534; font-weight: 700;">Líquido Actual</div>
+              <div id="sideCurrentLiquid" style="font-size: 1.15rem; font-weight: 800; color: #15803d; margin-top: 2px;">0.0 L</div>
+            </div>
+            <div style="background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px; padding: 10px 4px; text-align: center;">
+              <div style="font-size: 0.72rem; color: #92400e; font-weight: 700;">Espacio Vacío</div>
+              <div id="sideEmptySpace" style="font-size: 1.15rem; font-weight: 800; color: #b45309; margin-top: 2px;">2.1 L</div>
+            </div>
+          </div>
+
+          <!-- Campos ocultos requeridos internamente por el motor de cálculo -->
+          <div style="display: none;">
+            <input type="number" id="r_vert" value="0">
+            <input type="number" id="sensorDataMin" value="0">
+            <input type="number" id="sensorDataMax" value="5000">
+            <input type="number" id="sensorBottomDead" value="0">
+            <input type="text" id="vehClient" value="Transportes Vikar S.A.">
+            <input type="text" id="vehPlate" value="AA-123-BB">
+            <input type="text" id="vehModel" value="Estanque Base">
+            <div id="secStepTank"></div>
+            <div id="secDoubleTank"></div>
+            <div id="secDShapeTank"></div>
+            <div id="secRadiiTransverse"></div>
+            <div id="secRadiiLongitudinal"></div>
+            <div id="secRadiiVertical"></div>
+            <select id="stepSide"><option value="bottom_right"></option></select>
           </div>
 
         </div>
       </aside>
 
       <!-- ================================================================= -->
-      <!-- PANEL PRINCIPAL                                                   -->
+      <!-- PANEL PRINCIPAL (VISOR 3D & TABLA OFICIAL AOOOG)                  -->
       <!-- ================================================================= -->
       <section>
         
-        <!-- TELEMETRÍA ULTRA OPTIMIZADA -->
+        <!-- TELEMETRÍA Y AFORE INTERACTIVO -->
         <div class="telemetry-card">
           <div class="slider-header-row">
-            <span class="label-title">Nivel de Medición (Varilla)</span>
-            <span class="main-number" id="telemetryLevelTag">314 mm</span>
+            <span class="label-title">Aforo Interactivo por Nivel (Varilla)</span>
+            <span class="main-number" id="telemetryLevelTag">0 mm</span>
           </div>
 
-          <input type="range" id="levelSlider" class="slider-bar" min="0" max="650" value="314" step="1">
+          <input type="range" id="levelSlider" class="slider-bar" min="0" max="600" value="0" step="1">
 
           <div class="step-buttons-row no-print">
             <button class="btn-mini" data-step="-50">-50 mm</button>
             <button class="btn-mini" data-step="-10">-10 mm</button>
             <button class="btn-mini" data-step="-1">-1 mm</button>
             <div style="display: inline-flex; align-items: center; margin: 0 4px;">
-              <input type="number" id="levelNumberInput" style="width: 68px; padding: 2px 5px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-input); font-weight: 800; font-size: 0.82rem;" value="314">
+              <input type="number" id="levelNumberInput" style="width: 68px; padding: 2px 5px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-input); font-weight: 800; font-size: 0.82rem;" value="0">
               <span style="font-size: 0.72rem; margin-left: 3px; color: var(--text-muted); font-weight: 800;">mm</span>
             </div>
             <button class="btn-mini" data-step="1">+1 mm</button>
@@ -408,23 +228,23 @@
           <div class="metrics-deck">
             <div class="metric-tile highlight">
               <div class="tile-label">Volumen Actual</div>
-              <div class="tile-value" id="telemetryVolume">149.7 L</div>
-              <div class="tile-sub" id="telemetryPct">48.0 %</div>
+              <div class="tile-value" id="telemetryVolume">0.0 L</div>
+              <div class="tile-sub" id="telemetryPct">0.0 %</div>
             </div>
             <div class="metric-tile">
               <div class="tile-label">Capacidad Total</div>
-              <div class="tile-value" id="telemetryTotal">311.9 L</div>
+              <div class="tile-value" id="telemetryTotal">2.1 L</div>
               <div class="tile-sub">100% Lleno</div>
             </div>
             <div class="metric-tile">
               <div class="tile-label">Espacio Vacío</div>
-              <div class="tile-value" id="telemetryEmpty">162.2 L</div>
+              <div class="tile-value" id="telemetryEmpty">2.1 L</div>
               <div class="tile-sub">Por cargar</div>
             </div>
             <div class="metric-tile">
-              <div class="tile-label">Sensor Raw</div>
-              <div class="tile-value" id="telemetryRaw">2217</div>
-              <div class="tile-sub">Puntos AoooG</div>
+              <div class="tile-label">Sensor Raw Fix</div>
+              <div class="tile-value" id="telemetryRaw">0</div>
+              <div class="tile-sub">Puntos AoooG (0-5000)</div>
             </div>
           </div>
         </div>
@@ -447,13 +267,13 @@
           </div>
         </div>
 
-        <!-- TABLA DE CALIBRACIÓN: EXACTAMENTE 30 FILAS EN TOTAL (Fila 1 Encabezado + Filas 2 a 30) -->
+        <!-- TABLA DE CALIBRACIÓN: EXACTAMENTE 30 FILAS EN TOTAL -->
         <div class="card">
-          <div class="card-title">
-            <span>Tabla de Calibración AoooG (Máximo 30 Filas Totales: Fila 1 a 30)</span>
+          <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>Tabla de Calibración AoooG (30 Puntos Proporcionales)</span>
             <div class="no-print" style="display: flex; gap: 6px;">
-              <button id="btnCopyTable" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.72rem;">Copiar</button>
-              <button id="btnExportCSV" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.72rem;">CSV</button>
+              <button id="btnCopyTable" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.75rem; font-weight: 700;">Copiar</button>
+              <button id="btnExportCSV" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.75rem; font-weight: 700;">CSV</button>
             </div>
           </div>
 
@@ -462,14 +282,14 @@
               <thead>
                 <tr>
                   <th style="width: 50px;">Fila</th>
-                  <th>Data (Sensor Raw)</th>
-                  <th>Level (Nivel mm)</th>
-                  <th>Volume (Litros L)</th>
+                  <th>Dato (Fix Sensor 0-5000)</th>
+                  <th>Nivel (mm)</th>
+                  <th>Volumen (Litros L)</th>
                   <th>% Llenado</th>
                 </tr>
               </thead>
               <tbody id="calibrationTableBody">
-                <!-- Exactamente filas 2 a 30 (29 filas de datos + 1 encabezado = 30 filas totales) -->
+                <!-- Generado automáticamente por JavaScript -->
               </tbody>
             </table>
           </div>
