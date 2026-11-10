@@ -80,6 +80,12 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   double _tank2Length = 850;
   double _tank2Width = 600;
   double _tank2Height = 650;
+  double _stepWidth = 200;
+  double _stepHeight = 250;
+  String _stepSide = 'bottom_right';
+  double _dRBottomFront = 200;
+  double _dRTopFront = 100;
+  double _dRBackCorners = 40;
 
   // Radios esquinas
   double _rInfLi = 150;
@@ -252,6 +258,12 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         tank2Width: _tank2Width,
         tank2Height: _tank2Height,
         cylHead: _cylHead,
+        stepWidth: _stepWidth,
+        stepHeight: _stepHeight,
+        stepSide: _stepSide,
+        dRBottomFront: _dRBottomFront,
+        dRTopFront: _dRTopFront,
+        dRBackCorners: _dRBackCorners,
       );
 
       // Coordenada fix_value de 0 a 5000
@@ -487,6 +499,12 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       tank2Width: _tank2Width,
       tank2Height: _tank2Height,
       cylHead: _cylHead,
+      stepWidth: _stepWidth,
+      stepHeight: _stepHeight,
+      stepSide: _stepSide,
+      dRBottomFront: _dRBottomFront,
+      dRTopFront: _dRTopFront,
+      dRBackCorners: _dRBackCorners,
     );
 
     return SingleChildScrollView(
@@ -566,6 +584,71 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                       ),
                     ],
                   ),
+                  if (_tankType == 'rectangular')
+                    ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: const Text('Radios y redondeos'),
+                      children: [
+                        Row(children: [
+                          Expanded(child: _buildNumField('Piso izq. (mm)', _rInfLi, (v) => setState(() => _rInfLi = v))),
+                          const SizedBox(width: 8),
+                          Expanded(child: _buildNumField('Piso der. (mm)', _rInfLd, (v) => setState(() => _rInfLd = v))),
+                        ]),
+                        const SizedBox(height: 8),
+                        Row(children: [
+                          Expanded(child: _buildNumField('Techo izq. (mm)', _rSupLi, (v) => setState(() => _rSupLi = v))),
+                          const SizedBox(width: 8),
+                          Expanded(child: _buildNumField('Techo der. (mm)', _rSupLd, (v) => setState(() => _rSupLd = v))),
+                        ]),
+                        const SizedBox(height: 8),
+                        Row(children: [
+                          Expanded(child: _buildNumField('Frente piso (mm)', _rInfAf, (v) => setState(() => _rInfAf = v))),
+                          const SizedBox(width: 8),
+                          Expanded(child: _buildNumField('Posterior piso (mm)', _rInfAp, (v) => setState(() => _rInfAp = v))),
+                        ]),
+                        const SizedBox(height: 8),
+                        Row(children: [
+                          Expanded(child: _buildNumField('Frente techo (mm)', _rSupAf, (v) => setState(() => _rSupAf = v))),
+                          const SizedBox(width: 8),
+                          Expanded(child: _buildNumField('Posterior techo (mm)', _rSupAp, (v) => setState(() => _rSupAp = v))),
+                        ]),
+                        const SizedBox(height: 8),
+                        _buildNumField('Radio esquinas verticales (mm)', _rVert, (v) => setState(() => _rVert = v)),
+                      ],
+                    ),
+                  if (_tankType == 'step_notch') ...[
+                    const SizedBox(height: 14),
+                    const Text('Escalón / muesca', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Expanded(child: _buildNumField('Ancho escalón (mm)', _stepWidth, (v) => setState(() => _stepWidth = v))),
+                      const SizedBox(width: 8),
+                      Expanded(child: _buildNumField('Alto escalón (mm)', _stepHeight, (v) => setState(() => _stepHeight = v))),
+                    ]),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _stepSide,
+                      decoration: const InputDecoration(labelText: 'Ubicación del escalón', border: OutlineInputBorder()),
+                      items: const [
+                        DropdownMenuItem(value: 'bottom_right', child: Text('Inferior derecho')),
+                        DropdownMenuItem(value: 'bottom_left', child: Text('Inferior izquierdo')),
+                        DropdownMenuItem(value: 'top_right', child: Text('Superior derecho')),
+                      ],
+                      onChanged: (value) => setState(() => _stepSide = value ?? 'bottom_right'),
+                    ),
+                  ],
+                  if (_tankType == 'd_shape') ...[
+                    const SizedBox(height: 14),
+                    const Text('Radios de perfil Forma D', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      Expanded(child: _buildNumField('Frente inferior (mm)', _dRBottomFront, (v) => setState(() => _dRBottomFront = v))),
+                      const SizedBox(width: 8),
+                      Expanded(child: _buildNumField('Frente superior (mm)', _dRTopFront, (v) => setState(() => _dRTopFront = v))),
+                    ]),
+                    const SizedBox(height: 8),
+                    _buildNumField('Esquinas posteriores (mm)', _dRBackCorners, (v) => setState(() => _dRBackCorners = v)),
+                  ],
                   if (_tankType == 'cylinder_horizontal') ...[
                     const SizedBox(height: 14),
                     DropdownButtonFormField<String>(
