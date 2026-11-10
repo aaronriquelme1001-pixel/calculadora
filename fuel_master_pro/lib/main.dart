@@ -15,17 +15,6 @@ class FuelMasterApp extends StatelessWidget {
   const FuelMasterApp({super.key});
 
   @override
-  void dispose() {
-    _scanTimer?.cancel();
-    unawaited(_scanSubscription?.cancel());
-    unawaited(_sensorConnectionSubscription?.cancel());
-    unawaited(FlutterBluePlus.stopScan());
-    unawaited(_bleManager.disconnect());
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Fuel Master Pro',
@@ -427,6 +416,17 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   }
 
   @override
+  void dispose() {
+    _scanTimer?.cancel();
+    unawaited(_scanSubscription?.cancel());
+    unawaited(_sensorConnectionSubscription?.cancel());
+    unawaited(FlutterBluePlus.stopScan());
+    unawaited(_bleManager.disconnect());
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -595,7 +595,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                   const Text('Geometría del Estanque', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
-                    value: _tankType,
+                    initialValue: _tankType,
                     decoration: const InputDecoration(labelText: 'Tipo de Estanque', border: OutlineInputBorder()),
                     items: const [
                       DropdownMenuItem(value: 'rectangular', child: Text('Prisma Rectangular (Radios Libres)')),
@@ -624,7 +624,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                       const SizedBox(width: 10),
                       Expanded(
                         child: DropdownButtonFormField<bool>(
-                          value: _isExternal,
+                          initialValue: _isExternal,
                           decoration: const InputDecoration(labelText: 'Medida', border: OutlineInputBorder()),
                           items: const [
                             DropdownMenuItem(value: true, child: Text('Externa')),
@@ -678,7 +678,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                     ]),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: _stepSide,
+                      initialValue: _stepSide,
                       decoration: const InputDecoration(labelText: 'Ubicación del escalón', border: OutlineInputBorder()),
                       items: const [
                         DropdownMenuItem(value: 'bottom_right', child: Text('Inferior derecho')),
@@ -703,7 +703,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                   if (_tankType == 'cylinder_horizontal') ...[
                     const SizedBox(height: 14),
                     DropdownButtonFormField<String>(
-                      value: _cylHead,
+                      initialValue: _cylHead,
                       decoration: const InputDecoration(labelText: 'Tipo de tapas', border: OutlineInputBorder()),
                       items: const [
                         DropdownMenuItem(value: 'flat', child: Text('Planas')),
@@ -797,7 +797,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         Expanded(
           child: ListView.separated(
             itemCount: rows.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, idx) {
               final r = rows[idx];
               return ListTile(
