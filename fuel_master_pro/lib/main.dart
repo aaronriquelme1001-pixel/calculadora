@@ -182,8 +182,11 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF0B1329))),
     );
 
-    bool ok = await _bleManager.connect(sensor);
-    if (!mounted) return;
+    final ok = await _bleManager.connect(sensor);
+    if (!mounted) {
+      await _bleManager.disconnect();
+      return;
+    }
     Navigator.pop(context);
 
     if (ok) {
@@ -302,6 +305,23 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     if (!_emptyFreq.isFinite || !_fullFreq.isFinite || _emptyFreq <= 0 || _fullFreq <= 0 || _emptyFreq == _fullFreq) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Las frecuencias de vacío y lleno deben ser positivas y diferentes.')),
+      );
+      return;
+    }
+
+    final t = _isExternal ? _thickness : 0.0;
+    final validPrimaryDimensions = [_length, _width, _height].every((v) => v.isFinite && v > 0) &&
+        _thickness.isFinite && _thickness >= 0 &&
+        (!_isExternal || (2 * t < _length && 2 * t < _width && 2 * t < _height));
+    final validSecondaryDimensions = _tankType != 'double_tank' ||
+        ([_tank2Length, _tank2Width, _tank2Height].every((v) => v.isFinite && v > 0) &&
+            (!_isExternal || (2 * t < _tank2Length && 2 * t < _tank2Width && 2 * t < _tank2Height)));
+    final validStep = _tankType != 'step_notch' ||
+        (_stepWidth.isFinite && _stepHeight.isFinite && _stepWidth > 0 && _stepHeight > 0 &&
+            _stepWidth < _width && _stepHeight < _height);
+    if (!validPrimaryDimensions || !validSecondaryDimensions || !validStep) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Dimensiones inválidas: revisa medidas, espesor y geometría seleccionada.')),
       );
       return;
     }
