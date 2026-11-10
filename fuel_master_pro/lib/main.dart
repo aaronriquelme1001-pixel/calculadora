@@ -17,10 +17,10 @@ class FuelMasterApp extends StatelessWidget {
   @override
   void dispose() {
     _scanTimer?.cancel();
-    _scanSubscription?.cancel();
-    _sensorConnectionSubscription?.cancel();
-    FlutterBluePlus.stopScan();
-    _bleManager.disconnect();
+    unawaited(_scanSubscription?.cancel());
+    unawaited(_sensorConnectionSubscription?.cancel());
+    unawaited(FlutterBluePlus.stopScan());
+    unawaited(_bleManager.disconnect());
     _tabController.dispose();
     super.dispose();
   }
@@ -198,6 +198,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 
       // Leer parámetros del sensor (Comando 0x0D)
       final params = await _bleManager.readParameters();
+      if (!mounted) return;
       if (params != null) {
         setState(() {
           if (params['emptyFreq']! > 0) _emptyFreq = params['emptyFreq']!;
@@ -278,7 +279,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       return;
     }
 
-    if (_authPin.length != 8 || !_authPin.codeUnits.every((b) => b >= 0x20 && b <= 0x7E)) {
+    if (_authPin.length != 8 || !_authPin.codeUnits.every((b) => b >= 0x30 && b <= 0x39)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ingresa el PIN real del sensor: exactamente 8 caracteres ASCII.')),
       );
@@ -287,6 +288,24 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     if (!_emptyFreq.isFinite || !_fullFreq.isFinite || _emptyFreq <= 0 || _fullFreq <= 0 || _emptyFreq == _fullFreq) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Las frecuencias de vacío y lleno deben ser positivas y diferentes.')),
+      );
+      return;
+    }
+
+    final rows = _generateCalibrationTable();
+    final validRows = rows.length == 30 &&
+        rows.first.levelMm == 0 &&
+        rows.first.volumeL == 0 &&
+        rows.last.fixValue == 5000 &&
+        rows.last.volumeL > 0 &&
+        rows.every((row) => row.volumeL.isFinite && row.volumeL >= 0) &&
+        rows.asMap().entries.skip(1).every((entry) =>
+            entry.value.levelMm > rows[entry.key - 1].levelMm &&
+            entry.value.fixValue > rows[entry.key - 1].fixValue &&
+            entry.value.volumeL >= rows[entry.key - 1].volumeL);
+    if (!validRows) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('La geometría no genera una tabla válida de 30 puntos. Revisa dimensiones y espesor.')),
       );
       return;
     }
@@ -300,8 +319,8 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     final List<int> pinBytes = _authPin.codeUnits;
     bool authOk = await _bleManager.authenticate(pinBytes);
     if (!authOk) {
-      setState(() => _isUploading = false);
       if (!mounted) return;
+      setState(() => _isUploading = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Error de Autenticación. Verifica el PIN del sensor.')),
       );
@@ -309,7 +328,6 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     }
 
     // 2. Subir tabla
-    final rows = _generateCalibrationTable();
     bool uploadOk = await _bleManager.uploadCalibrationTable(
       rows,
       onProgress: (cur, tot) {
@@ -587,6 +605,9 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                   TextFormField(
                     initialValue: _authPin,
                     decoration: const InputDecoration(labelText: 'PIN de Acceso Sensor (8 dígitos)', border: OutlineInputBorder()),
+                    obscureText: true,
+                    maxLength: 8,
+                    keyboardType: TextInputType.number,
                     onChanged: (v) => _authPin = v,
                   ),
                 ],
