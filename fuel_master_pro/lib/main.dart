@@ -263,12 +263,13 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     final secondaryEffH = _tank2Height > 0 ? _tank2Height - 2 * t : primaryEffH;
     final double effH = (_tankType == 'double_tank'
         ? math.max(primaryEffH, secondaryEffH)
-        : primaryEffH).toDouble();
+        : primaryEffH).roundToDouble();
 
     for (int i = 0; i < totalRows; i++) {
       double frac = i / (totalRows - 1);
-      double level = frac * effH;
-      double vol = TankGeometryEngine.calculateVolumeAtHeight(
+      final int levelMm = (frac * effH).round();
+      final double level = levelMm.toDouble();
+      final double vol = TankGeometryEngine.calculateVolumeAtHeight(
         tankType: _tankType,
         length: _length,
         width: _width,
@@ -308,7 +309,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       list.add(CalibrationRow(
         index: i,
         volumeL: vol,
-        levelMm: level.round(),
+        levelMm: levelMm,
         fixValue: fixVal,
         expectedFreqHz: expectedF,
       ));
@@ -532,8 +533,8 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           ? math.max(
               _height - (_isExternal ? _thickness * 2 : 0),
               _tank2Height - (_isExternal ? _thickness * 2 : 0),
-            ).toDouble()
-          : _height - (_isExternal ? _thickness * 2 : 0),
+            ).roundToDouble()
+          : (_height - (_isExternal ? _thickness * 2 : 0)).roundToDouble(),
       rInfLi: _rInfLi,
       rInfLd: _rInfLd,
       rSupLi: _rSupLi,
