@@ -69,3 +69,46 @@ El código fuente de la app nativa en Flutter se encuentra en el directorio `/fu
 - Abrir directamente `index.html` en cualquier navegador moderno.
 - 100% offline (sin librerías remotas dependientes de internet).
 - Generación y descarga de archivos `.xlsx` formateados con las 30 filas exactas requeridas para importación batch en la plataforma AoooG.
+
+
+---
+
+## 🧪 6. Validación técnica y seguridad de calibración
+
+La rama de correcciones incorpora:
+
+- Integración volumétrica Android alineada con el aforo web: secciones evaluadas en el punto medio de cada milímetro e interpolación lineal para alturas fraccionarias.
+- Reglas geométricas alineadas para radios rectangulares, Forma D, escalón, estanques dobles y tapas cilíndricas hemisféricas.
+- Soporte Android para las dimensiones independientes del segundo estanque y los parámetros geométricos que antes no estaban disponibles en la interfaz.
+- Validación de dimensiones, espesores, frecuencias y monotonicidad de los 30 puntos antes de iniciar una escritura BLE.
+- Validación de trama BLE: cabecera, longitud declarada, CRC-8, identificador del sensor y comando esperado.
+- Escritura serializada, confirmación de cada bloque y confirmación explícita del comando de salida en litros. Una escritura parcial o sin ACK final no se informa como calibración exitosa.
+- PIN del sensor solicitado al técnico; no se utiliza una contraseña predeterminada en la aplicación.
+
+### Ejecutar validaciones Android
+
+Desde `fuel_master_pro/`:
+
+```bash
+flutter pub get
+flutter analyze
+flutter test
+```
+
+### Validar sintaxis de la aplicación web
+
+Desde la raíz:
+
+```bash
+node --check app.js
+```
+
+GitHub Actions ejecuta estas comprobaciones en los cambios de la rama de correcciones.
+
+### Supuesto físico para doble estanque
+
+El cálculo de estanques conectados supone que ambos comparten la misma cota inferior y que el tubo permite igualar el nivel de líquido. Si están montados a distintas alturas, debe incorporarse un desplazamiento vertical entre estanques antes de usar la tabla como calibración física.
+
+### Validación pendiente en terreno
+
+Las pruebas automatizadas verifican el motor matemático y el formato de las tramas, pero no sustituyen una prueba con un sensor AoooG real. Antes de usar la escritura BLE en producción, se debe validar con un sensor de prueba que acepte los bloques, confirme el ACK y mantenga la salida en litros después de desconectar y reconectar.
