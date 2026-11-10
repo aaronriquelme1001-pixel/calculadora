@@ -14,6 +14,15 @@ class FuelMasterApp extends StatelessWidget {
   const FuelMasterApp({super.key});
 
   @override
+  void dispose() {
+    _scanTimer?.cancel();
+    _scanSubscription?.cancel();
+    _bleManager.disconnect();
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Fuel Master Pro',
@@ -51,6 +60,8 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   final AoooGManager _bleManager = AoooGManager();
   bool _isScanning = false;
   final List<AoooGSensor> _discoveredSensors = [];
+  StreamSubscription<List<ScanResult>>? _scanSubscription;
+  Timer? _scanTimer;
   AoooGSensor? _selectedSensor;
   bool _isConnected = false;
 
@@ -77,7 +88,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   double _emptyFreq = 15000;
   double _fullFreq = 10000;
   double _curFreq = 13250;
-  String _authPin = '12345678';
+  String _authPin = '';
 
   // Progreso de subida
   bool _isUploading = false;
@@ -90,21 +101,32 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _startBleScan() async {
-    // Pedir permisos
-    await [
+    await _scanSubscription?.cancel();
+    _scanTimer?.cancel();
+
+    final permissionResults = await [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
-      Permission.location,
     ].request();
+    final denied = permissionResults.entries.any((entry) => !entry.value.isGranted);
+    if (denied) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Debes conceder los permisos Bluetooth para buscar sensores.')),
+        );
+      }
+      return;
+    }
 
+    if (!mounted) return;
     setState(() {
       _isScanning = true;
       _discoveredSensors.clear();
     });
 
-    FlutterBluePlus.startScan(timeout: const Duration(seconds: 6));
+    try {
+      _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
 
-    FlutterBluePlus.scanResults.listen((results) {
       for (ScanResult r in results) {
         final sensor = AoooGProtocol.parseAdvertisement(r);
         if (sensor != null) {
@@ -117,11 +139,19 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           if (mounted) setState(() {});
         }
       }
-    });
-
-    Future.delayed(const Duration(seconds: 6), () {
-      if (mounted) setState(() => _isScanning = false);
-    });
+      });
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 6));
+      _scanTimer = Timer(const Duration(seconds: 7), () {
+        if (mounted) setState(() => _isScanning = false);
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() => _isScanning = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo iniciar el escaneo BLE: $error')),
+        );
+      }
+    }
   }
 
   Future<void> _connectToSensor(AoooGSensor sensor) async {
@@ -218,13 +248,26 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       return;
     }
 
+    if (_authPin.length != 8 || !_authPin.codeUnits.every((b) => b >= 0x20 && b <= 0x7E)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ingresa el PIN real del sensor: exactamente 8 caracteres ASCII.')),
+      );
+      return;
+    }
+    if (!_emptyFreq.isFinite || !_fullFreq.isFinite || _emptyFreq <= 0 || _fullFreq <= 0 || _emptyFreq == _fullFreq) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Las frecuencias de vacío y lleno deben ser positivas y diferentes.')),
+      );
+      return;
+    }
+
     setState(() {
       _isUploading = true;
       _uploadProgress = 0.0;
     });
 
     // 1. Autenticar PIN
-    List<int> pinBytes = _authPin.padRight(8, '0').substring(0, 8).codeUnits;
+    final List<int> pinBytes = _authPin.codeUnits;
     bool authOk = await _bleManager.authenticate(pinBytes);
     if (!authOk) {
       setState(() => _isUploading = false);
@@ -246,6 +289,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       },
     );
 
+    if (!mounted) return;
     setState(() => _isUploading = false);
 
     if (uploadOk) {
