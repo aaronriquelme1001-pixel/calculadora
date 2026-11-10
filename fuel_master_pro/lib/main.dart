@@ -76,6 +76,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   double _height = 650;
   double _thickness = 2.5;
   bool _isExternal = true;
+  String _cylHead = 'flat';
   double _tank2Length = 850;
   double _tank2Width = 600;
   double _tank2Height = 650;
@@ -250,6 +251,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         tank2Length: _tank2Length,
         tank2Width: _tank2Width,
         tank2Height: _tank2Height,
+        cylHead: _cylHead,
       );
 
       // Coordenada fix_value de 0 a 5000
@@ -484,6 +486,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       tank2Length: _tank2Length,
       tank2Width: _tank2Width,
       tank2Height: _tank2Height,
+      cylHead: _cylHead,
     );
 
     return SingleChildScrollView(
@@ -563,6 +566,18 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                       ),
                     ],
                   ),
+                  if (_tankType == 'cylinder_horizontal') ...[
+                    const SizedBox(height: 14),
+                    DropdownButtonFormField<String>(
+                      value: _cylHead,
+                      decoration: const InputDecoration(labelText: 'Tipo de tapas', border: OutlineInputBorder()),
+                      items: const [
+                        DropdownMenuItem(value: 'flat', child: Text('Planas')),
+                        DropdownMenuItem(value: 'hemispherical', child: Text('Hemisféricas')),
+                      ],
+                      onChanged: (value) => setState(() => _cylHead = value ?? 'flat'),
+                    ),
+                  ],
                   if (_tankType == 'double_tank') ...[
                     const SizedBox(height: 14),
                     const Text('Segundo estanque conectado', style: TextStyle(fontWeight: FontWeight.bold)),
