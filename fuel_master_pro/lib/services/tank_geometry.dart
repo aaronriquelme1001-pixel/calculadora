@@ -49,17 +49,25 @@ class TankGeometryEngine {
       'step_notch',
       'double_tank',
     };
-    final geometryValues = [
-      rInfLi, rInfLd, rSupLi, rSupLd,
-      rInfAf, rInfAp, rSupAf, rSupAp, rVert,
-      stepWidth, stepHeight,
-      tank2Length, tank2Width, tank2Height,
-      dRBottomFront, dRTopFront, dRBackCorners,
-    ];
+    final geometryValues = <double>[];
+    if (tankType == 'rectangular') {
+      geometryValues.addAll([
+        rInfLi, rInfLd, rSupLi, rSupLd,
+        rInfAf, rInfAp, rSupAf, rSupAp, rVert,
+      ]);
+    } else if (tankType == 'step_notch') {
+      geometryValues.addAll([stepWidth, stepHeight]);
+    } else if (tankType == 'double_tank') {
+      geometryValues.addAll([tank2Length, tank2Width, tank2Height]);
+    } else if (tankType == 'd_shape') {
+      geometryValues.addAll([dRBottomFront, dRTopFront, dRBackCorners]);
+    }
     if (!supportedTypes.contains(tankType) ||
         geometryValues.any((value) => !value.isFinite || value < 0) ||
-        !{'bottom_right', 'bottom_left', 'top_right'}.contains(stepSide) ||
-        !{'flat', 'hemispherical'}.contains(cylHead)) {
+        (tankType == 'step_notch' &&
+            !{'bottom_right', 'bottom_left', 'top_right'}.contains(stepSide)) ||
+        (tankType == 'cylinder_horizontal' &&
+            !{'flat', 'hemispherical'}.contains(cylHead))) {
       return 0.0;
     }
 
