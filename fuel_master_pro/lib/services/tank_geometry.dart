@@ -95,7 +95,6 @@ class TankGeometryEngine {
         L: effL,
         W: effW,
         H: effH,
-        t: t,
         rInfLi: rInfLi,
         rInfLd: rInfLd,
         rSupLi: rSupLi,
@@ -114,6 +113,7 @@ class TankGeometryEngine {
         dRBottomFront: dRBottomFront,
         dRTopFront: dRTopFront,
         dRBackCorners: dRBackCorners,
+        cylHead: cylHead,
       );
 
       totalVolMm3 += (a1 + a2) * 0.5 * dz;
@@ -171,9 +171,9 @@ class TankGeometryEngine {
       double sh = math.min(H * 0.9, stepHeight).toDouble();
       double effW = W;
       if (stepSide == 'bottom_right' || stepSide == 'bottom_left') {
-        effW = (z < sh) ? math.max(0.0, W - sw) : W;
+        effW = (z < sh) ? math.max(0.0, W - sw).toDouble() : W;
       } else {
-        effW = (z > (H - sh)) ? math.max(0.0, W - sw) : W;
+        effW = (z > (H - sh)) ? math.max(0.0, W - sw).toDouble() : W;
       }
       return effW * L;
     } else if (type == 'double_tank') {
