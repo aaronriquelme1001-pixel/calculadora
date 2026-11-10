@@ -55,73 +55,47 @@ class TankGeometryEngine {
     final zClamped = math.max(0.0, math.min(integrationHeight, hMm)).toDouble();
     if (zClamped <= 0.0) return 0.0;
 
-    // Regla del trapecio compuesta con 400 intervalos para reducir el error de discretización.
-    const int steps = 400;
-    double dz = zClamped / steps;
-    double totalVolMm3 = 0.0;
+    // Replica el aforo web: suma áreas en el punto medio de cada milímetro
+    // y aplica interpolación lineal para alturas fraccionarias.
+    double sliceArea(double z) => _getSliceArea(
+          z: z,
+          type: tankType,
+          L: effL,
+          W: effW,
+          H: effH,
+          t: t,
+          rInfLi: rInfLi,
+          rInfLd: rInfLd,
+          rSupLi: rSupLi,
+          rSupLd: rSupLd,
+          rInfAf: rInfAf,
+          rInfAp: rInfAp,
+          rSupAf: rSupAf,
+          rSupAp: rSupAp,
+          rVert: rVert,
+          stepWidth: stepWidth,
+          stepHeight: stepHeight,
+          stepSide: stepSide,
+          tank2Length: tank2Length,
+          tank2Width: tank2Width,
+          tank2Height: tank2Height,
+          dRBottomFront: dRBottomFront,
+          dRTopFront: dRTopFront,
+          dRBackCorners: dRBackCorners,
+          cylHead: cylHead,
+        );
 
-    for (int i = 0; i < steps; i++) {
-      double z1 = i * dz;
-      double z2 = (i + 1) * dz;
-      double a1 = _getSliceArea(
-        z: z1,
-        type: tankType,
-        L: effL,
-        W: effW,
-        H: effH,
-        t: t,
-        rInfLi: rInfLi,
-        rInfLd: rInfLd,
-        rSupLi: rSupLi,
-        rSupLd: rSupLd,
-        rInfAf: rInfAf,
-        rInfAp: rInfAp,
-        rSupAf: rSupAf,
-        rSupAp: rSupAp,
-        rVert: rVert,
-        stepWidth: stepWidth,
-        stepHeight: stepHeight,
-        stepSide: stepSide,
-        tank2Length: tank2Length,
-        tank2Width: tank2Width,
-        tank2Height: tank2Height,
-        dRBottomFront: dRBottomFront,
-        dRTopFront: dRTopFront,
-        dRBackCorners: dRBackCorners,
-        cylHead: cylHead,
-      );
-      double a2 = _getSliceArea(
-        z: z2,
-        type: tankType,
-        L: effL,
-        W: effW,
-        H: effH,
-        t: t,
-        rInfLi: rInfLi,
-        rInfLd: rInfLd,
-        rSupLi: rSupLi,
-        rSupLd: rSupLd,
-        rInfAf: rInfAf,
-        rInfAp: rInfAp,
-        rSupAf: rSupAf,
-        rSupAp: rSupAp,
-        rVert: rVert,
-        stepWidth: stepWidth,
-        stepHeight: stepHeight,
-        stepSide: stepSide,
-        tank2Length: tank2Length,
-        tank2Width: tank2Width,
-        tank2Height: tank2Height,
-        dRBottomFront: dRBottomFront,
-        dRTopFront: dRTopFront,
-        dRBackCorners: dRBackCorners,
-        cylHead: cylHead,
-      );
-
-      totalVolMm3 += (a1 + a2) * 0.5 * dz;
+    final wholeMillimetres = zClamped.floor();
+    double totalVolumeLitres = 0.0;
+    for (var level = 1; level <= wholeMillimetres; level++) {
+      totalVolumeLitres += sliceArea(level - 0.5) / 1000000.0;
     }
-
-    return totalVolMm3 / 1000000.0; // mm³ a Litros
+    final fractionalMillimetre = zClamped - wholeMillimetres;
+    if (fractionalMillimetre > 0) {
+      totalVolumeLitres +=
+          fractionalMillimetre * sliceArea(wholeMillimetres + 0.5) / 1000000.0;
+    }
+    return totalVolumeLitres;
   }
 
   static double _getSliceArea({
