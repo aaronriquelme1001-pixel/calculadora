@@ -222,9 +222,9 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     double t = _isExternal ? _thickness : 0.0;
     final primaryEffH = _height - 2 * t;
     final secondaryEffH = _tank2Height - 2 * t;
-    final effH = _tankType == 'double_tank'
+    final double effH = (_tankType == 'double_tank'
         ? math.max(primaryEffH, secondaryEffH)
-        : primaryEffH;
+        : primaryEffH).toDouble();
 
     for (int i = 0; i < totalRows; i++) {
       double frac = i / (totalRows - 1);
@@ -452,7 +452,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           ? math.max(
               _height - (_isExternal ? _thickness * 2 : 0),
               _tank2Height - (_isExternal ? _thickness * 2 : 0),
-            )
+            ).toDouble()
           : _height - (_isExternal ? _thickness * 2 : 0),
       rInfLi: _rInfLi,
       rInfLd: _rInfLd,
