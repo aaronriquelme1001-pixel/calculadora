@@ -85,6 +85,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   double _fullFreq = 10000;
   bool _isUploading = false;
   double _uploadProgress = 0.0;
+  List<CalibrationRow> _generatedRows = [];
 
   // Controllers de texto para Tank
   late TextEditingController _lenCtrl;
@@ -344,10 +345,44 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
 
   Future<void> _uploadCalibrationToSensor() async {
     if (_connectedSensor == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Conéctate a un sensor antes de calibrar.')),
+      if (_sensors.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No hay sensores cerca. Realice una búsqueda primero.')),
+        );
+        return;
+      }
+
+      // Diálogo para seleccionar sensor
+      final selected = await showDialog<AoooGSensor>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Seleccionar Sensor a Asignar', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: _sensors.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (ctx, idx) {
+                final s = _sensors[idx];
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.sensors, color: Color(0xFF2563EB)),
+                  title: Text('SN: ${s.id}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text('${s.rssi} dBm · ${s.battery}% Batería'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.pop(ctx, s),
+                );
+              },
+            ),
+          ),
+        ),
       );
-      return;
+
+      if (selected == null) return;
+      await _connectSensor(selected);
+      if (_connectedSensor == null) return;
     }
 
     setState(() {
@@ -361,7 +396,6 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     debugPrint('[CALIBRATION] Intentando autenticación silenciosa...');
     final authOk = await _bleManager.authenticate('12345678');
     debugPrint('[CALIBRATION] Auth resultado: $authOk');
-    // Continuamos sin importar si auth falla (algunos sensores no lo requieren)
 
     // 2. Enviar tabla de calibración
     debugPrint('[CALIBRATION] Enviando ${rows.length} puntos al sensor...');
@@ -387,13 +421,14 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
             children: [
               Icon(Icons.check_circle, color: Color(0xFF10B981)),
               SizedBox(width: 8),
-              Text('¡Calibración Exitosa!'),
+              Text('¡Calibración Asignada!'),
             ],
           ),
           content: Text(
-            'Se grabaron 30 puntos en el sensor #${_connectedSensor!.id}.\n'
-            'Volumen Total: ${_calculateTotalVolume().toStringAsFixed(1)} L\n'
-            'Rango Frecuencia: ${_emptyFreq.toStringAsFixed(0)} Hz - ${_fullFreq.toStringAsFixed(0)} Hz',
+            'Se grabaron exitosamente 30 puntos en el sensor #${_connectedSensor!.id}.\n\n'
+            '• Volumen Total: ${_calculateTotalVolume().toStringAsFixed(1)} L\n'
+            '• Rango Frecuencia: ${_emptyFreq.toStringAsFixed(0)} Hz - ${_fullFreq.toStringAsFixed(0)} Hz\n'
+            '• Modo de salida: Litros (L)',
           ),
           actions: [
             TextButton(
@@ -406,7 +441,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Error al enviar calibración. Reconecte el sensor e intente de nuevo.'),
+          content: Text('Error al enviar calibración. Verifique conexión BLE con el sensor.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -625,13 +660,13 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                                     height: 50,
                                     child: ElevatedButton.icon(
                                       onPressed: _uploadCalibrationToSensor,
-                                      icon: const Icon(Icons.cloud_upload_outlined, color: Colors.white),
+                                      icon: const Icon(Icons.send_rounded, color: Colors.white),
                                       label: const Text(
-                                        'Cargar Tabla al Sensor (30 Puntos)',
+                                        'Asignar Tabla al Sensor',
                                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
                                       ),
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF1E88E5),
+                                        backgroundColor: const Color(0xFF10B981),
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                         elevation: 0,
                                       ),
@@ -866,6 +901,144 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
+
+          // Botón para Generar Tabla
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                final rows = _generate30PointCalibration();
+                setParentState(() {
+                  _generatedRows = rows;
+                });
+                setState(() {
+                  _generatedRows = rows;
+                });
+              },
+              icon: const Icon(Icons.calculate_outlined, color: Colors.white, size: 20),
+              label: const Text(
+                'Generar Tabla de Calibración',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E88E5),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
+            ),
+          ),
+
+          // Si la tabla fue generada, mostrar resumen y tabla visual de los 30 puntos
+          if (_generatedRows.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFDBEAFE)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.check_circle, color: Color(0xFF2563EB), size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Tabla: ${_generatedRows.length} Puntos Calculados',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E3A8A)),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    '${_calculateTotalVolume().toStringAsFixed(1)} L Totales',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF2563EB)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Contenedor scrollable con la tabla de calibración
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Column(
+                  children: [
+                    // Cabecera de la tabla
+                    Container(
+                      color: const Color(0xFFF1F5F9),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      child: const Row(
+                        children: [
+                          SizedBox(width: 32, child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569)))),
+                          Expanded(child: Text('Nivel (mm)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569)))),
+                          Expanded(child: Text('Volumen (L)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569)))),
+                          Expanded(child: Text('Freq (Hz)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569)), textAlign: TextAlign.right)),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                    // Lista de 30 filas
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 260),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _generatedRows.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                        itemBuilder: (ctx, idx) {
+                          final r = _generatedRows[idx];
+                          final isEven = idx % 2 == 0;
+                          return Container(
+                            color: isEven ? Colors.white : const Color(0xFFFAFAFA),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 32,
+                                  child: Text(
+                                    '${idx + 1}',
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    '${r.levelMm} mm',
+                                    style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    '${r.volumeL.toStringAsFixed(1)} L',
+                                    style: const TextStyle(fontSize: 12, color: Color(0xFF2563EB), fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    '${r.expectedFreqHz.toStringAsFixed(0)} Hz',
+                                    style: const TextStyle(fontSize: 12, color: Color(0xFF059669), fontWeight: FontWeight.w600),
+                                    textAlign: TextAlign.right,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
         ],
       ),

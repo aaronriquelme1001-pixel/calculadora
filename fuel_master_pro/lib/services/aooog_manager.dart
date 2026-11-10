@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'aooog_ble.dart';
 
@@ -142,7 +143,11 @@ class AoooGManager {
   }
 
   void _onPacketReceived(List<int> data) {
-    if (!AoooGProtocol.isValidFrame(data, expectedSensorId: currentSensorId)) return;
+    debugPrint('[BLE RX RAW] ${data.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+    if (!AoooGProtocol.isValidFrame(data, expectedSensorId: currentSensorId)) {
+      debugPrint('[BLE RX] Trama descartada o CRC inválido');
+      return;
+    }
     final command = data[5];
     final completer = _responseCompleters[command];
     if (completer != null && !completer.isCompleted) {
@@ -159,7 +164,10 @@ class AoooGManager {
   }) async {
     final characteristic = writeChar;
     final sensorId = currentSensorId;
-    if (characteristic == null || sensorId == null) return null;
+    if (characteristic == null || sensorId == null) {
+      debugPrint('[BLE TX] Error: writeChar o sensorId nulo');
+      return null;
+    }
 
     // Esperar si hay un comando previo en vuelo
     int waitLimit = 0;
@@ -173,9 +181,13 @@ class AoooGManager {
     _responseCompleters[command] = completer;
     try {
       final frame = AoooGProtocol.buildFrame(sensorId, command, payload);
+      debugPrint('[BLE TX] CMD: 0x${command.toRadixString(16)} (${frame.length} bytes)');
       await characteristic.write(frame, withoutResponse: false);
-      return await completer.future.timeout(timeout);
-    } catch (_) {
+      final res = await completer.future.timeout(timeout);
+      debugPrint('[BLE RX OK] CMD: 0x${command.toRadixString(16)} -> ${res.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
+      return res;
+    } catch (e) {
+      debugPrint('[BLE ERR] CMD: 0x${command.toRadixString(16)} fallo: $e');
       return null;
     } finally {
       _responseCompleters.remove(command);
