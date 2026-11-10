@@ -59,6 +59,23 @@ void main() {
       expect(volumeAt(height), closeTo(expectedFullLitres, 1e-6));
     });
 
+    test('fractional fill height uses the same linear millimetre interpolation as web', () {
+      const length = 850.0;
+      const width = 600.0;
+      const level = 123.25;
+      final volume = TankGeometryEngine.calculateVolumeAtHeight(
+        tankType: 'rectangular',
+        length: length,
+        width: width,
+        height: 650,
+        thickness: 0,
+        isExternal: false,
+        hMm: level,
+      );
+
+      expect(volume, closeTo(length * width * level / 1000000.0, 1e-9));
+    });
+
     test('double tank includes a taller secondary tank above primary height', () {
       final volume = TankGeometryEngine.calculateVolumeAtHeight(
         tankType: 'double_tank',
