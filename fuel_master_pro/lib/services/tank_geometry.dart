@@ -183,11 +183,11 @@ class TankGeometryEngine {
       }
       return effW * L;
     } else if (type == 'double_tank') {
-      double L2 = tank2Length > 0 ? math.max(10.0, tank2Length - 2 * t).toDouble() : L;
-      double W2 = tank2Width > 0 ? math.max(10.0, tank2Width - 2 * t).toDouble() : W;
-      double H2 = tank2Height > 0 ? math.max(10.0, tank2Height - 2 * t).toDouble() : H;
+      double l2 = tank2Length > 0 ? math.max(10.0, tank2Length - 2 * t).toDouble() : L;
+      double w2 = tank2Width > 0 ? math.max(10.0, tank2Width - 2 * t).toDouble() : W;
+      double h2 = tank2Height > 0 ? math.max(10.0, tank2Height - 2 * t).toDouble() : H;
       double a1 = (z <= H) ? (W * L) : 0.0;
-      double a2 = (z <= H2) ? (W2 * L2) : 0.0;
+      double a2 = (z <= h2) ? (w2 * l2) : 0.0;
       return a1 + a2;
     } else if (type == 'd_shape') {
       dRBottomFront = math.min(math.min(W * 0.8, H * 0.8), dRBottomFront).toDouble();
