@@ -1652,7 +1652,8 @@
 
   function exportCSV() {
     const rows = state.calcCache.calibrationRows;
-    let csv = 'Data,Level,Volume\r\n';
+    // Directiva sep=, y BOM UTF-8 (\uFEFF) para que Microsoft Excel (especialmente en español) divida automáticamente en columnas A, B, C
+    let csv = '\uFEFFsep=,\r\nData,Level,Volume\r\n';
     rows.forEach(r => {
       csv += `${r.dataVal},${r.levelVal},${r.volumeVal.toFixed(1)}\r\n`;
     });
@@ -2262,6 +2263,9 @@
 
     const btnExportExcel = document.getElementById('btnExportExcel');
     if (btnExportExcel) btnExportExcel.addEventListener('click', exportAoooGExcel);
+
+    const btnTableExportExcel = document.getElementById('btnTableExportExcel');
+    if (btnTableExportExcel) btnTableExportExcel.addEventListener('click', exportAoooGExcel);
 
     const btnExportCSV = document.getElementById('btnExportCSV');
     if (btnExportCSV) btnExportCSV.addEventListener('click', exportCSV);

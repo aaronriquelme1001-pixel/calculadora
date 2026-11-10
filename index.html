@@ -270,11 +270,18 @@
 
         <!-- TABLA DE CALIBRACIÓN: EXACTAMENTE 30 FILAS EN TOTAL -->
         <div class="card">
-          <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+          <div class="card-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
             <span>Tabla de Calibración AoooG (30 Puntos Proporcionales)</span>
-            <div class="no-print" style="display: flex; gap: 6px;">
-              <button id="btnCopyTable" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.75rem; font-weight: 700;">Copiar</button>
-              <button id="btnExportCSV" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.75rem; font-weight: 700;">CSV</button>
+            <div class="no-print" style="display: flex; gap: 8px; align-items: center;">
+              <button id="btnTableExportExcel" class="btn btn-primary" style="padding: 5px 12px; font-size: 0.78rem; font-weight: 700; background: #16a34a; border-color: #15803d; display: inline-flex; align-items: center; gap: 5px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                </svg>
+                Descargar Excel (.xlsx)
+              </button>
+              <button id="btnExportCSV" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.78rem; font-weight: 700;">CSV</button>
+              <button id="btnCopyTable" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.78rem; font-weight: 700;">Copiar</button>
             </div>
           </div>
 
