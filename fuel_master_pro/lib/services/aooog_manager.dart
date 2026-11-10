@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'aooog_ble.dart';
@@ -130,6 +129,7 @@ class AoooGManager {
     notifyChar = null;
     connectedDevice = null;
     currentSensorId = null;
+    _isAuthenticated = false;
     _failPendingCommands();
   }
 
@@ -207,51 +207,95 @@ class AoooGManager {
         response[6] == 0x00;
   }
 
-  /// Autentica con contraseña (comando 0x12)
-  /// Prueba:
-  /// 1) PIN ingresado en ASCII exacto (8 bytes)
-  /// 2) PIN por defecto '12345678' en ASCII
-  /// 3) PIN de ceros '00000000' en ASCII
-  /// 4) Formato Hex/BCD si el PIN tiene dígitos hex
-  Future<bool> authenticate(String pin) async {
-    final cleanPin = pin.trim();
+  bool _isAuthenticated = false;
+  bool get isAuthenticated => _isAuthenticated;
+  String _lastAcceptedPin = '12345678';
+  String get lastAcceptedPin => _lastAcceptedPin;
 
-    // Candidatos de PIN en orden de prioridad
+  /// Autentica con contraseña (comando 0x12)
+  /// Prueba candidatos automáticos o el PIN provisto por el usuario
+  Future<bool> authenticate([String? explicitPin]) async {
+    final cleanPin = explicitPin?.trim() ?? '';
+    final sensorId = currentSensorId ?? 0;
+
+    // Generar candidatos de credenciales (exactamente 8 bytes)
     final candidates = <List<int>>[];
 
-    // 1. PIN provisto por el usuario en ASCII (8 bytes)
+    // 1. PIN ingresado explícitamente
     if (cleanPin.isNotEmpty) {
-      final asciiStr = cleanPin.length >= 8 ? cleanPin.substring(0, 8) : cleanPin.padRight(8, '0');
-      candidates.add(asciiStr.codeUnits);
+      if (cleanPin.length == 8) {
+        candidates.add(cleanPin.codeUnits);
+      } else {
+        candidates.add(cleanPin.padLeft(8, '0').substring(0, 8).codeUnits);
+        candidates.add(cleanPin.padRight(8, '0').substring(0, 8).codeUnits);
+      }
+      if (RegExp(r'^[0-9a-fA-F]{1,16}$').hasMatch(cleanPin)) {
+        try {
+          final hexStr = cleanPin.padLeft(16, '0').substring(0, 16);
+          final hexBytes = <int>[];
+          for (int i = 0; i < 16; i += 2) {
+            hexBytes.add(int.parse(hexStr.substring(i, i + 2), radix: 16));
+          }
+          candidates.add(hexBytes);
+        } catch (_) {}
+      }
     }
 
-    // 2. PIN oficial de fábrica AoooG '12345678'
+    // 2. Último PIN aceptado (si se configuró)
+    if (_lastAcceptedPin.isNotEmpty && _lastAcceptedPin != cleanPin) {
+      candidates.add(_lastAcceptedPin.codeUnits);
+    }
+
+    // 3. Clave oficial de fábrica AoooG '12345678'
     candidates.add('12345678'.codeUnits);
 
-    // 3. PIN de fábrica alternativo '00000000'
+    // 4. Clave alternativa '00000000'
     candidates.add('00000000'.codeUnits);
 
-    // 4. BCD / Hex si el PIN son dígitos
-    if (RegExp(r'^[0-9a-fA-F]{1,16}$').hasMatch(cleanPin)) {
-      try {
-        final hexStr = cleanPin.padLeft(16, '0').substring(0, 16);
-        final hexBytes = <int>[];
-        for (int i = 0; i < 16; i += 2) {
-          hexBytes.add(int.parse(hexStr.substring(i, i + 2), radix: 16));
-        }
-        candidates.add(hexBytes);
-      } catch (_) {}
+    // 5. Claves derivadas del sensor ID / SN
+    if (sensorId > 0) {
+      final snStr = sensorId.toString();
+      candidates.add(snStr.padLeft(8, '0').codeUnits);
+      candidates.add(snStr.padRight(8, '0').codeUnits);
+
+      int id2 = (sensorId >> 16) & 0xFF;
+      int id1 = (sensorId >> 8) & 0xFF;
+      int id0 = sensorId & 0xFF;
+      candidates.add([id2, id1, id0, 0, 0, 0, 0, 0]);
+      candidates.add([0, 0, 0, 0, 0, id2, id1, id0]);
+      candidates.add([0, id2, id1, id0, 0, 0, 0, 0]);
     }
 
-    for (final pwdBytes in candidates) {
-      if (pwdBytes.length != 8) continue;
+    // 6. Ceros y FFs
+    candidates.add(List<int>.filled(8, 0x00));
+    candidates.add(List<int>.filled(8, 0xFF));
+
+    // Deduplicar candidatos
+    final seen = <String>{};
+    final uniqueCandidates = <List<int>>[];
+    for (final c in candidates) {
+      if (c.length != 8) continue;
+      final key = c.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      if (!seen.contains(key)) {
+        seen.add(key);
+        uniqueCandidates.add(c);
+      }
+    }
+
+    for (final pwdBytes in uniqueCandidates) {
+      debugPrint('[AUTH] Probando clave: ${pwdBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
       final resp = await sendCommand(0x12, pwdBytes, timeout: const Duration(seconds: 3));
       if (_isSuccessStatus(resp, 0x12)) {
+        debugPrint('[AUTH] ¡AUTENTICACIÓN EXITOSA! Clave aceptada.');
+        _isAuthenticated = true;
+        if (cleanPin.isNotEmpty) _lastAcceptedPin = cleanPin;
         return true;
       }
-      await Future.delayed(const Duration(milliseconds: 150));
+      await Future.delayed(const Duration(milliseconds: 100));
     }
 
+    debugPrint('[AUTH] Ningún candidato fue aceptado por el sensor.');
+    _isAuthenticated = false;
     return false;
   }
 

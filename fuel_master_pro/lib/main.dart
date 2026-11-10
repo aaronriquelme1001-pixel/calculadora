@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:excel/excel.dart' as excel_pkg;
 
 import 'services/aooog_ble.dart';
 import 'services/aooog_manager.dart';
@@ -65,8 +68,8 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   double _length = 60;
   double _width = 58;
   double _height = 600;
-  double _thickness = 2.5;
-  bool _isExternal = true;
+  double _thickness = 0.0;
+  bool _isExternal = false;
 
   // Radios en Bordes Inferiores / Piso (mm)
   double _rInfLi = 0;
@@ -343,6 +346,299 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     return rows;
   }
 
+  List<CalibrationRow> _parseCsvText(String text) {
+    final lines = const LineSplitter().convert(text);
+    final rows = <CalibrationRow>[];
+    for (final rawLine in lines) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue;
+      if (line.toLowerCase().contains('dato') || line.toLowerCase().contains('nivel') || line.toLowerCase().contains('vol')) {
+        continue;
+      }
+      final parts = line.split(RegExp(r'[,;\t\s]+'));
+      if (parts.length >= 3) {
+        final d = double.tryParse(parts[0])?.round() ?? 0;
+        final n = double.tryParse(parts[1])?.round() ?? 0;
+        final v = double.tryParse(parts[2]) ?? 0.0;
+        rows.add(CalibrationRow(
+          index: rows.length,
+          volumeL: v,
+          levelMm: n,
+          fixValue: d.clamp(0, 5000),
+          expectedFreqHz: 0,
+        ));
+      }
+    }
+    return rows;
+  }
+
+  Future<void> _loadCalibrationFromFile() async {
+    try {
+      final files = await FilePicker.pickFiles();
+      if (files.isEmpty) return;
+      final file = files.first;
+      final bytes = await file.xFile.readAsBytes();
+      if (bytes.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se pudieron leer los datos del archivo seleccionado.')),
+          );
+        }
+        return;
+      }
+
+      final fileName = file.name.toLowerCase();
+      List<CalibrationRow> parsedRows = [];
+
+      if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        final excel = excel_pkg.Excel.decodeBytes(bytes);
+        for (final table in excel.tables.keys) {
+          final sheet = excel.tables[table];
+          if (sheet == null || sheet.rows.isEmpty) continue;
+
+          int datoCol = -1;
+          int nivelCol = -1;
+          int volCol = -1;
+
+          int startRow = 0;
+          final header = sheet.rows.first;
+          for (int c = 0; c < header.length; c++) {
+            final val = header[c]?.value?.toString().toLowerCase().trim() ?? '';
+            if (val.contains('dato') || val.contains('data') || val.contains('fix')) datoCol = c;
+            if (val.contains('nivel') || val.contains('level') || val.contains('mm')) nivelCol = c;
+            if (val.contains('vol') || val.contains('litro') || val.contains('l')) volCol = c;
+          }
+
+          if (datoCol != -1 || nivelCol != -1 || volCol != -1) {
+            startRow = 1;
+          } else {
+            datoCol = 0;
+            nivelCol = 1;
+            volCol = 2;
+          }
+
+          for (int r = startRow; r < sheet.rows.length; r++) {
+            final row = sheet.rows[r];
+            if (row.isEmpty) continue;
+            final datoVal = double.tryParse(row.length > datoCol && datoCol >= 0 ? row[datoCol]?.value?.toString() ?? '' : '')?.round() ?? 0;
+            final nivelVal = double.tryParse(row.length > nivelCol && nivelCol >= 0 ? row[nivelCol]?.value?.toString() ?? '' : '')?.round() ?? 0;
+            final volVal = double.tryParse(row.length > volCol && volCol >= 0 ? row[volCol]?.value?.toString() ?? '' : '') ?? 0.0;
+
+            parsedRows.add(CalibrationRow(
+              index: parsedRows.length,
+              volumeL: volVal,
+              levelMm: nivelVal,
+              fixValue: datoVal.clamp(0, 5000),
+              expectedFreqHz: 0,
+            ));
+          }
+          if (parsedRows.isNotEmpty) break;
+        }
+      } else {
+        final text = utf8.decode(bytes, allowMalformed: true);
+        parsedRows = _parseCsvText(text);
+      }
+
+      if (parsedRows.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se encontraron filas válidas en el archivo seleccionado.')),
+        );
+        return;
+      }
+
+      if (parsedRows.first.fixValue != 0 || parsedRows.first.levelMm != 0 || parsedRows.first.volumeL != 0.0) {
+        parsedRows.insert(0, CalibrationRow(
+          index: 0,
+          volumeL: 0.0,
+          levelMm: 0,
+          fixValue: 0,
+          expectedFreqHz: _emptyFreq,
+        ));
+      }
+
+      for (int i = 0; i < parsedRows.length; i++) {
+        final old = parsedRows[i];
+        parsedRows[i] = CalibrationRow(
+          index: i,
+          volumeL: old.volumeL,
+          levelMm: old.levelMm,
+          fixValue: old.fixValue,
+          expectedFreqHz: _emptyFreq + (_fullFreq - _emptyFreq) * (i / (parsedRows.length - 1).clamp(1, 99)),
+        );
+      }
+
+      setState(() {
+        _generatedRows = parsedRows;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('¡Se cargaron ${_generatedRows.length} puntos de calibración!'),
+          backgroundColor: const Color(0xFF10B981),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al leer archivo: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _pasteCalibrationText() async {
+    const defaultTemplate = '0, 0, 0\n529, 60, 60\n1623, 120, 120\n2712, 180, 180\n3616, 240, 240\n4386, 300, 300';
+    final ctrl = TextEditingController(text: defaultTemplate);
+    final res = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Pegar Tabla de Calibración', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Formato por fila: Dato, Nivel (mm), Volumen (L)',
+              style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: ctrl,
+              maxLines: 7,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+              decoration: InputDecoration(
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                contentPadding: const EdgeInsets.all(10),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E88E5)),
+            child: const Text('Cargar Tabla', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (res != null && res.trim().isNotEmpty) {
+      final parsed = _parseCsvText(res);
+      if (parsed.isNotEmpty) {
+        if (parsed.first.fixValue != 0 || parsed.first.levelMm != 0 || parsed.first.volumeL != 0.0) {
+          parsed.insert(0, CalibrationRow(
+            index: 0,
+            volumeL: 0.0,
+            levelMm: 0,
+            fixValue: 0,
+            expectedFreqHz: _emptyFreq,
+          ));
+        }
+        for (int i = 0; i < parsed.length; i++) {
+          final old = parsed[i];
+          parsed[i] = CalibrationRow(
+            index: i,
+            volumeL: old.volumeL,
+            levelMm: old.levelMm,
+            fixValue: old.fixValue,
+            expectedFreqHz: _emptyFreq + (_fullFreq - _emptyFreq) * (i / (parsed.length - 1).clamp(1, 99)),
+          );
+        }
+        setState(() {
+          _generatedRows = parsed;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('¡Se cargaron ${_generatedRows.length} puntos de calibración!'),
+            backgroundColor: const Color(0xFF10B981),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<String?> _promptUserForPin({String? errorMsg}) async {
+    final pinCtrl = TextEditingController(text: '12345678');
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.lock_outline, color: Color(0xFFE11D48)),
+            const SizedBox(width: 8),
+            Text(
+              'PIN del Sensor #${_connectedSensor?.id ?? ""}',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (errorMsg != null) ...[
+              Container(
+                padding: const EdgeInsets.all(8),
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEE2E2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  errorMsg,
+                  style: const TextStyle(color: Color(0xFFB91C1C), fontSize: 13),
+                ),
+              ),
+            ] else ...[
+              const Text(
+                'El sensor requiere autenticación de 8 dígitos para permitir la grabación de la tabla de calibración en memoria.',
+                style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
+              ),
+              const SizedBox(height: 12),
+            ],
+            const Text(
+              'Contraseña de 8 dígitos:',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: pinCtrl,
+              autofocus: true,
+              keyboardType: TextInputType.text,
+              maxLength: 8,
+              decoration: InputDecoration(
+                hintText: '12345678',
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Cancelar', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, pinCtrl.text.trim()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1E88E5),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Desbloquear y Grabar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _uploadCalibrationToSensor() async {
     if (_connectedSensor == null) {
       if (_sensors.isEmpty) {
@@ -385,30 +681,62 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
       if (_connectedSensor == null) return;
     }
 
+    final rowsToSend = _generatedRows.isNotEmpty ? _generatedRows : _generate30PointCalibration();
+
     setState(() {
       _isUploading = true;
-      _uploadProgress = 0.0;
+      _uploadProgress = 0.05;
     });
 
-    final rows = _generate30PointCalibration();
+    // 1. Autenticación con contraseña (Comando 0x12)
+    debugPrint('[CALIBRATION] Intentando autenticación...');
+    bool authOk = await _bleManager.authenticate();
 
-    // 1. Autenticación silenciosa con password por defecto
-    debugPrint('[CALIBRATION] Intentando autenticación silenciosa...');
-    final authOk = await _bleManager.authenticate('12345678');
-    debugPrint('[CALIBRATION] Auth resultado: $authOk');
+    // Si falló la autenticación silenciosa, pedir PIN al usuario
+    if (!authOk) {
+      setState(() => _isUploading = false);
+      String? errorMsg;
+      while (!authOk) {
+        final enteredPin = await _promptUserForPin(errorMsg: errorMsg);
+        if (enteredPin == null || enteredPin.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Operación cancelada: Se requiere contraseña del sensor para grabar.')),
+            );
+          }
+          return;
+        }
 
-    // 2. Enviar tabla de calibración
-    debugPrint('[CALIBRATION] Enviando ${rows.length} puntos al sensor...');
+        setState(() {
+          _isUploading = true;
+          _uploadProgress = 0.1;
+        });
+
+        authOk = await _bleManager.authenticate(enteredPin);
+        if (!authOk) {
+          setState(() => _isUploading = false);
+          errorMsg = 'PIN "$enteredPin" rechazado por el sensor #${_connectedSensor!.id}. Intente nuevamente:';
+        }
+      }
+    }
+
+    // 2. Enviar tabla de calibración (Comando 0x16)
+    debugPrint('[CALIBRATION] Enviando ${rowsToSend.length} puntos al sensor...');
+    setState(() => _uploadProgress = 0.2);
+
     final ok = await _bleManager.uploadCalibrationTable(
-      rows,
+      rowsToSend,
       onProgress: (current, total) {
-        debugPrint('[CALIBRATION] Progreso: $current/$total');
-        if (mounted) setState(() => _uploadProgress = current / total);
+        debugPrint('[CALIBRATION] Progreso bloques: $current/$total');
+        if (mounted) setState(() => _uploadProgress = 0.2 + 0.8 * (current / total));
       },
     );
 
     if (!mounted) return;
-    setState(() => _isUploading = false);
+    setState(() {
+      _isUploading = false;
+      _uploadProgress = 1.0;
+    });
 
     debugPrint('[CALIBRATION] Resultado final: $ok');
 
@@ -425,9 +753,9 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
             ],
           ),
           content: Text(
-            'Se grabaron exitosamente 30 puntos en el sensor #${_connectedSensor!.id}.\n\n'
-            '• Volumen Total: ${_calculateTotalVolume().toStringAsFixed(1)} L\n'
-            '• Rango Frecuencia: ${_emptyFreq.toStringAsFixed(0)} Hz - ${_fullFreq.toStringAsFixed(0)} Hz\n'
+            'Se grabaron exitosamente ${rowsToSend.length} puntos en el sensor #${_connectedSensor!.id}.\n\n'
+            '• Volumen Total: ${rowsToSend.last.volumeL.toStringAsFixed(1)} L\n'
+            '• Nivel Máximo: ${rowsToSend.last.levelMm} mm\n'
             '• Modo de salida: Litros (L)',
           ),
           actions: [
@@ -644,13 +972,88 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 14),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: _generatedRows.isNotEmpty ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: _generatedRows.isNotEmpty ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        _generatedRows.isNotEmpty ? Icons.check_circle : Icons.info_outline,
+                                        color: _generatedRows.isNotEmpty ? const Color(0xFF2563EB) : const Color(0xFF64748B),
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          _generatedRows.isNotEmpty
+                                              ? 'Tabla lista: ' + _generatedRows.length.toString() + ' puntos (' + _generatedRows.last.volumeL.toStringAsFixed(1) + ' L)'
+                                              : 'Sin tabla cargada. Genere o cargue un Excel.',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: _generatedRows.isNotEmpty ? FontWeight.bold : FontWeight.normal,
+                                            color: _generatedRows.isNotEmpty ? const Color(0xFF1E40AF) : const Color(0xFF64748B),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: () async {
+                                          await _loadCalibrationFromFile();
+                                        },
+                                        icon: const Icon(Icons.upload_file, size: 16),
+                                        label: const Text('Cargar Excel', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 9),
+                                          side: const BorderSide(color: Color(0xFF1E88E5)),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: () {
+                                          setState(() {
+                                            _generatedRows = _generate30PointCalibration();
+                                          });
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Tabla de 30 puntos generada por dimensiones.'),
+                                              backgroundColor: Color(0xFF10B981),
+                                            ),
+                                          );
+                                        },
+                                        icon: const Icon(Icons.refresh, size: 16),
+                                        label: const Text('Generar 30 pts', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 9),
+                                          side: const BorderSide(color: Color(0xFF64748B)),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 14),
                                 if (_isUploading) ...[
                                   LinearProgressIndicator(value: _uploadProgress, color: const Color(0xFF2563EB)),
                                   const SizedBox(height: 8),
                                   Center(
                                     child: Text(
-                                      'Grabando tabla en sensor... ${(_uploadProgress * 100).toStringAsFixed(0)}%',
+                                      'Grabando tabla en sensor... ' + (_uploadProgress * 100).toStringAsFixed(0) + '%',
                                       style: const TextStyle(fontSize: 12, color: Color(0xFF2563EB), fontWeight: FontWeight.bold),
                                     ),
                                   ),
@@ -903,34 +1306,82 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
           ),
           const SizedBox(height: 16),
 
-          // Botón para Generar Tabla
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                final rows = _generate30PointCalibration();
-                setParentState(() {
-                  _generatedRows = rows;
-                });
-                setState(() {
-                  _generatedRows = rows;
-                });
-              },
-              icon: const Icon(Icons.calculate_outlined, color: Colors.white, size: 20),
-              label: const Text(
-                'Generar Tabla de Calibración',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+          // Botones de acción para la tabla de calibración
+          Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await _loadCalibrationFromFile();
+                        setParentState(() {});
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.table_view_outlined, size: 18, color: Color(0xFF1E88E5)),
+                      label: const Text(
+                        'Cargar Excel / CSV',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E88E5)),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFF1E88E5)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await _pasteCalibrationText();
+                        setParentState(() {});
+                        setState(() {});
+                      },
+                      icon: const Icon(Icons.paste_outlined, size: 18, color: Color(0xFF475569)),
+                      label: const Text(
+                        'Pegar Puntos',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF1E88E5),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final rows = _generate30PointCalibration();
+                    setParentState(() {
+                      _generatedRows = rows;
+                    });
+                    setState(() {
+                      _generatedRows = rows;
+                    });
+                  },
+                  icon: const Icon(Icons.calculate_outlined, color: Colors.white, size: 20),
+                  label: const Text(
+                    'Generar Tabla por Dimensiones',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E88E5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
 
-          // Si la tabla fue generada, mostrar resumen y tabla visual de los 30 puntos
+          // Si la tabla fue generada o cargada, mostrar resumen y tabla visual
           if (_generatedRows.isNotEmpty) ...[
             const SizedBox(height: 16),
             Container(
@@ -948,13 +1399,13 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                       const Icon(Icons.check_circle, color: Color(0xFF2563EB), size: 18),
                       const SizedBox(width: 8),
                       Text(
-                        'Tabla: ${_generatedRows.length} Puntos Calculados',
+                        'Tabla: ${_generatedRows.length} Puntos Listos',
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF1E3A8A)),
                       ),
                     ],
                   ),
                   Text(
-                    '${_calculateTotalVolume().toStringAsFixed(1)} L Totales',
+                    '${_generatedRows.last.volumeL.toStringAsFixed(1)} L Máx',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF2563EB)),
                   ),
                 ],
@@ -979,15 +1430,15 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       child: const Row(
                         children: [
-                          SizedBox(width: 32, child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569)))),
+                          SizedBox(width: 30, child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569)))),
+                          Expanded(child: Text('Dato (Fix)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569)))),
                           Expanded(child: Text('Nivel (mm)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569)))),
-                          Expanded(child: Text('Volumen (L)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569)))),
-                          Expanded(child: Text('Freq (Hz)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569)), textAlign: TextAlign.right)),
+                          Expanded(child: Text('Volumen (L)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF475569)), textAlign: TextAlign.right)),
                         ],
                       ),
                     ),
                     const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                    // Lista de 30 filas
+                    // Lista de filas
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 260),
                       child: ListView.separated(
@@ -1003,10 +1454,16 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                             child: Row(
                               children: [
                                 SizedBox(
-                                  width: 32,
+                                  width: 30,
                                   child: Text(
                                     '${idx + 1}',
                                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Text(
+                                    '${r.fixValue}',
+                                    style: const TextStyle(fontSize: 12, color: Color(0xFF2563EB), fontWeight: FontWeight.w600),
                                   ),
                                 ),
                                 Expanded(
@@ -1018,13 +1475,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                                 Expanded(
                                   child: Text(
                                     '${r.volumeL.toStringAsFixed(1)} L',
-                                    style: const TextStyle(fontSize: 12, color: Color(0xFF2563EB), fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Text(
-                                    '${r.expectedFreqHz.toStringAsFixed(0)} Hz',
-                                    style: const TextStyle(fontSize: 12, color: Color(0xFF059669), fontWeight: FontWeight.w600),
+                                    style: const TextStyle(fontSize: 12, color: Color(0xFF059669), fontWeight: FontWeight.bold),
                                     textAlign: TextAlign.right,
                                   ),
                                 ),
@@ -1035,6 +1486,27 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                       ),
                     ),
                   ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _uploadCalibrationToSensor();
+                },
+                icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                label: const Text(
+                  'Asignar Tabla al Sensor',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF10B981),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
                 ),
               ),
             ),
