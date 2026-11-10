@@ -103,7 +103,7 @@ Desde la raíz:
 node --check app.js
 ```
 
-GitHub Actions ejecuta estas comprobaciones en los cambios de la rama de correcciones.
+El workflow de GitHub Actions queda configurado para ejecutar estas comprobaciones en los cambios de la rama de correcciones; la ejecución debe confirmarse en la pestaña Actions del repositorio.
 
 ### Supuesto físico para doble estanque
 
