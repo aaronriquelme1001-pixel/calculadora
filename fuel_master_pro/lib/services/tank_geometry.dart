@@ -47,8 +47,7 @@ class TankGeometryEngine {
     final effL = length - 2 * t;
     final effW = width - 2 * t;
     final effH = height - 2 * t;
-    final hasSecondTank = tank2Length > 0 && tank2Width > 0 && tank2Height > 0;
-    final effH2 = hasSecondTank
+    final effH2 = tank2Height > 0
         ? math.max(10.0, tank2Height - (isExternal ? 2 * thickness : 0.0)).toDouble()
         : effH;
     final integrationHeight = (tankType == 'double_tank' ? math.max(effH, effH2) : effH).toDouble();
@@ -154,10 +153,9 @@ class TankGeometryEngine {
       }
       return effW * L;
     } else if (type == 'double_tank') {
-      final hasSecondTank = tank2Length > 0 && tank2Width > 0 && tank2Height > 0;
-      double L2 = hasSecondTank ? math.max(10.0, tank2Length - 2 * t).toDouble() : L;
-      double W2 = hasSecondTank ? math.max(10.0, tank2Width - 2 * t).toDouble() : W;
-      double H2 = hasSecondTank ? math.max(10.0, tank2Height - 2 * t).toDouble() : H;
+      double L2 = tank2Length > 0 ? math.max(10.0, tank2Length - 2 * t).toDouble() : L;
+      double W2 = tank2Width > 0 ? math.max(10.0, tank2Width - 2 * t).toDouble() : W;
+      double H2 = tank2Height > 0 ? math.max(10.0, tank2Height - 2 * t).toDouble() : H;
       double a1 = (z <= H) ? (W * L) : 0.0;
       double a2 = (z <= H2) ? (W2 * L2) : 0.0;
       return a1 + a2;
