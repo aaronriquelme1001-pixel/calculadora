@@ -168,15 +168,17 @@
 
     switch (state.tank.type) {
       case 'rectangular': {
-        const r_inf_li = Math.min(W / 2, H / 2, Number(state.tank.r_inf_li) || 0);
-        const r_inf_ld = Math.min(W / 2, H / 2, Number(state.tank.r_inf_ld) || 0);
-        const r_inf_af = Math.min(L / 2, H / 2, Number(state.tank.r_inf_af) || 0);
-        const r_inf_ap = Math.min(L / 2, H / 2, Number(state.tank.r_inf_ap) || 0);
+        const t = eff.t || 0;
+        // Radios efectivos descontando espesor si la medicion es externa
+        const r_inf_li = Math.max(0, Math.min(W / 2, H / 2, (Number(state.tank.r_inf_li) || 0) - t));
+        const r_inf_ld = Math.max(0, Math.min(W / 2, H / 2, (Number(state.tank.r_inf_ld) || 0) - t));
+        const r_inf_af = Math.max(0, Math.min(L / 2, H / 2, (Number(state.tank.r_inf_af) || 0) - t));
+        const r_inf_ap = Math.max(0, Math.min(L / 2, H / 2, (Number(state.tank.r_inf_ap) || 0) - t));
 
-        const r_sup_li = Math.min(W / 2, H / 2, Number(state.tank.r_sup_li) || 0);
-        const r_sup_ld = Math.min(W / 2, H / 2, Number(state.tank.r_sup_ld) || 0);
-        const r_sup_af = Math.min(L / 2, H / 2, Number(state.tank.r_sup_af) || 0);
-        const r_sup_ap = Math.min(L / 2, H / 2, Number(state.tank.r_sup_ap) || 0);
+        const r_sup_li = Math.max(0, Math.min(W / 2, H / 2, (Number(state.tank.r_sup_li) || 0) - t));
+        const r_sup_ld = Math.max(0, Math.min(W / 2, H / 2, (Number(state.tank.r_sup_ld) || 0) - t));
+        const r_sup_af = Math.max(0, Math.min(L / 2, H / 2, (Number(state.tank.r_sup_af) || 0) - t));
+        const r_sup_ap = Math.max(0, Math.min(L / 2, H / 2, (Number(state.tank.r_sup_ap) || 0) - t));
 
         let dx_l = 0;
         if (z < r_inf_li && r_inf_li > 0) {
@@ -1705,16 +1707,22 @@
     const dataMax = Number(state.sensor.dataMax) || 4660;
     const curRaw = Math.round(dataMin + (state.currentLevelMm / H) * (dataMax - dataMin));
 
+    const curM3 = (curVol / 1000).toFixed(4);
+    const totalM3 = (totalVol / 1000).toFixed(4);
+    const emptyM3 = (emptyVol / 1000).toFixed(4);
+
     setText('telemetryLevelTag', `${state.currentLevelMm} mm`);
     setText('telemetryVolume', `${curVol.toFixed(1)} L`);
+    setText('telemetryPct', `${curM3} m³ (${pct.toFixed(1)}%)`);
     setText('telemetryTotal', `${totalVol.toFixed(1)} L`);
+    setText('telemetryTotalSub', `${totalM3} m³ (100%)`);
     setText('telemetryEmpty', `${emptyVol.toFixed(1)} L`);
-    setText('telemetryPct', `${pct.toFixed(1)} %`);
+    setText('telemetryEmptySub', `${emptyM3} m³ restante`);
     setText('telemetryRaw', `${curRaw}`);
 
-    setText('sideTotalVolume', `${totalVol.toFixed(1)} L`);
-    setText('sideCurrentLiquid', `${curVol.toFixed(1)} L`);
-    setText('sideEmptySpace', `${emptyVol.toFixed(1)} L`);
+    setText('sideTotalVolume', `${totalVol.toFixed(1)} L (${totalM3} m³)`);
+    setText('sideCurrentLiquid', `${curVol.toFixed(1)} L (${curM3} m³)`);
+    setText('sideEmptySpace', `${emptyVol.toFixed(1)} L (${emptyM3} m³)`);
 
     renderTable();
     if (state.viewMode === 'view-3d') {

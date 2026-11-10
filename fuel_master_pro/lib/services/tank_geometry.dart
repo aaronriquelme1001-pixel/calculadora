@@ -211,15 +211,15 @@ class TankGeometryEngine {
       double effW = math.max(0.0, W - dxFront - dxBack).toDouble();
       return effW * L;
     } else {
-      // Rectangular con radios
-      rInfLi = math.min(math.min(W / 2.0, H / 2.0), rInfLi).toDouble();
-      rInfLd = math.min(math.min(W / 2.0, H / 2.0), rInfLd).toDouble();
-      rSupLi = math.min(math.min(W / 2.0, H / 2.0), rSupLi).toDouble();
-      rSupLd = math.min(math.min(W / 2.0, H / 2.0), rSupLd).toDouble();
-      rInfAf = math.min(math.min(L / 2.0, H / 2.0), rInfAf).toDouble();
-      rInfAp = math.min(math.min(L / 2.0, H / 2.0), rInfAp).toDouble();
-      rSupAf = math.min(math.min(L / 2.0, H / 2.0), rSupAf).toDouble();
-      rSupAp = math.min(math.min(L / 2.0, H / 2.0), rSupAp).toDouble();
+      // Rectangular con radios efectivos (descontando espesor t si es exterior)
+      rInfLi = math.max(0.0, math.min(math.min(W / 2.0, H / 2.0), rInfLi - t)).toDouble();
+      rInfLd = math.max(0.0, math.min(math.min(W / 2.0, H / 2.0), rInfLd - t)).toDouble();
+      rSupLi = math.max(0.0, math.min(math.min(W / 2.0, H / 2.0), rSupLi - t)).toDouble();
+      rSupLd = math.max(0.0, math.min(math.min(W / 2.0, H / 2.0), rSupLd - t)).toDouble();
+      rInfAf = math.max(0.0, math.min(math.min(L / 2.0, H / 2.0), rInfAf - t)).toDouble();
+      rInfAp = math.max(0.0, math.min(math.min(L / 2.0, H / 2.0), rInfAp - t)).toDouble();
+      rSupAf = math.max(0.0, math.min(math.min(L / 2.0, H / 2.0), rSupAf - t)).toDouble();
+      rSupAp = math.max(0.0, math.min(math.min(L / 2.0, H / 2.0), rSupAp - t)).toDouble();
 
       double dxL = 0.0;
       if (z < rInfLi && rInfLi > 0) {
