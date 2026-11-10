@@ -231,7 +231,7 @@ class TankGeometryEngine {
       if (verticalRadius > 0) {
         area -= (4.0 - math.pi) * verticalRadius * verticalRadius;
       }
-      return math.max(0.0, area);
+      return math.max(0.0, area).toDouble();
     }
   }
 
