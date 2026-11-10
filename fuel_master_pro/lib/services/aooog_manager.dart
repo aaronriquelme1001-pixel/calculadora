@@ -86,7 +86,10 @@ class AoooGManager {
         }
       });
 
-      await sensor.device.requestMtu(247);
+      try {
+        await sensor.device.requestMtu(247);
+      } catch (_) {}
+
       final services = await sensor.device.discoverServices();
       for (final service in services) {
         if (service.uuid == AoooGProtocol.serviceUuid) {
@@ -131,7 +134,9 @@ class AoooGManager {
 
   void _failPendingCommands() {
     for (final completer in _responseCompleters.values) {
-      if (!completer.isCompleted) completer.completeError(StateError('Conexión BLE interrumpida.'));
+      if (!completer.isCompleted) {
+        completer.completeError(StateError('Conexión BLE interrumpida.'));
+      }
     }
     _responseCompleters.clear();
   }
@@ -154,7 +159,14 @@ class AoooGManager {
   }) async {
     final characteristic = writeChar;
     final sensorId = currentSensorId;
-    if (characteristic == null || sensorId == null || _commandInFlight) return null;
+    if (characteristic == null || sensorId == null) return null;
+
+    // Esperar si hay un comando previo en vuelo
+    int waitLimit = 0;
+    while (_commandInFlight && waitLimit < 20) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      waitLimit++;
+    }
 
     _commandInFlight = true;
     final completer = Completer<List<int>>();
@@ -183,16 +195,31 @@ class AoooGManager {
         response[6] == 0x00;
   }
 
-  /// Autentica con contraseña (comando 0x12). Intenta formato ASCII y formato Hex binario
+  /// Autentica con contraseña (comando 0x12)
+  /// Prueba:
+  /// 1) PIN ingresado en ASCII exacto (8 bytes)
+  /// 2) PIN por defecto '12345678' en ASCII
+  /// 3) PIN de ceros '00000000' en ASCII
+  /// 4) Formato Hex/BCD si el PIN tiene dígitos hex
   Future<bool> authenticate(String pin) async {
     final cleanPin = pin.trim();
-    
-    // Intento 1: Bytes ASCII estándar (8 bytes)
-    List<int> asciiBytes = cleanPin.padRight(8, '0').substring(0, 8).codeUnits;
-    var resp = await sendCommand(0x12, asciiBytes);
-    if (_isSuccessStatus(resp, 0x12)) return true;
 
-    // Intento 2: BCD / Hex si el PIN son dígitos
+    // Candidatos de PIN en orden de prioridad
+    final candidates = <List<int>>[];
+
+    // 1. PIN provisto por el usuario en ASCII (8 bytes)
+    if (cleanPin.isNotEmpty) {
+      final asciiStr = cleanPin.length >= 8 ? cleanPin.substring(0, 8) : cleanPin.padRight(8, '0');
+      candidates.add(asciiStr.codeUnits);
+    }
+
+    // 2. PIN oficial de fábrica AoooG '12345678'
+    candidates.add('12345678'.codeUnits);
+
+    // 3. PIN de fábrica alternativo '00000000'
+    candidates.add('00000000'.codeUnits);
+
+    // 4. BCD / Hex si el PIN son dígitos
     if (RegExp(r'^[0-9a-fA-F]{1,16}$').hasMatch(cleanPin)) {
       try {
         final hexStr = cleanPin.padLeft(16, '0').substring(0, 16);
@@ -200,19 +227,20 @@ class AoooGManager {
         for (int i = 0; i < 16; i += 2) {
           hexBytes.add(int.parse(hexStr.substring(i, i + 2), radix: 16));
         }
-        resp = await sendCommand(0x12, hexBytes);
-        if (_isSuccessStatus(resp, 0x12)) return true;
+        candidates.add(hexBytes);
       } catch (_) {}
     }
 
-    // Intento 3: PIN por defecto de fábrica AoooG '12345678'
-    final defaultBytes = '12345678'.codeUnits;
-    resp = await sendCommand(0x12, defaultBytes);
-    if (_isSuccessStatus(resp, 0x12)) return true;
+    for (final pwdBytes in candidates) {
+      if (pwdBytes.length != 8) continue;
+      final resp = await sendCommand(0x12, pwdBytes, timeout: const Duration(seconds: 3));
+      if (_isSuccessStatus(resp, 0x12)) {
+        return true;
+      }
+      await Future.delayed(const Duration(milliseconds: 150));
+    }
 
-    // Intento 4: PIN de ceros '00000000'
-    resp = await sendCommand(0x12, '00000000'.codeUnits);
-    return _isSuccessStatus(resp, 0x12);
+    return false;
   }
 
   /// Lee parámetros guardados (comando 0x0D): Frecuencia vacío y lleno
@@ -346,7 +374,7 @@ class AoooGManager {
     return rows;
   }
 
-  /// Envía tabla de calibración (comando 0x16)
+  /// Carga la tabla de 30 puntos por bloques (comando 0x16)
   Future<bool> uploadCalibrationTable(
     List<CalibrationRow> rows, {
     void Function(int current, int total)? onProgress,
@@ -366,10 +394,11 @@ class AoooGManager {
       final response = await sendCommand(
         0x16,
         payload,
-        timeout: const Duration(seconds: 6),
+        timeout: const Duration(seconds: 8),
       );
       if (!_isSuccessStatus(response, 0x16)) return false;
       onProgress?.call(block + 1, totalBlocks);
+      await Future.delayed(const Duration(milliseconds: 100));
     }
 
     // Configurar modo de salida a LITROS (0x02)

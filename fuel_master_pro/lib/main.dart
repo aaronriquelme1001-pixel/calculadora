@@ -2,11 +2,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+
 import 'services/aooog_ble.dart';
-import 'services/tank_geometry.dart';
 import 'services/aooog_manager.dart';
+import 'services/tank_geometry.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const FuelMasterApp());
 }
 
@@ -33,19 +35,19 @@ class FuelMasterApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-      home: const MainScreen(),
+      home: const FuelMasterHomePage(),
     );
   }
 }
 
-class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+class FuelMasterHomePage extends StatefulWidget {
+  const FuelMasterHomePage({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  State<FuelMasterHomePage> createState() => _FuelMasterHomePageState();
 }
 
-class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateMixin {
+class _FuelMasterHomePageState extends State<FuelMasterHomePage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
   // BLE State
@@ -64,39 +66,30 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   int _broadcastInterval = 5; // segundos
   Timer? _telemetryTimer;
 
-  // Medidas del estanque
-  String _tankType = 'rectangular';
+  // Medidas Generales del Estanque Base (Rectangular Vikar)
   double _length = 850;
   double _width = 600;
   double _height = 650;
   double _thickness = 2.5;
   bool _isExternal = true;
 
-  // Radios esquinas
-  double _rInfLi = 150;
-  double _rInfLd = 150;
-  double _rSupLi = 50;
-  double _rSupLd = 50;
-  double _rInfAf = 150;
-  double _rInfAp = 150;
-  double _rSupAf = 50;
-  double _rSupAp = 50;
+  // Radios en Bordes Inferiores / Piso (mm)
+  double _rInfLi = 150; // L. Izq
+  double _rInfLd = 150; // L. Der
+  double _rInfAf = 150; // A. Front
+  double _rInfAp = 150; // A. Post
+
+  // Radios en Bordes Superiores / Techo (mm)
+  double _rSupLi = 50;  // L. Izq
+  double _rSupLd = 50;  // L. Der
+  double _rSupAf = 50;  // A. Front
+  double _rSupAp = 50;  // A. Post
+
+  // Radio aristas verticales
   double _rVert = 50;
 
-  // Escalón retroexcavadora
-  double _stepWidth = 200;
-  double _stepHeight = 250;
-  String _stepSide = 'bottom_right';
-
-  // Doble estanque
-  double _tank2Length = 850;
-  double _tank2Width = 600;
-  double _tank2Height = 650;
-
-  // Forma D
-  double _dRBottomFront = 200;
-  double _dRTopFront = 100;
-  double _dRBackCorners = 40;
+  // Nivel de líquido actual simulado / calibrado
+  double _currentLiquidMm = 260;
 
   // Calibración Sensor AoooG
   double _emptyFreq = 15000;
@@ -116,8 +109,8 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   @override
   void dispose() {
     _telemetryTimer?.cancel();
+    _bleManager.disconnect();
     _tabController.dispose();
-    unawaited(_bleManager.disconnect());
     super.dispose();
   }
 
@@ -194,7 +187,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       // Iniciar sondeo de telemetría en vivo cada 3 segundos
       _telemetryTimer?.cancel();
       _telemetryTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
-        if (!_isConnected) return;
+        if (!_isConnected || _isUploading) return;
         final data = await _bleManager.readRealtimeData();
         if (data != null && mounted) {
           setState(() {
@@ -229,6 +222,51 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     );
   }
 
+  double _calculateTotalVolume() {
+    double t = _isExternal ? _thickness : 0.0;
+    double effH = _height - 2 * t;
+    if (effH <= 0) return 0.0;
+    return TankGeometryEngine.calculateVolumeAtHeight(
+      tankType: 'rectangular',
+      length: _length,
+      width: _width,
+      height: _height,
+      thickness: _thickness,
+      isExternal: _isExternal,
+      hMm: effH,
+      rInfLi: _rInfLi,
+      rInfLd: _rInfLd,
+      rSupLi: _rSupLi,
+      rSupLd: _rSupLd,
+      rInfAf: _rInfAf,
+      rInfAp: _rInfAp,
+      rSupAf: _rSupAf,
+      rSupAp: _rSupAp,
+      rVert: _rVert,
+    );
+  }
+
+  double _calculateVolumeAt(double h) {
+    return TankGeometryEngine.calculateVolumeAtHeight(
+      tankType: 'rectangular',
+      length: _length,
+      width: _width,
+      height: _height,
+      thickness: _thickness,
+      isExternal: _isExternal,
+      hMm: h,
+      rInfLi: _rInfLi,
+      rInfLd: _rInfLd,
+      rSupLi: _rSupLi,
+      rSupLd: _rSupLd,
+      rInfAf: _rInfAf,
+      rInfAp: _rInfAp,
+      rSupAf: _rSupAf,
+      rSupAp: _rSupAp,
+      rVert: _rVert,
+    );
+  }
+
   List<CalibrationRow> _generateCalibrationTable() {
     List<CalibrationRow> list = [];
     int totalRows = 30;
@@ -239,33 +277,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     for (int i = 0; i < totalRows; i++) {
       double frac = i / (totalRows - 1);
       double level = frac * effH;
-      double vol = TankGeometryEngine.calculateVolumeAtHeight(
-        tankType: _tankType,
-        length: _length,
-        width: _width,
-        height: _height,
-        thickness: _thickness,
-        isExternal: _isExternal,
-        hMm: level,
-        rInfLi: _rInfLi,
-        rInfLd: _rInfLd,
-        rSupLi: _rSupLi,
-        rSupLd: _rSupLd,
-        rInfAf: _rInfAf,
-        rInfAp: _rInfAp,
-        rSupAf: _rSupAf,
-        rSupAp: _rSupAp,
-        rVert: _rVert,
-        stepWidth: _stepWidth,
-        stepHeight: _stepHeight,
-        stepSide: _stepSide,
-        tank2Length: _tank2Length,
-        tank2Width: _tank2Width,
-        tank2Height: _tank2Height,
-        dRBottomFront: _dRBottomFront,
-        dRTopFront: _dRTopFront,
-        dRBackCorners: _dRBackCorners,
-      );
+      double vol = _calculateVolumeAt(level);
 
       int fixVal = (frac * 5000).round();
       double expectedF = TankGeometryEngine.fixValueToFrequency(
@@ -298,18 +310,24 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       _uploadProgress = 0.0;
     });
 
-    // 1. Autenticar PIN (flexible: prueba ASCII, Hex y PINs por defecto)
+    // Pausar telemetría mientras se programa el sensor
+    _telemetryTimer?.cancel();
+
+    // 1. Autenticar PIN (prueba el PIN ingresado, PIN de fábrica 12345678, y alternativas)
     bool authOk = await _bleManager.authenticate(_authPin);
     if (!authOk) {
       if (!mounted) return;
       setState(() => _isUploading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PIN no aceptado por el sensor. Verifica la contraseña de acceso.')),
+        SnackBar(
+          content: Text('Sensor no aceptó PIN "$_authPin". Verifica la contraseña o usa 12345678.'),
+          backgroundColor: Colors.red.shade700,
+        ),
       );
       return;
     }
 
-    // 2. Subir tabla en bloques
+    // 2. Subir tabla de 30 puntos por bloques (0x16)
     final rows = _generateCalibrationTable();
     bool uploadOk = await _bleManager.uploadCalibrationTable(
       rows,
@@ -327,7 +345,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         context: context,
         builder: (_) => AlertDialog(
           title: const Text('¡Calibración Grabada!'),
-          content: Text('Se subió la tabla de 30 puntos al Sensor #${_selectedSensor?.id}.\nSalida configurada en Litros directos.'),
+          content: Text('Se grabó la tabla de 30 puntos en el Sensor #${_selectedSensor?.id}.\nSalida configurada en Litros directos.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Aceptar')),
           ],
@@ -335,7 +353,10 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error al transferir la tabla de calibración.')),
+        SnackBar(
+          content: const Text('Error al transferir la tabla de calibración.'),
+          backgroundColor: Colors.red.shade700,
+        ),
       );
     }
   }
@@ -370,7 +391,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           tabs: const [
             Tab(icon: Icon(Icons.bluetooth), text: 'Sensores'),
             Tab(icon: Icon(Icons.speed), text: 'Monitor'),
-            Tab(icon: Icon(Icons.straighten), text: 'Estanque 3D'),
+            Tab(icon: Icon(Icons.straighten), text: 'Estanque'),
             Tab(icon: Icon(Icons.settings), text: 'Configuración'),
           ],
         ),
@@ -481,34 +502,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   // PESTAÑA 2: MONITOR DE DISPOSITIVO (IDÉNTICO A APP OFICIAL + ESTANQUE)
   // ==========================================================================
   Widget _buildMonitorTab() {
-    double totalCapacity = TankGeometryEngine.calculateVolumeAtHeight(
-      tankType: _tankType,
-      length: _length,
-      width: _width,
-      height: _height,
-      thickness: _thickness,
-      isExternal: _isExternal,
-      hMm: _height - (_isExternal ? _thickness * 2 : 0),
-      rInfLi: _rInfLi,
-      rInfLd: _rInfLd,
-      rSupLi: _rSupLi,
-      rSupLd: _rSupLd,
-      rInfAf: _rInfAf,
-      rInfAp: _rInfAp,
-      rSupAf: _rSupAf,
-      rSupAp: _rSupAp,
-      rVert: _rVert,
-      stepWidth: _stepWidth,
-      stepHeight: _stepHeight,
-      stepSide: _stepSide,
-      tank2Length: _tank2Length,
-      tank2Width: _tank2Width,
-      tank2Height: _tank2Height,
-      dRBottomFront: _dRBottomFront,
-      dRTopFront: _dRTopFront,
-      dRBackCorners: _dRBackCorners,
-    );
-
+    double totalCapacity = _calculateTotalVolume();
     double fillFraction = totalCapacity > 0 ? (_liveFuelLiters / totalCapacity).clamp(0.0, 1.0) : 0.0;
 
     return SingleChildScrollView(
@@ -608,7 +602,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: !_isConnected ? null : () async {
+                           onPressed: !_isConnected ? null : () async {
                             bool ok = await _bleManager.setEmptyPoint();
                             if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -653,12 +647,14 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           children: [
             CircleAvatar(radius: 18, backgroundColor: color.withOpacity(0.12), child: Icon(icon, color: color, size: 20)),
             const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
-                Text(val, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0B1329))),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+                  Text(val, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0B1329))),
+                ],
+              ),
             ),
           ],
         ),
@@ -667,107 +663,50 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   }
 
   // ==========================================================================
-  // PESTAÑA 3: ESTANQUE Y MODELADO VOLUMÉTRICO
+  // PESTAÑA 3: ESTANQUE (SIMPLIFICADO Y LIMPIO: DIMENSIONES + RADIOS + CÁLCULO)
   // ==========================================================================
   Widget _buildTankTab() {
-    double totalVol = TankGeometryEngine.calculateVolumeAtHeight(
-      tankType: _tankType,
-      length: _length,
-      width: _width,
-      height: _height,
-      thickness: _thickness,
-      isExternal: _isExternal,
-      hMm: _height - (_isExternal ? _thickness * 2 : 0),
-      rInfLi: _rInfLi,
-      rInfLd: _rInfLd,
-      rSupLi: _rSupLi,
-      rSupLd: _rSupLd,
-      rInfAf: _rInfAf,
-      rInfAp: _rInfAp,
-      rSupAf: _rSupAf,
-      rSupAp: _rSupAp,
-      rVert: _rVert,
-      stepWidth: _stepWidth,
-      stepHeight: _stepHeight,
-      stepSide: _stepSide,
-      tank2Length: _tank2Length,
-      tank2Width: _tank2Width,
-      tank2Height: _tank2Height,
-      dRBottomFront: _dRBottomFront,
-      dRTopFront: _dRTopFront,
-      dRBackCorners: _dRBackCorners,
-    );
+    double totalVol = _calculateTotalVolume();
+    double currentVol = _calculateVolumeAt(_currentLiquidMm);
+    double emptyVol = (totalVol - currentVol).clamp(0.0, totalVol);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Resumen de Capacidad
+          // Tarjeta: Dimensiones Generales (mm)
           Card(
-            color: const Color(0xFF0B1329),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Capacidad Geométrica Total', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                      Text('${totalVol.toStringAsFixed(1)} L', style: const TextStyle(color: Color(0xFFD97706), fontSize: 24, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  Text('${_length.toInt()} × ${_width.toInt()} × ${_height.toInt()} mm', style: const TextStyle(color: Colors.white60, fontSize: 12)),
-                ],
-              ),
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.blue.shade100, width: 1),
             ),
-          ),
-          const SizedBox(height: 10),
-
-          // Selector de Geometría
-          Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Parámetros del Estanque', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    value: _tankType,
-                    decoration: const InputDecoration(labelText: 'Geometría', border: OutlineInputBorder()),
-                    items: const [
-                      DropdownMenuItem(value: 'rectangular', child: Text('Prisma Rectangular (Radios Libres)')),
-                      DropdownMenuItem(value: 'cylinder_horizontal', child: Text('Cilíndrico Horizontal')),
-                      DropdownMenuItem(value: 'elliptical_horizontal', child: Text('Elíptico / Ovalado')),
-                      DropdownMenuItem(value: 'd_shape', child: Text('Forma D (Volvo / Scania)')),
-                      DropdownMenuItem(value: 'step_notch', child: Text('Tipo Escalera (Retroexcavadora)')),
-                      DropdownMenuItem(value: 'double_tank', child: Text('Doble Estanque Conectado')),
+                  const Text('Dimensiones Generales (mm)', style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(child: _buildNumField('Largo (mm)', _length, (v) => setState(() => _length = v))),
+                      const SizedBox(width: 10),
+                      Expanded(child: _buildNumField('Ancho (mm)', _width, (v) => setState(() => _width = v))),
+                      const SizedBox(width: 10),
+                      Expanded(child: _buildNumField('Alto (mm)', _height, (v) => setState(() => _height = v))),
                     ],
-                    onChanged: (v) => setState(() => _tankType = v!),
                   ),
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: _buildNumField('Largo (L)', _length, (v) => setState(() => _length = v))),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('Ancho (W)', _width, (v) => setState(() => _width = v))),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('Alto (H)', _height, (v) => setState(() => _height = v))),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(child: _buildNumField('Espesor Chapa', _thickness, (v) => setState(() => _thickness = v))),
-                      const SizedBox(width: 8),
+                      Expanded(child: _buildNumField('Espesor Chapa (mm)', _thickness, (v) => setState(() => _thickness = v))),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: DropdownButtonFormField<bool>(
                           value: _isExternal,
-                          decoration: const InputDecoration(labelText: 'Medición', border: OutlineInputBorder()),
+                          decoration: const InputDecoration(labelText: 'Medición', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
                           items: const [
                             DropdownMenuItem(value: true, child: Text('Externa')),
                             DropdownMenuItem(value: false, child: Text('Interna')),
@@ -777,58 +716,168 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                       ),
                     ],
                   ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
 
-                  // Campos específicos según geometría
-                  if (_tankType == 'rectangular') ...[
-                    const Divider(height: 20),
-                    const Text('Radios de Esquina Transversales (mm)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(child: _buildNumField('Piso Izq', _rInfLi, (v) => setState(() => _rInfLi = v))),
-                        const SizedBox(width: 8),
-                        Expanded(child: _buildNumField('Piso Der', _rInfLd, (v) => setState(() => _rInfLd = v))),
-                        const SizedBox(width: 8),
-                        Expanded(child: _buildNumField('Techo Izq', _rSupLi, (v) => setState(() => _rSupLi = v))),
-                        const SizedBox(width: 8),
-                        Expanded(child: _buildNumField('Techo Der', _rSupLd, (v) => setState(() => _rSupLd = v))),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(child: _buildNumField('Aristas Vert.', _rVert, (v) => setState(() => _rVert = v))),
-                      ],
-                    ),
-                  ],
+          // Tarjeta: Radios en Bordes Inferiores / Piso (mm)
+          Card(
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.blue.shade100, width: 1),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('RADIOS EN BORDES INFERIORES / PISO (MM)', style: TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 0.5)),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: _buildNumField('L. Izq.', _rInfLi, (v) => setState(() => _rInfLi = v))),
+                      const SizedBox(width: 8),
+                      Expanded(child: _buildNumField('L. Der.', _rInfLd, (v) => setState(() => _rInfLd = v))),
+                      const SizedBox(width: 8),
+                      Expanded(child: _buildNumField('A. Front.', _rInfAf, (v) => setState(() => _rInfAf = v))),
+                      const SizedBox(width: 8),
+                      Expanded(child: _buildNumField('A. Post.', _rInfAp, (v) => setState(() => _rInfAp = v))),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
 
-                  if (_tankType == 'step_notch') ...[
-                    const Divider(height: 20),
-                    const Text('Escalón Retroexcavadora (mm)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(child: _buildNumField('Ancho Escalón', _stepWidth, (v) => setState(() => _stepWidth = v))),
-                        const SizedBox(width: 8),
-                        Expanded(child: _buildNumField('Alto Escalón', _stepHeight, (v) => setState(() => _stepHeight = v))),
-                      ],
-                    ),
-                  ],
+          // Tarjeta: Radios en Bordes Superiores / Techo (mm)
+          Card(
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.blue.shade100, width: 1),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('RADIOS EN BORDES SUPERIORES / TECHO (MM)', style: TextStyle(color: Colors.blueGrey, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 0.5)),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: _buildNumField('L. Izq.', _rSupLi, (v) => setState(() => _rSupLi = v))),
+                      const SizedBox(width: 8),
+                      Expanded(child: _buildNumField('L. Der.', _rSupLd, (v) => setState(() => _rSupLd = v))),
+                      const SizedBox(width: 8),
+                      Expanded(child: _buildNumField('A. Front.', _rSupAf, (v) => setState(() => _rSupAf = v))),
+                      const SizedBox(width: 8),
+                      Expanded(child: _buildNumField('A. Post.', _rSupAp, (v) => setState(() => _rSupAp = v))),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(child: _buildNumField('Aristas Verticales (L×W)', _rVert, (v) => setState(() => _rVert = v))),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
 
-                  if (_tankType == 'double_tank') ...[
-                    const Divider(height: 20),
-                    const Text('Estanque Secundario (mm)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(child: _buildNumField('Largo 2', _tank2Length, (v) => setState(() => _tank2Length = v))),
-                        const SizedBox(width: 8),
-                        Expanded(child: _buildNumField('Ancho 2', _tank2Width, (v) => setState(() => _tank2Width = v))),
-                        const SizedBox(width: 8),
-                        Expanded(child: _buildNumField('Alto 2', _tank2Height, (v) => setState(() => _tank2Height = v))),
-                      ],
-                    ),
-                  ],
+          // Tarjeta: Nivel de Líquido y Resumen Volumétrico
+          Card(
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: Colors.blue.shade100, width: 1),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Nivel de Líquido', style: TextStyle(color: Color(0xFF1E3A8A), fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildNumField(
+                          'Altura del Combustible Actual (mm)',
+                          _currentLiquidMm,
+                          (v) => setState(() => _currentLiquidMm = v),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      // Volumen Total
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0F7FF),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFBFDBFE)),
+                          ),
+                          child: Column(
+                            children: [
+                              Text('Volumen Total', style: TextStyle(fontSize: 11, color: Colors.blue.shade900, fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
+                              Text('${totalVol.toStringAsFixed(1)} L', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Líquido Actual
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0FDF4),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFBBF7D0)),
+                          ),
+                          child: Column(
+                            children: [
+                              Text('Líquido Actual', style: TextStyle(fontSize: 11, color: Colors.green.shade900, fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
+                              Text('${currentVol.toStringAsFixed(1)} L', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green.shade900)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+
+                      // Espacio Vacío
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFFBEB),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFFDE68A)),
+                          ),
+                          child: Column(
+                            children: [
+                              Text('Espacio Vacío', style: TextStyle(fontSize: 11, color: Colors.amber.shade900, fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 4),
+                              Text('${emptyVol.toStringAsFixed(1)} L', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.amber.shade900)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
