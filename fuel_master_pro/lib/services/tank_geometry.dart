@@ -41,6 +41,28 @@ class TankGeometryEngine {
         length <= 0 || width <= 0 || height <= 0 || thickness < 0) {
       return 0.0;
     }
+    const supportedTypes = {
+      'rectangular',
+      'cylinder_horizontal',
+      'elliptical_horizontal',
+      'd_shape',
+      'step_notch',
+      'double_tank',
+    };
+    final geometryValues = [
+      rInfLi, rInfLd, rSupLi, rSupLd,
+      rInfAf, rInfAp, rSupAf, rSupAp, rVert,
+      stepWidth, stepHeight,
+      tank2Length, tank2Width, tank2Height,
+      dRBottomFront, dRTopFront, dRBackCorners,
+    ];
+    if (!supportedTypes.contains(tankType) ||
+        geometryValues.any((value) => !value.isFinite || value < 0) ||
+        !{'bottom_right', 'bottom_left', 'top_right'}.contains(stepSide) ||
+        !{'flat', 'hemispherical'}.contains(cylHead)) {
+      return 0.0;
+    }
+
     final t = isExternal ? thickness : 0.0;
     if (2 * t >= length || 2 * t >= width || 2 * t >= height) return 0.0;
 
