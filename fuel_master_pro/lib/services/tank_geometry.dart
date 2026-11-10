@@ -96,6 +96,7 @@ class TankGeometryEngine {
         L: effL,
         W: effW,
         H: effH,
+        t: t,
         rInfLi: rInfLi,
         rInfLd: rInfLd,
         rSupLi: rSupLi,
