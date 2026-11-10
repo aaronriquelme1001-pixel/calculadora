@@ -1,0 +1,42 @@
+name: Validate calculator
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - 'fix/**'
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Validate web application
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check JavaScript syntax
+        run: node --check app.js
+
+  android:
+    name: Analyze and test Fuel Master Pro
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        working-directory: fuel_master_pro
+        run: flutter pub get
+      - name: Static analysis
+        working-directory: fuel_master_pro
+        run: flutter analyze --no-pub
+      - name: Unit tests
+        working-directory: fuel_master_pro
+        run: flutter test --no-pub
