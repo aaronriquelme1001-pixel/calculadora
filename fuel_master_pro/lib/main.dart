@@ -80,13 +80,9 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   double _rSupAf = 0;
   double _rSupAp = 0;
 
-  // Nivel de líquido actual simulado / calibrado
-  double _currentLiquidMm = 0;
-
   // Calibración Sensor AoooG
   double _emptyFreq = 15000;
   double _fullFreq = 10000;
-  String _authPin = '12345678';
   bool _isUploading = false;
   double _uploadProgress = 0.0;
 
@@ -102,7 +98,6 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   late TextEditingController _rSupLdCtrl;
   late TextEditingController _rSupAfCtrl;
   late TextEditingController _rSupApCtrl;
-  late TextEditingController _waterCtrl;
 
   @override
   void initState() {
@@ -118,7 +113,6 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     _rSupLdCtrl = TextEditingController(text: _rSupLd.toStringAsFixed(0));
     _rSupAfCtrl = TextEditingController(text: _rSupAf.toStringAsFixed(0));
     _rSupApCtrl = TextEditingController(text: _rSupAp.toStringAsFixed(0));
-    _waterCtrl = TextEditingController(text: '');
 
     _requestPermissionsAndScan();
   }
@@ -138,7 +132,6 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     _rSupLdCtrl.dispose();
     _rSupAfCtrl.dispose();
     _rSupApCtrl.dispose();
-    _waterCtrl.dispose();
     super.dispose();
   }
 
@@ -308,28 +301,6 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     );
   }
 
-  double _calculateLiquidVolume() {
-    if (_currentLiquidMm <= 0) return 0.0;
-    return TankGeometryEngine.calculateVolumeAtHeight(
-      tankType: 'rectangular',
-      length: _length,
-      width: _width,
-      height: _height,
-      thickness: _thickness,
-      isExternal: _isExternal,
-      hMm: _currentLiquidMm,
-      rInfLi: _rInfLi,
-      rInfLd: _rInfLd,
-      rSupLi: _rSupLi,
-      rSupLd: _rSupLd,
-      rInfAf: _rInfAf,
-      rInfAp: _rInfAp,
-      rSupAf: _rSupAf,
-      rSupAp: _rSupAp,
-      rVert: 0,
-    );
-  }
-
   List<CalibrationRow> _generate30PointCalibration() {
     double t = _isExternal ? _thickness : 0.0;
     double innerH = _height - 2 * t;
@@ -361,10 +332,10 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
       double expectedFreq = _emptyFreq + (_fullFreq - _emptyFreq) * fraction;
 
       rows.add(CalibrationRow(
-        index: i + 1,
+        index: i,
         volumeL: vol,
         levelMm: h.round(),
-        fixValue: 0,
+        fixValue: (fraction * 5000).round(),
         expectedFreqHz: expectedFreq,
       ));
     }
@@ -386,30 +357,26 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
 
     final rows = _generate30PointCalibration();
 
-    // 1. Autenticar con PIN primero
-    final authOk = await _bleManager.authenticate(_authPin);
-    if (!authOk) {
-      if (mounted) {
-        setState(() => _isUploading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error de autenticación con el PIN. Verifique el PIN del sensor.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-      return;
-    }
+    // 1. Autenticación silenciosa con password por defecto
+    debugPrint('[CALIBRATION] Intentando autenticación silenciosa...');
+    final authOk = await _bleManager.authenticate('12345678');
+    debugPrint('[CALIBRATION] Auth resultado: $authOk');
+    // Continuamos sin importar si auth falla (algunos sensores no lo requieren)
 
+    // 2. Enviar tabla de calibración
+    debugPrint('[CALIBRATION] Enviando ${rows.length} puntos al sensor...');
     final ok = await _bleManager.uploadCalibrationTable(
       rows,
       onProgress: (current, total) {
+        debugPrint('[CALIBRATION] Progreso: $current/$total');
         if (mounted) setState(() => _uploadProgress = current / total);
       },
     );
 
     if (!mounted) return;
     setState(() => _isUploading = false);
+
+    debugPrint('[CALIBRATION] Resultado final: $ok');
 
     if (ok) {
       showDialog(
@@ -439,7 +406,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Error al enviar calibración. Verifique PIN (12345678) y reconecte.'),
+          content: Text('Error al enviar calibración. Reconecte el sensor e intente de nuevo.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -455,9 +422,6 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            final totVol = _calculateTotalVolume();
-            final curVol = _calculateLiquidVolume();
-            final emptyVol = (totVol - curVol).clamp(0.0, double.infinity);
 
             return Container(
               height: MediaQuery.of(context).size.height * 0.92,
@@ -624,33 +588,23 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const Text(
-                                  'Parámetros Sensor (Hz) y Seguridad',
+                                  'Parámetros del Sensor (Hz)',
                                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF1E3A8A)),
                                 ),
                                 const SizedBox(height: 12),
                                 Row(
                                   children: [
                                     Expanded(
-                                      child: _buildInputBox(
+                                      child: _buildReadOnlyBox(
                                         'Freq Vacío (Hz)',
                                         _emptyFreq.toStringAsFixed(0),
-                                        (v) => _emptyFreq = double.tryParse(v) ?? _emptyFreq,
                                       ),
                                     ),
                                     const SizedBox(width: 10),
                                     Expanded(
-                                      child: _buildInputBox(
+                                      child: _buildReadOnlyBox(
                                         'Freq Lleno (Hz)',
                                         _fullFreq.toStringAsFixed(0),
-                                        (v) => _fullFreq = double.tryParse(v) ?? _fullFreq,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: _buildInputBox(
-                                        'PIN Autenticación',
-                                        _authPin,
-                                        (v) => _authPin = v,
                                       ),
                                     ),
                                   ],
@@ -700,11 +654,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     );
   }
 
-  // WIDGET EXACTO DE LA CAPTURA DEL USUARIO (media_1794328197780_9d2aec24.png)
   Widget _buildUserTankDesignCard(void Function(void Function()) setParentState) {
-    final totVol = _calculateTotalVolume();
-    final curVol = _calculateLiquidVolume();
-    final emptyVol = (totVol - curVol).clamp(0.0, double.infinity);
 
     return Container(
       decoration: BoxDecoration(
@@ -916,107 +866,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
               ],
             ),
           ),
-          const SizedBox(height: 18),
-
-          // Nivel de Líquido
-          const Text(
-            'Nivel de Líquido',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1E3A8A),
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Divider(color: Color(0xFFE2E8F0), thickness: 1),
-          const SizedBox(height: 12),
-
-          _buildParamInput(
-            'Altura del Agua Actual (mm)',
-            _waterCtrl,
-            (v) {
-              setParentState(() => _currentLiquidMm = double.tryParse(v) ?? 0.0);
-              setState(() {});
-            },
-          ),
-          const SizedBox(height: 14),
-
-          // 3 Bloques de Métricas: Volumen Total, Líquido Actual, Espacio Vacío
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF), // Azul claro
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFDBEAFE)),
-                  ),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'Volumen Total',
-                        style: TextStyle(fontSize: 12, color: Color(0xFF3B82F6), fontWeight: FontWeight.w500),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${totVol.toStringAsFixed(1)} L',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E3A8A)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFECFDF5), // Verde claro
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFA7F3D0)),
-                  ),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'Líquido Actual',
-                        style: TextStyle(fontSize: 12, color: Color(0xFF10B981), fontWeight: FontWeight.w500),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${curVol.toStringAsFixed(1)} L',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF065F46)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFFBEB), // Amarillo suave
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFFDE68A)),
-                  ),
-                  child: Column(
-                    children: [
-                      const Text(
-                        'Espacio Vacío',
-                        style: TextStyle(fontSize: 12, color: Color(0xFFD97706), fontWeight: FontWeight.w500),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${emptyVol.toStringAsFixed(1)} L',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF92400E)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -1109,13 +959,42 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     );
   }
 
+  Widget _buildReadOnlyBox(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500)),
+        const SizedBox(height: 4),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEFF6FF),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFBFDBFE)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.lock_outline, size: 14, color: Color(0xFF3B82F6)),
+              const SizedBox(width: 6),
+              Text(
+                value,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1E40AF)),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _metricBox(String label, String value, Color bg, Color textColor) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
       child: Column(
         children: [
-          Text(label, style: TextStyle(fontSize: 11, color: textColor.withOpacity(0.8), fontWeight: FontWeight.w500)),
+          Text(label, style: TextStyle(fontSize: 11, color: textColor.withValues(alpha: 0.8), fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
           Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textColor)),
         ],
@@ -1262,8 +1141,8 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                     end: Alignment.topCenter,
                     colors: [
                       const Color(0xFFF5F6F9),
-                      const Color(0xFFF5F6F9).withOpacity(0.95),
-                      const Color(0xFFF5F6F9).withOpacity(0.0),
+                      const Color(0xFFF5F6F9).withValues(alpha: 0.95),
+                      const Color(0xFFF5F6F9).withValues(alpha: 0.0),
                     ],
                   ),
                 ),
