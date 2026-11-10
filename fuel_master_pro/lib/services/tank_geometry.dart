@@ -20,8 +20,12 @@ class TankGeometryEngine {
     double rInfAp = 0,
     double rSupAf = 0,
     double rSupAp = 0,
-    // Radio aristas verticales
+    // Radio aristas verticales / bajadas de esquinas
     double rVert = 0,
+    double rVertFi = 0,
+    double rVertFd = 0,
+    double rVertPi = 0,
+    double rVertPd = 0,
     // Escalón retroexcavadora
     double stepWidth = 0,
     double stepHeight = 0,
@@ -102,6 +106,10 @@ class TankGeometryEngine {
           rSupAf: rSupAf,
           rSupAp: rSupAp,
           rVert: rVert,
+          rVertFi: rVertFi,
+          rVertFd: rVertFd,
+          rVertPi: rVertPi,
+          rVertPd: rVertPd,
           stepWidth: stepWidth,
           stepHeight: stepHeight,
           stepSide: stepSide,
@@ -143,6 +151,10 @@ class TankGeometryEngine {
     required double rSupAf,
     required double rSupAp,
     required double rVert,
+    double rVertFi = 0,
+    double rVertFd = 0,
+    double rVertPi = 0,
+    double rVertPd = 0,
     required double stepWidth,
     required double stepHeight,
     required String stepSide,
@@ -257,11 +269,14 @@ class TankGeometryEngine {
       double effL = math.max(0.0, L - dyF - dyB).toDouble();
       double area = effW * effL;
 
-      final verticalRadius = math.min(math.min(W / 4.0, L / 4.0), rVert).toDouble();
-      if (verticalRadius > 0) {
-        area -= (4.0 - math.pi) * verticalRadius * verticalRadius;
-      }
-      return math.max(0.0, area).toDouble();
+      final rvFi = math.max(0.0, math.min(math.min(W / 2.0, L / 2.0), (rVertFi > 0 ? rVertFi : rVert) - t)).toDouble();
+      final rvFd = math.max(0.0, math.min(math.min(W / 2.0, L / 2.0), (rVertFd > 0 ? rVertFd : rVert) - t)).toDouble();
+      final rvPi = math.max(0.0, math.min(math.min(W / 2.0, L / 2.0), (rVertPi > 0 ? rVertPi : rVert) - t)).toDouble();
+      final rvPd = math.max(0.0, math.min(math.min(W / 2.0, L / 2.0), (rVertPd > 0 ? rVertPd : rVert) - t)).toDouble();
+
+      final cornerLostVert = (1.0 - math.pi / 4.0) * (rvFi * rvFi + rvFd * rvFd + rvPi * rvPi + rvPd * rvPd);
+      area = math.max(0.0, area - cornerLostVert).toDouble();
+      return area;
     }
   }
 

@@ -40,8 +40,12 @@
       r_sup_af: 0,
       r_sup_ap: 0,
 
-      // Radio aristas verticales (L x W)
+      // Radio aristas verticales / bajadas de esquinas (L x W)
       r_vert: 0,
+      r_vert_fi: 0,
+      r_vert_fd: 0,
+      r_vert_pi: 0,
+      r_vert_pd: 0,
 
       // Retroexcavadora con escalón
       stepWidth: 200,
@@ -216,12 +220,16 @@
         const effL = Math.max(0, L - dy_f - dy_b);
         let area = effW * effL;
 
-        const rv = Math.min(W / 4, L / 4, Number(state.tank.r_vert) || 0);
-        if (rv > 0) {
-          const cornerLostPerVert = (4 - Math.PI) * rv * rv;
-          area -= cornerLostPerVert;
-        }
-        return Math.max(0, area);
+        // Radios de las bajadas de esquinas (aristas verticales)
+        const rvGlobal = Number(state.tank.r_vert) || 0;
+        const rv_fi = Math.max(0, Math.min(W / 2, L / 2, (Number(state.tank.r_vert_fi) || rvGlobal) - t));
+        const rv_fd = Math.max(0, Math.min(W / 2, L / 2, (Number(state.tank.r_vert_fd) || rvGlobal) - t));
+        const rv_pi = Math.max(0, Math.min(W / 2, L / 2, (Number(state.tank.r_vert_pi) || rvGlobal) - t));
+        const rv_pd = Math.max(0, Math.min(W / 2, L / 2, (Number(state.tank.r_vert_pd) || rvGlobal) - t));
+
+        const cornerLostVert = (1 - Math.PI / 4) * (rv_fi * rv_fi + rv_fd * rv_fd + rv_pi * rv_pi + rv_pd * rv_pd);
+        area = Math.max(0, area - cornerLostVert);
+        return area;
       }
 
       case 'step_notch': {
@@ -2225,6 +2233,10 @@
     bindInput('r_sup_af', (v) => { state.tank.r_sup_af = v; });
     bindInput('r_sup_ap', (v) => { state.tank.r_sup_ap = v; });
     bindInput('r_vert', (v) => { state.tank.r_vert = v; });
+    bindInput('r_vert_fi', (v) => { state.tank.r_vert_fi = v; });
+    bindInput('r_vert_fd', (v) => { state.tank.r_vert_fd = v; });
+    bindInput('r_vert_pi', (v) => { state.tank.r_vert_pi = v; });
+    bindInput('r_vert_pd', (v) => { state.tank.r_vert_pd = v; });
 
     bindInput('sensorDataMin', (v) => { state.sensor.dataMin = v; });
     bindInput('sensorDataMax', (v) => { state.sensor.dataMax = v; });
@@ -2359,7 +2371,11 @@
     setVal('r_inf_ap', state.tank.r_inf_ap);
     setVal('r_sup_af', state.tank.r_sup_af);
     setVal('r_sup_ap', state.tank.r_sup_ap);
-    setVal('r_vert', state.tank.r_vert);
+    setVal('r_vert', state.tank.r_vert || 0);
+    setVal('r_vert_fi', state.tank.r_vert_fi || 0);
+    setVal('r_vert_fd', state.tank.r_vert_fd || 0);
+    setVal('r_vert_pi', state.tank.r_vert_pi || 0);
+    setVal('r_vert_pd', state.tank.r_vert_pd || 0);
 
     setVal('sensorDataMin', state.sensor.dataMin);
     setVal('sensorDataMax', state.sensor.dataMax);

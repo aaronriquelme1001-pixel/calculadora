@@ -83,6 +83,12 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   double _rSupAf = 0;
   double _rSupAp = 0;
 
+  // Radios en Bajadas de las Esquinas / Verticales (mm)
+  double _rVertFi = 0;
+  double _rVertFd = 0;
+  double _rVertPi = 0;
+  double _rVertPd = 0;
+
   // Calibración Sensor AoooG
   double _emptyFreq = 15000;
   double _fullFreq = 10000;
@@ -102,6 +108,10 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   late TextEditingController _rSupLdCtrl;
   late TextEditingController _rSupAfCtrl;
   late TextEditingController _rSupApCtrl;
+  late TextEditingController _rVertFiCtrl;
+  late TextEditingController _rVertFdCtrl;
+  late TextEditingController _rVertPiCtrl;
+  late TextEditingController _rVertPdCtrl;
 
   @override
   void initState() {
@@ -117,6 +127,10 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     _rSupLdCtrl = TextEditingController(text: _rSupLd.toStringAsFixed(0));
     _rSupAfCtrl = TextEditingController(text: _rSupAf.toStringAsFixed(0));
     _rSupApCtrl = TextEditingController(text: _rSupAp.toStringAsFixed(0));
+    _rVertFiCtrl = TextEditingController(text: _rVertFi.toStringAsFixed(0));
+    _rVertFdCtrl = TextEditingController(text: _rVertFd.toStringAsFixed(0));
+    _rVertPiCtrl = TextEditingController(text: _rVertPi.toStringAsFixed(0));
+    _rVertPdCtrl = TextEditingController(text: _rVertPd.toStringAsFixed(0));
 
     _requestPermissionsAndScan();
   }
@@ -136,6 +150,10 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     _rSupLdCtrl.dispose();
     _rSupAfCtrl.dispose();
     _rSupApCtrl.dispose();
+    _rVertFiCtrl.dispose();
+    _rVertFdCtrl.dispose();
+    _rVertPiCtrl.dispose();
+    _rVertPdCtrl.dispose();
     super.dispose();
   }
 
@@ -303,7 +321,10 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
       rInfAp: _rInfAp,
       rSupAf: _rSupAf,
       rSupAp: _rSupAp,
-      rVert: 0,
+      rVertFi: _rVertFi,
+      rVertFd: _rVertFd,
+      rVertPi: _rVertPi,
+      rVertPd: _rVertPd,
     );
   }
 
@@ -331,7 +352,10 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
         rInfAp: _rInfAp,
         rSupAf: _rSupAf,
         rSupAp: _rSupAp,
-        rVert: 0,
+        rVertFi: _rVertFi,
+        rVertFd: _rVertFd,
+        rVertPi: _rVertPi,
+        rVertPd: _rVertPd,
       );
 
       double fraction = i / 29.0;
@@ -1280,6 +1304,68 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                         _rSupApCtrl,
                         (v) {
                           setParentState(() => _rSupAp = double.tryParse(v) ?? _rSupAp);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: const [
+                    Text(
+                      'RADIOS EN BAJADAS DE ESQUINAS (MM)',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey, letterSpacing: 0.5),
+                    ),
+                    Text(
+                      'Aristas Verticales',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildRadiusInput(
+                        'F. Izq.',
+                        _rVertFiCtrl,
+                        (v) {
+                          setParentState(() => _rVertFi = double.tryParse(v) ?? _rVertFi);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildRadiusInput(
+                        'F. Der.',
+                        _rVertFdCtrl,
+                        (v) {
+                          setParentState(() => _rVertFd = double.tryParse(v) ?? _rVertFd);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildRadiusInput(
+                        'P. Izq.',
+                        _rVertPiCtrl,
+                        (v) {
+                          setParentState(() => _rVertPi = double.tryParse(v) ?? _rVertPi);
+                          setState(() {});
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildRadiusInput(
+                        'P. Der.',
+                        _rVertPdCtrl,
+                        (v) {
+                          setParentState(() => _rVertPd = double.tryParse(v) ?? _rVertPd);
                           setState(() {});
                         },
                       ),
