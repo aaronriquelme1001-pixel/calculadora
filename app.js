@@ -847,7 +847,14 @@
 
     const eff = getEffectiveDimensions();
     const t = state.tank.dimType === 'external' ? (Number(state.tank.thickness) || 0) : 0;
-    const maxDim = Math.max(eff.L, eff.W, eff.H, (state.tank.type === 'double_tank' ? (Number(state.tank.tank2Length) || eff.L) : 0));
+    const maxDim = state.tank.type === 'double_tank'
+      ? Math.max(
+          eff.L, eff.W, eff.H,
+          (Number(state.tank.tank2Length) || eff.L) - 2 * t,
+          (Number(state.tank.tank2Width) || eff.W) - 2 * t,
+          (Number(state.tank.tank2Height) || eff.H) - 2 * t
+        )
+      : Math.max(eff.L, eff.W, eff.H);
     const scale = (Math.min(w, h) * 0.44 / maxDim);
 
     currentBounds = { ox: cx, oy: cy, scale };
