@@ -149,8 +149,10 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     final permissionResults = await [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
+      Permission.location, // Necesario para escaneo BLE en Android 11 y anteriores.
     ].request();
-    final denied = permissionResults.entries.any((entry) => !entry.value.isGranted);
+    final denied = !permissionResults[Permission.bluetoothScan]!.isGranted ||
+        !permissionResults[Permission.bluetoothConnect]!.isGranted;
     if (denied) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
