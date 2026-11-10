@@ -46,7 +46,10 @@ class TankGeometryEngine {
     final effL = length - 2 * t;
     final effW = width - 2 * t;
     final effH = height - 2 * t;
-    final effH2 = math.max(0.0, tank2Height - (isExternal ? 2 * thickness : 0.0));
+    final hasSecondTank = tank2Length > 0 && tank2Width > 0 && tank2Height > 0;
+    final effH2 = hasSecondTank
+        ? math.max(10.0, tank2Height - (isExternal ? 2 * thickness : 0.0))
+        : effH;
     final integrationHeight = tankType == 'double_tank' ? math.max(effH, effH2) : effH;
     final zClamped = math.max(0.0, math.min(integrationHeight, hMm));
     if (zClamped <= 0.0) return 0.0;
@@ -168,9 +171,10 @@ class TankGeometryEngine {
       }
       return effW * L;
     } else if (type == 'double_tank') {
-      double L2 = math.max(10.0, tank2Length - 2 * t);
-      double W2 = math.max(10.0, tank2Width - 2 * t);
-      double H2 = math.max(10.0, tank2Height - 2 * t);
+      final hasSecondTank = tank2Length > 0 && tank2Width > 0 && tank2Height > 0;
+      double L2 = hasSecondTank ? math.max(10.0, tank2Length - 2 * t) : L;
+      double W2 = hasSecondTank ? math.max(10.0, tank2Width - 2 * t) : W;
+      double H2 = hasSecondTank ? math.max(10.0, tank2Height - 2 * t) : H;
       double a1 = (z <= H) ? (W * L) : 0.0;
       double a2 = (z <= H2) ? (W2 * L2) : 0.0;
       return a1 + a2;
