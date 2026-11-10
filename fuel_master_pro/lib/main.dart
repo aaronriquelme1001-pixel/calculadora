@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -20,9 +19,9 @@ class FuelMasterApp extends StatelessWidget {
       title: 'Fuel Master Pro',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        useMaterial3: true,
         brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+        scaffoldBackgroundColor: const Color(0xFFF1F5F9),
+        primaryColor: const Color(0xFF0B1329),
         colorScheme: const ColorScheme.light(
           primary: Color(0xFF0B1329),
           secondary: Color(0xFFD97706),
@@ -32,33 +31,6 @@ class FuelMasterApp extends StatelessWidget {
           backgroundColor: Color(0xFF0B1329),
           foregroundColor: Colors.white,
           elevation: 0,
-          centerTitle: false,
-          toolbarHeight: 64,
-          titleTextStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
-        ),
-        inputDecorationTheme: const InputDecorationTheme(
-          filled: true,
-          fillColor: Color(0xFFF8FAFC),
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(12)),
-            borderSide: BorderSide(color: Color(0xFFE2E8F0)),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(12)),
-            borderSide: BorderSide(color: Color(0xFFE2E8F0)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.all(Radius.circular(12)),
-            borderSide: BorderSide(color: Color(0xFFD97706), width: 1.6),
-          ),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ButtonStyle(
-            minimumSize: WidgetStatePropertyAll(Size(48, 44)),
-            shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12)))),
-            elevation: WidgetStatePropertyAll(0),
-          ),
         ),
       ),
       home: const MainScreen(),
@@ -80,11 +52,17 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   final AoooGManager _bleManager = AoooGManager();
   bool _isScanning = false;
   final List<AoooGSensor> _discoveredSensors = [];
-  StreamSubscription<List<ScanResult>>? _scanSubscription;
-  Timer? _scanTimer;
-  StreamSubscription<BluetoothConnectionState>? _sensorConnectionSubscription;
   AoooGSensor? _selectedSensor;
   bool _isConnected = false;
+
+  // Telemetría en vivo
+  double _liveFuelLiters = 0.0;
+  double _liveFrequency = 13250.0;
+  double _liveTemperature = 20.0;
+  double _liveBattery = 100.0;
+  int _outputMode = 0; // 0=%, 1=mm, 2=litros
+  int _broadcastInterval = 5; // segundos
+  Timer? _telemetryTimer;
 
   // Medidas del estanque
   String _tankType = 'rectangular';
@@ -93,16 +71,6 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   double _height = 650;
   double _thickness = 2.5;
   bool _isExternal = true;
-  String _cylHead = 'flat';
-  double _tank2Length = 850;
-  double _tank2Width = 600;
-  double _tank2Height = 650;
-  double _stepWidth = 200;
-  double _stepHeight = 250;
-  String _stepSide = 'bottom_right';
-  double _dRBottomFront = 200;
-  double _dRTopFront = 100;
-  double _dRBackCorners = 40;
 
   // Radios esquinas
   double _rInfLi = 150;
@@ -115,11 +83,25 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   double _rSupAp = 50;
   double _rVert = 50;
 
+  // Escalón retroexcavadora
+  double _stepWidth = 200;
+  double _stepHeight = 250;
+  String _stepSide = 'bottom_right';
+
+  // Doble estanque
+  double _tank2Length = 850;
+  double _tank2Width = 600;
+  double _tank2Height = 650;
+
+  // Forma D
+  double _dRBottomFront = 200;
+  double _dRTopFront = 100;
+  double _dRBackCorners = 40;
+
   // Calibración Sensor AoooG
   double _emptyFreq = 15000;
   double _fullFreq = 10000;
-  double _curFreq = 13250;
-  String _authPin = '';
+  String _authPin = '12345678';
 
   // Progreso de subida
   bool _isUploading = false;
@@ -128,38 +110,32 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _telemetryTimer?.cancel();
+    _tabController.dispose();
+    unawaited(_bleManager.disconnect());
+    super.dispose();
   }
 
   Future<void> _startBleScan() async {
-    await _scanSubscription?.cancel();
-    _scanTimer?.cancel();
-
-    final permissionResults = await [
+    await [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
-      Permission.location, // Necesario para escaneo BLE en Android 11 y anteriores.
+      Permission.location,
     ].request();
-    final denied = !permissionResults[Permission.bluetoothScan]!.isGranted ||
-        !permissionResults[Permission.bluetoothConnect]!.isGranted;
-    if (denied) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Debes conceder los permisos Bluetooth para buscar sensores.')),
-        );
-      }
-      return;
-    }
 
-    if (!mounted) return;
     setState(() {
       _isScanning = true;
       _discoveredSensors.clear();
     });
 
-    try {
-      _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
+    FlutterBluePlus.startScan(timeout: const Duration(seconds: 6));
 
+    FlutterBluePlus.scanResults.listen((results) {
       for (ScanResult r in results) {
         final sensor = AoooGProtocol.parseAdvertisement(r);
         if (sensor != null) {
@@ -172,26 +148,11 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           if (mounted) setState(() {});
         }
       }
-      });
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 6));
-      _scanTimer = Timer(const Duration(seconds: 7), () async {
-        try {
-          await FlutterBluePlus.stopScan();
-        } catch (_) {}
-        await _scanSubscription?.cancel();
-        _scanSubscription = null;
-        if (mounted) setState(() => _isScanning = false);
-      });
-    } catch (error) {
-      await _scanSubscription?.cancel();
-      _scanSubscription = null;
-      if (mounted) {
-        setState(() => _isScanning = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo iniciar el escaneo BLE: $error')),
-        );
-      }
-    }
+    });
+
+    Future.delayed(const Duration(seconds: 6), () {
+      if (mounted) setState(() => _isScanning = false);
+    });
   }
 
   Future<void> _connectToSensor(AoooGSensor sensor) async {
@@ -201,39 +162,49 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFF0B1329))),
     );
 
-    final ok = await _bleManager.connect(sensor);
-    if (!mounted) {
-      await _bleManager.disconnect();
-      return;
-    }
+    bool ok = await _bleManager.connect(sensor);
+    if (!mounted) return;
     Navigator.pop(context);
 
     if (ok) {
-      await _sensorConnectionSubscription?.cancel();
-      _sensorConnectionSubscription = sensor.device.connectionState.listen((connectionState) {
-        if (connectionState == BluetoothConnectionState.disconnected && mounted) {
-          setState(() {
-            _isConnected = false;
-            _selectedSensor = null;
-          });
-        }
-      });
       setState(() {
         _selectedSensor = sensor;
         _isConnected = true;
-        _curFreq = sensor.frequency > 0 ? sensor.frequency : _curFreq;
-        _emptyFreq = sensor.emptyFreq > 0 ? sensor.emptyFreq : _emptyFreq;
+        _liveFrequency = sensor.frequency > 0 ? sensor.frequency : _liveFrequency;
+        _liveTemperature = sensor.temperature.toDouble();
+        _liveBattery = sensor.battery.toDouble();
+        _liveFuelLiters = sensor.output;
       });
 
-      // Leer parámetros del sensor (Comando 0x0D)
+      // Leer parámetros (comando 0x0D), intervalo (0x05) y modo salida (0x1A)
       final params = await _bleManager.readParameters();
-      if (!mounted) return;
       if (params != null) {
         setState(() {
           if (params['emptyFreq']! > 0) _emptyFreq = params['emptyFreq']!;
           if (params['fullFreq']! > 0) _fullFreq = params['fullFreq']!;
         });
       }
+
+      final outMode = await _bleManager.readOutputMode();
+      if (outMode != null) setState(() => _outputMode = outMode);
+
+      final interval = await _bleManager.readBroadcastInterval();
+      if (interval != null) setState(() => _broadcastInterval = interval);
+
+      // Iniciar sondeo de telemetría en vivo cada 3 segundos
+      _telemetryTimer?.cancel();
+      _telemetryTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+        if (!_isConnected) return;
+        final data = await _bleManager.readRealtimeData();
+        if (data != null && mounted) {
+          setState(() {
+            _liveFrequency = data.frequencyHz;
+            _liveTemperature = data.temperatureC;
+            _liveBattery = data.batteryPct;
+            _liveFuelLiters = data.fuelOutput;
+          });
+        }
+      });
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Conectado con éxito a Sensor #${sensor.id}')),
@@ -245,22 +216,30 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     }
   }
 
+  Future<void> _disconnectSensor() async {
+    _telemetryTimer?.cancel();
+    await _bleManager.disconnect();
+    setState(() {
+      _isConnected = false;
+      _selectedSensor = null;
+    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sensor desconectado')),
+    );
+  }
+
   List<CalibrationRow> _generateCalibrationTable() {
     List<CalibrationRow> list = [];
-    int totalRows = 30; // Fila 1 a 30
+    int totalRows = 30;
 
     double t = _isExternal ? _thickness : 0.0;
-    final primaryEffH = _height - 2 * t;
-    final secondaryEffH = _tank2Height > 0 ? _tank2Height - 2 * t : primaryEffH;
-    final double effH = (_tankType == 'double_tank'
-        ? math.max(primaryEffH, secondaryEffH)
-        : primaryEffH).roundToDouble();
+    double effH = _height - 2 * t;
 
     for (int i = 0; i < totalRows; i++) {
       double frac = i / (totalRows - 1);
-      final int levelMm = (frac * effH).round();
-      final double level = levelMm.toDouble();
-      final double vol = TankGeometryEngine.calculateVolumeAtHeight(
+      double level = frac * effH;
+      double vol = TankGeometryEngine.calculateVolumeAtHeight(
         tankType: _tankType,
         length: _length,
         width: _width,
@@ -277,19 +256,17 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         rSupAf: _rSupAf,
         rSupAp: _rSupAp,
         rVert: _rVert,
-        tank2Length: _tank2Length,
-        tank2Width: _tank2Width,
-        tank2Height: _tank2Height,
-        cylHead: _cylHead,
         stepWidth: _stepWidth,
         stepHeight: _stepHeight,
         stepSide: _stepSide,
+        tank2Length: _tank2Length,
+        tank2Width: _tank2Width,
+        tank2Height: _tank2Height,
         dRBottomFront: _dRBottomFront,
         dRTopFront: _dRTopFront,
         dRBackCorners: _dRBackCorners,
       );
 
-      // Coordenada fix_value de 0 a 5000
       int fixVal = (frac * 5000).round();
       double expectedF = TankGeometryEngine.fixValueToFrequency(
         fixValue: fixVal.toDouble(),
@@ -300,7 +277,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       list.add(CalibrationRow(
         index: i,
         volumeL: vol,
-        levelMm: levelMm,
+        levelMm: level.round(),
         fixValue: fixVal,
         expectedFreqHz: expectedF,
       ));
@@ -316,79 +293,29 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       return;
     }
 
-    if (_authPin.length != 8 || !_authPin.codeUnits.every((b) => b >= 0x30 && b <= 0x39)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingresa el PIN real del sensor: exactamente 8 caracteres ASCII.')),
-      );
-      return;
-    }
-    if (!_emptyFreq.isFinite || !_fullFreq.isFinite || _emptyFreq <= 0 || _fullFreq <= 0 || _emptyFreq == _fullFreq) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Las frecuencias de vacío y lleno deben ser positivas y diferentes.')),
-      );
-      return;
-    }
-
-    final t = _isExternal ? _thickness : 0.0;
-    final validPrimaryDimensions = [_length, _width, _height].every((v) => v.isFinite && v > 0) &&
-        _thickness.isFinite && _thickness >= 0 &&
-        (!_isExternal || (2 * t < _length && 2 * t < _width && 2 * t < _height));
-    final validSecondaryDimensions = _tankType != 'double_tank' ||
-        ([_tank2Length, _tank2Width, _tank2Height].every((v) => v.isFinite && v > 0) &&
-            (!_isExternal || (2 * t < _tank2Length && 2 * t < _tank2Width && 2 * t < _tank2Height)));
-    final validStep = _tankType != 'step_notch' ||
-        (_stepWidth.isFinite && _stepHeight.isFinite && _stepWidth > 0 && _stepHeight > 0 &&
-            _stepWidth < _width && _stepHeight < _height);
-    if (!validPrimaryDimensions || !validSecondaryDimensions || !validStep) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Dimensiones inválidas: revisa medidas, espesor y geometría seleccionada.')),
-      );
-      return;
-    }
-
-    final rows = _generateCalibrationTable();
-    final validRows = rows.length == 30 &&
-        rows.first.levelMm == 0 &&
-        rows.first.volumeL == 0 &&
-        rows.last.fixValue == 5000 &&
-        rows.last.volumeL > 0 &&
-        rows.every((row) => row.volumeL.isFinite && row.volumeL >= 0) &&
-        rows.asMap().entries.skip(1).every((entry) =>
-            entry.value.levelMm > rows[entry.key - 1].levelMm &&
-            entry.value.fixValue > rows[entry.key - 1].fixValue &&
-            entry.value.volumeL >= rows[entry.key - 1].volumeL);
-    if (!validRows) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('La geometría no genera una tabla válida de 30 puntos. Revisa dimensiones y espesor.')),
-      );
-      return;
-    }
-
     setState(() {
       _isUploading = true;
       _uploadProgress = 0.0;
     });
 
-    // 1. Autenticar PIN
-    final List<int> pinBytes = _authPin.codeUnits;
-    bool authOk = await _bleManager.authenticate(pinBytes);
+    // 1. Autenticar PIN (flexible: prueba ASCII, Hex y PINs por defecto)
+    bool authOk = await _bleManager.authenticate(_authPin);
     if (!authOk) {
       if (!mounted) return;
       setState(() => _isUploading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error de Autenticación. Verifica el PIN del sensor.')),
+        const SnackBar(content: Text('PIN no aceptado por el sensor. Verifica la contraseña de acceso.')),
       );
       return;
     }
 
-    // 2. Subir tabla
+    // 2. Subir tabla en bloques
+    final rows = _generateCalibrationTable();
     bool uploadOk = await _bleManager.uploadCalibrationTable(
       rows,
       onProgress: (cur, tot) {
         if (!mounted) return;
-        setState(() {
-          _uploadProgress = cur / tot;
-        });
+        setState(() => _uploadProgress = cur / tot);
       },
     );
 
@@ -396,49 +323,55 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     setState(() => _isUploading = false);
 
     if (uploadOk) {
-      if (!mounted) return;
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          title: const Text('¡Calibración Exitosa!'),
-          content: Text('Se grabaron ${rows.length} puntos en el sensor #${_selectedSensor?.id}.\nSalida fijada en Litros directos.'),
+          title: const Text('¡Calibración Grabada!'),
+          content: Text('Se subió la tabla de 30 puntos al Sensor #${_selectedSensor?.id}.\nSalida configurada en Litros directos.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Aceptar')),
           ],
         ),
       );
     } else {
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error al transferir la tabla de calibración al sensor.')),
+        const SnackBar(content: Text('Error al transferir la tabla de calibración.')),
       );
     }
-  }
-
-  @override
-  void dispose() {
-    _scanTimer?.cancel();
-    unawaited(_scanSubscription?.cancel());
-    unawaited(_sensorConnectionSubscription?.cancel());
-    unawaited(FlutterBluePlus.stopScan());
-    unawaited(_bleManager.disconnect());
-    _tabController.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Fuel Master Pro • AoooG BLE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Fuel Master Pro', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+            Text(
+              _isConnected ? 'Conectado: #${_selectedSensor?.id}' : 'AoooG BLE Suite',
+              style: TextStyle(fontSize: 11, color: _isConnected ? const Color(0xFF34D399) : Colors.white60),
+            ),
+          ],
+        ),
+        actions: [
+          if (_isConnected)
+            IconButton(
+              icon: const Icon(Icons.link_off, color: Colors.redAccent),
+              tooltip: 'Desconectar Sensor',
+              onPressed: _disconnectSensor,
+            ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: const Color(0xFFD97706),
           indicatorWeight: 3,
+          isScrollable: true,
           tabs: const [
             Tab(icon: Icon(Icons.bluetooth), text: 'Sensores'),
-            Tab(icon: Icon(Icons.straighten), text: 'Estanque'),
-            Tab(icon: Icon(Icons.table_chart), text: 'Calibración'),
+            Tab(icon: Icon(Icons.speed), text: 'Monitor'),
+            Tab(icon: Icon(Icons.straighten), text: 'Estanque 3D'),
+            Tab(icon: Icon(Icons.settings), text: 'Configuración'),
           ],
         ),
       ),
@@ -446,26 +379,31 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         controller: _tabController,
         children: [
           _buildSensorsTab(),
+          _buildMonitorTab(),
           _buildTankTab(),
-          _buildCalibrationTab(),
+          _buildSettingsTab(),
         ],
       ),
     );
   }
 
+  // ==========================================================================
+  // PESTAÑA 1: SENSORES BLE (ESCÁNER & CONEXIÓN)
+  // ==========================================================================
   Widget _buildSensorsTab() {
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           color: Colors.white,
           child: Row(
             children: [
               Expanded(
                 child: Text(
-                  _isConnected ? 'Conectado: Sensor #${_selectedSensor?.id}' : 'Sin sensor conectado',
+                  _isConnected ? 'Sensor activo: #${_selectedSensor?.id}' : 'Busca dispositivos AoooG cercanos',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
+                    fontSize: 13,
                     color: _isConnected ? const Color(0xFF059669) : Colors.black87,
                   ),
                 ),
@@ -475,10 +413,11 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF0B1329),
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 ),
                 icon: _isScanning
                     ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.search, size: 18),
+                    : const Icon(Icons.refresh, size: 18),
                 label: Text(_isScanning ? 'Buscando...' : 'Escanear'),
               ),
             ],
@@ -487,32 +426,47 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         Expanded(
           child: _discoveredSensors.isEmpty
               ? Center(
-                  child: Text(
-                    _isScanning ? 'Buscando sensores AoooG cercanos...' : 'Presiona Escanear para buscar sensores AoooG AG-BFLS',
-                    style: const TextStyle(color: Colors.grey),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.bluetooth_searching, size: 64, color: Colors.grey.shade400),
+                      const SizedBox(height: 12),
+                      Text(
+                        _isScanning ? 'Detectando sensores AoooG AG-BFLS...' : 'Presiona Escanear para listar sensores',
+                        style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+                      ),
+                    ],
                   ),
                 )
               : ListView.builder(
+                  padding: const EdgeInsets.all(8),
                   itemCount: _discoveredSensors.length,
                   itemBuilder: (context, idx) {
                     final s = _discoveredSensors[idx];
                     final isSel = _selectedSensor?.id == s.id && _isConnected;
                     return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      elevation: isSel ? 3 : 1,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(color: isSel ? const Color(0xFF059669) : Colors.transparent, width: 1.5),
+                      ),
                       child: ListTile(
                         leading: CircleAvatar(
                           backgroundColor: isSel ? const Color(0xFF059669) : const Color(0xFF0B1329),
-                          child: const Icon(Icons.sensors, color: Colors.white),
+                          child: const Icon(Icons.sensors, color: Colors.white, size: 20),
                         ),
-                        title: Text('Sensor AoooG #${s.id}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('${s.frequency.toStringAsFixed(0)} Hz • ${s.temperature}°C • Bat: ${s.battery}% • RSSI: ${s.rssi} dBm'),
+                        title: Text('Sensor AoooG #${s.id}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                        subtitle: Text(
+                          '${s.frequency.toStringAsFixed(0)} Hz • ${s.temperature}°C • Bat: ${s.battery}% • RSSI: ${s.rssi} dBm',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                        ),
                         trailing: ElevatedButton(
-                          onPressed: isSel ? null : () => _connectToSensor(s),
+                          onPressed: isSel ? _disconnectSensor : () => _connectToSensor(s),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: isSel ? Colors.grey : const Color(0xFF0B1329),
+                            backgroundColor: isSel ? Colors.red.shade700 : const Color(0xFF0B1329),
                             foregroundColor: Colors.white,
                           ),
-                          child: Text(isSel ? 'Activo' : 'Conectar'),
+                          child: Text(isSel ? 'Desconectar' : 'Conectar'),
                         ),
                       ),
                     );
@@ -523,20 +477,18 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildTankTab() {
-    double totalVol = TankGeometryEngine.calculateVolumeAtHeight(
+  // ==========================================================================
+  // PESTAÑA 2: MONITOR DE DISPOSITIVO (IDÉNTICO A APP OFICIAL + ESTANQUE)
+  // ==========================================================================
+  Widget _buildMonitorTab() {
+    double totalCapacity = TankGeometryEngine.calculateVolumeAtHeight(
       tankType: _tankType,
       length: _length,
       width: _width,
       height: _height,
       thickness: _thickness,
       isExternal: _isExternal,
-      hMm: _tankType == 'double_tank'
-          ? math.max(
-              _height - (_isExternal ? _thickness * 2 : 0),
-              _tank2Height - (_isExternal ? _thickness * 2 : 0),
-            ).roundToDouble()
-          : (_height - (_isExternal ? _thickness * 2 : 0)).roundToDouble(),
+      hMm: _height - (_isExternal ? _thickness * 2 : 0),
       rInfLi: _rInfLi,
       rInfLd: _rInfLd,
       rSupLi: _rSupLi,
@@ -546,13 +498,201 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       rSupAf: _rSupAf,
       rSupAp: _rSupAp,
       rVert: _rVert,
-      tank2Length: _tank2Length,
-      tank2Width: _tank2Width,
-      tank2Height: _tank2Height,
-      cylHead: _cylHead,
       stepWidth: _stepWidth,
       stepHeight: _stepHeight,
       stepSide: _stepSide,
+      tank2Length: _tank2Length,
+      tank2Width: _tank2Width,
+      tank2Height: _tank2Height,
+      dRBottomFront: _dRBottomFront,
+      dRTopFront: _dRTopFront,
+      dRBackCorners: _dRBackCorners,
+    );
+
+    double fillFraction = totalCapacity > 0 ? (_liveFuelLiters / totalCapacity).clamp(0.0, 1.0) : 0.0;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          // Tarjeta de Combustible en Vivo con Medidor Visual
+          Card(
+            color: const Color(0xFF0B1329),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('VOLUMEN EN ESTANQUE', style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8)),
+                          const SizedBox(height: 4),
+                          Text('${_liveFuelLiters.toStringAsFixed(1)} L', style: const TextStyle(color: Color(0xFFD97706), fontSize: 32, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(6)),
+                        child: Text('${(fillFraction * 100).toStringAsFixed(1)} %', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Barra de Nivel Gráfica con Silueta
+                  Stack(
+                    children: [
+                      Container(
+                        height: 22,
+                        decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(11)),
+                      ),
+                      FractionallySizedBox(
+                        widthFactor: fillFraction > 0 ? fillFraction : 0.02,
+                        child: Container(
+                          height: 22,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(colors: [Color(0xFFB45309), Color(0xFFF59E0B)]),
+                            borderRadius: BorderRadius.circular(11),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Vacío: 0 L', style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
+                      Text('Capacidad Total: ${totalCapacity.toStringAsFixed(1)} L', style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Métricas de Telemetría AoooG en Vivo (Grid)
+          Row(
+            children: [
+              Expanded(child: _buildMetricTile('Frecuencia Hz', '${_liveFrequency.toStringAsFixed(0)} Hz', Icons.waves, const Color(0xFF2563EB))),
+              const SizedBox(width: 8),
+              Expanded(child: _buildMetricTile('Temperatura', '${_liveTemperature.toStringAsFixed(0)} °C', Icons.thermostat, const Color(0xFF059669))),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _buildMetricTile('Batería', '${_liveBattery.toStringAsFixed(0)} %', Icons.battery_charging_full, const Color(0xFF7C3AED))),
+              const SizedBox(width: 8),
+              Expanded(child: _buildMetricTile('Salida Reportada', _outputMode == 2 ? '${_liveFuelLiters.toStringAsFixed(1)} L' : (_outputMode == 1 ? '${_liveFuelLiters.toInt()} mm' : '${_liveFuelLiters.toStringAsFixed(0)} pts'), Icons.tune, const Color(0xFFD97706))),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Controles Rápidos de Calibración de Campo (Vacío / Lleno)
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Calibración Rápida de Campo (Botones Físicos AoooG)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: !_isConnected ? null : () async {
+                            bool ok = await _bleManager.setEmptyPoint();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(ok ? 'Punto VACÍO grabado en sensor' : 'Error al grabar vacío')),
+                            );
+                          },
+                          icon: const Icon(Icons.arrow_downward, color: Color(0xFF2563EB)),
+                          label: const Text('Fijar Vacío (10)'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: !_isConnected ? null : () async {
+                            bool ok = await _bleManager.setFullPoint();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(ok ? 'Punto LLENO grabado en sensor' : 'Error al grabar lleno')),
+                            );
+                          },
+                          icon: const Icon(Icons.arrow_upward, color: Color(0xFFD97706)),
+                          label: const Text('Fijar Lleno (11)'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricTile(String title, String val, IconData icon, Color color) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: Row(
+          children: [
+            CircleAvatar(radius: 18, backgroundColor: color.withOpacity(0.12), child: Icon(icon, color: color, size: 20)),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+                Text(val, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0B1329))),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ==========================================================================
+  // PESTAÑA 3: ESTANQUE Y MODELADO VOLUMÉTRICO
+  // ==========================================================================
+  Widget _buildTankTab() {
+    double totalVol = TankGeometryEngine.calculateVolumeAtHeight(
+      tankType: _tankType,
+      length: _length,
+      width: _width,
+      height: _height,
+      thickness: _thickness,
+      isExternal: _isExternal,
+      hMm: _height - (_isExternal ? _thickness * 2 : 0),
+      rInfLi: _rInfLi,
+      rInfLd: _rInfLd,
+      rSupLi: _rSupLi,
+      rSupLd: _rSupLd,
+      rInfAf: _rInfAf,
+      rInfAp: _rInfAp,
+      rSupAf: _rSupAf,
+      rSupAp: _rSupAp,
+      rVert: _rVert,
+      stepWidth: _stepWidth,
+      stepHeight: _stepHeight,
+      stepSide: _stepSide,
+      tank2Length: _tank2Length,
+      tank2Width: _tank2Width,
+      tank2Height: _tank2Height,
       dRBottomFront: _dRBottomFront,
       dRTopFront: _dRTopFront,
       dRBackCorners: _dRBackCorners,
@@ -563,40 +703,42 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Banner Capacidad
+          // Resumen de Capacidad
           Card(
             color: const Color(0xFF0B1329),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(14),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Capacidad Calculada', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                      Text('${totalVol.toStringAsFixed(1)} L', style: const TextStyle(color: Color(0xFFD97706), fontSize: 26, fontWeight: FontWeight.bold)),
+                      const Text('Capacidad Geométrica Total', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                      Text('${totalVol.toStringAsFixed(1)} L', style: const TextStyle(color: Color(0xFFD97706), fontSize: 24, fontWeight: FontWeight.bold)),
                     ],
                   ),
-                  Text('${_length.toInt()} × ${_width.toInt()} × ${_height.toInt()} mm', style: const TextStyle(color: Colors.white60)),
+                  Text('${_length.toInt()} × ${_width.toInt()} × ${_height.toInt()} mm', style: const TextStyle(color: Colors.white60, fontSize: 12)),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 10),
 
-          // Geometría
+          // Selector de Geometría
           Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Geometría del Estanque', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  const Text('Parámetros del Estanque', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
-                    initialValue: _tankType,
-                    decoration: const InputDecoration(labelText: 'Tipo de Estanque', border: OutlineInputBorder()),
+                    value: _tankType,
+                    decoration: const InputDecoration(labelText: 'Geometría', border: OutlineInputBorder()),
                     items: const [
                       DropdownMenuItem(value: 'rectangular', child: Text('Prisma Rectangular (Radios Libres)')),
                       DropdownMenuItem(value: 'cylinder_horizontal', child: Text('Cilíndrico Horizontal')),
@@ -610,22 +752,22 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: _buildNumField('Largo (L) mm', _length, (v) => setState(() => _length = v))),
+                      Expanded(child: _buildNumField('Largo (L)', _length, (v) => setState(() => _length = v))),
                       const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('Ancho (W) mm', _width, (v) => setState(() => _width = v))),
+                      Expanded(child: _buildNumField('Ancho (W)', _width, (v) => setState(() => _width = v))),
                       const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('Alto (H) mm', _height, (v) => setState(() => _height = v))),
+                      Expanded(child: _buildNumField('Alto (H)', _height, (v) => setState(() => _height = v))),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   Row(
                     children: [
-                      Expanded(child: _buildNumField('Espesor Chapa mm', _thickness, (v) => setState(() => _thickness = v))),
-                      const SizedBox(width: 10),
+                      Expanded(child: _buildNumField('Espesor Chapa', _thickness, (v) => setState(() => _thickness = v))),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: DropdownButtonFormField<bool>(
-                          initialValue: _isExternal,
-                          decoration: const InputDecoration(labelText: 'Medida', border: OutlineInputBorder()),
+                          value: _isExternal,
+                          decoration: const InputDecoration(labelText: 'Medición', border: OutlineInputBorder()),
                           items: const [
                             DropdownMenuItem(value: true, child: Text('Externa')),
                             DropdownMenuItem(value: false, child: Text('Interna')),
@@ -635,130 +777,58 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                       ),
                     ],
                   ),
-                  if (_tankType == 'rectangular')
-                    ExpansionTile(
-                      tilePadding: EdgeInsets.zero,
-                      title: const Text('Radios y redondeos'),
-                      children: [
-                        Row(children: [
-                          Expanded(child: _buildNumField('Piso izq. (mm)', _rInfLi, (v) => setState(() => _rInfLi = v))),
-                          const SizedBox(width: 8),
-                          Expanded(child: _buildNumField('Piso der. (mm)', _rInfLd, (v) => setState(() => _rInfLd = v))),
-                        ]),
-                        const SizedBox(height: 8),
-                        Row(children: [
-                          Expanded(child: _buildNumField('Techo izq. (mm)', _rSupLi, (v) => setState(() => _rSupLi = v))),
-                          const SizedBox(width: 8),
-                          Expanded(child: _buildNumField('Techo der. (mm)', _rSupLd, (v) => setState(() => _rSupLd = v))),
-                        ]),
-                        const SizedBox(height: 8),
-                        Row(children: [
-                          Expanded(child: _buildNumField('Frente piso (mm)', _rInfAf, (v) => setState(() => _rInfAf = v))),
-                          const SizedBox(width: 8),
-                          Expanded(child: _buildNumField('Posterior piso (mm)', _rInfAp, (v) => setState(() => _rInfAp = v))),
-                        ]),
-                        const SizedBox(height: 8),
-                        Row(children: [
-                          Expanded(child: _buildNumField('Frente techo (mm)', _rSupAf, (v) => setState(() => _rSupAf = v))),
-                          const SizedBox(width: 8),
-                          Expanded(child: _buildNumField('Posterior techo (mm)', _rSupAp, (v) => setState(() => _rSupAp = v))),
-                        ]),
-                        const SizedBox(height: 8),
-                        _buildNumField('Radio esquinas verticales (mm)', _rVert, (v) => setState(() => _rVert = v)),
-                      ],
-                    ),
-                  if (_tankType == 'step_notch') ...[
-                    const SizedBox(height: 14),
-                    const Text('Escalón / muesca', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Expanded(child: _buildNumField('Ancho escalón (mm)', _stepWidth, (v) => setState(() => _stepWidth = v))),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('Alto escalón (mm)', _stepHeight, (v) => setState(() => _stepHeight = v))),
-                    ]),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      initialValue: _stepSide,
-                      decoration: const InputDecoration(labelText: 'Ubicación del escalón', border: OutlineInputBorder()),
-                      items: const [
-                        DropdownMenuItem(value: 'bottom_right', child: Text('Inferior derecho')),
-                        DropdownMenuItem(value: 'bottom_left', child: Text('Inferior izquierdo')),
-                        DropdownMenuItem(value: 'top_right', child: Text('Superior derecho')),
-                      ],
-                      onChanged: (value) => setState(() => _stepSide = value ?? 'bottom_right'),
-                    ),
-                  ],
-                  if (_tankType == 'd_shape') ...[
-                    const SizedBox(height: 14),
-                    const Text('Radios de perfil Forma D', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Row(children: [
-                      Expanded(child: _buildNumField('Frente inferior (mm)', _dRBottomFront, (v) => setState(() => _dRBottomFront = v))),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('Frente superior (mm)', _dRTopFront, (v) => setState(() => _dRTopFront = v))),
-                    ]),
-                    const SizedBox(height: 8),
-                    _buildNumField('Esquinas posteriores (mm)', _dRBackCorners, (v) => setState(() => _dRBackCorners = v)),
-                  ],
-                  if (_tankType == 'cylinder_horizontal') ...[
-                    const SizedBox(height: 14),
-                    DropdownButtonFormField<String>(
-                      initialValue: _cylHead,
-                      decoration: const InputDecoration(labelText: 'Tipo de tapas', border: OutlineInputBorder()),
-                      items: const [
-                        DropdownMenuItem(value: 'flat', child: Text('Planas')),
-                        DropdownMenuItem(value: 'hemispherical', child: Text('Hemisféricas')),
-                      ],
-                      onChanged: (value) => setState(() => _cylHead = value ?? 'flat'),
-                    ),
-                  ],
-                  if (_tankType == 'double_tank') ...[
-                    const SizedBox(height: 14),
-                    const Text('Segundo estanque conectado', style: TextStyle(fontWeight: FontWeight.bold)),
+
+                  // Campos específicos según geometría
+                  if (_tankType == 'rectangular') ...[
+                    const Divider(height: 20),
+                    const Text('Radios de Esquina Transversales (mm)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        Expanded(child: _buildNumField('Largo 2 (mm)', _tank2Length, (v) => setState(() => _tank2Length = v))),
+                        Expanded(child: _buildNumField('Piso Izq', _rInfLi, (v) => setState(() => _rInfLi = v))),
                         const SizedBox(width: 8),
-                        Expanded(child: _buildNumField('Ancho 2 (mm)', _tank2Width, (v) => setState(() => _tank2Width = v))),
+                        Expanded(child: _buildNumField('Piso Der', _rInfLd, (v) => setState(() => _rInfLd = v))),
                         const SizedBox(width: 8),
-                        Expanded(child: _buildNumField('Alto 2 (mm)', _tank2Height, (v) => setState(() => _tank2Height = v))),
+                        Expanded(child: _buildNumField('Techo Izq', _rSupLi, (v) => setState(() => _rSupLi = v))),
+                        const SizedBox(width: 8),
+                        Expanded(child: _buildNumField('Techo Der', _rSupLd, (v) => setState(() => _rSupLd = v))),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: _buildNumField('Aristas Vert.', _rVert, (v) => setState(() => _rVert = v))),
                       ],
                     ),
                   ],
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
 
-          // Parámetros de Sensor Frecuencia
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Parámetros de Frecuencia AoooG (Hz)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(child: _buildNumField('Frecuencia Vacío Hz', _emptyFreq, (v) => setState(() => _emptyFreq = v))),
-                      const SizedBox(width: 8),
-                      Expanded(child: _buildNumField('Frecuencia Lleno Hz', _fullFreq, (v) => setState(() => _fullFreq = v))),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Frecuencia Actual Sensor: ${_curFreq.toStringAsFixed(0)} Hz', style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF0B1329))),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    initialValue: _authPin,
-                    decoration: const InputDecoration(labelText: 'PIN de Acceso Sensor (8 dígitos)', border: OutlineInputBorder()),
-                    obscureText: true,
-                    maxLength: 8,
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) => _authPin = v,
-                  ),
+                  if (_tankType == 'step_notch') ...[
+                    const Divider(height: 20),
+                    const Text('Escalón Retroexcavadora (mm)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: _buildNumField('Ancho Escalón', _stepWidth, (v) => setState(() => _stepWidth = v))),
+                        const SizedBox(width: 8),
+                        Expanded(child: _buildNumField('Alto Escalón', _stepHeight, (v) => setState(() => _stepHeight = v))),
+                      ],
+                    ),
+                  ],
+
+                  if (_tankType == 'double_tank') ...[
+                    const Divider(height: 20),
+                    const Text('Estanque Secundario (mm)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: _buildNumField('Largo 2', _tank2Length, (v) => setState(() => _tank2Length = v))),
+                        const SizedBox(width: 8),
+                        Expanded(child: _buildNumField('Ancho 2', _tank2Width, (v) => setState(() => _tank2Width = v))),
+                        const SizedBox(width: 8),
+                        Expanded(child: _buildNumField('Alto 2', _tank2Height, (v) => setState(() => _tank2Height = v))),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -768,61 +838,163 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildCalibrationTab() {
+  // ==========================================================================
+  // PESTAÑA 4: CONFIGURACIÓN AVANZADA & CARGA DE TABLA AL SENSOR
+  // ==========================================================================
+  Widget _buildSettingsTab() {
     final rows = _generateCalibrationTable();
 
-    return Column(
-      children: [
-        if (_isUploading)
-          LinearProgressIndicator(value: _uploadProgress, color: const Color(0xFFD97706), backgroundColor: Colors.grey.shade200),
-        Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Tabla Generada (${rows.length} Puntos)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              ElevatedButton.icon(
-                onPressed: _isUploading ? null : _uploadCalibrationToSensor,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0B1329),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                ),
-                icon: const Icon(Icons.upload, size: 18),
-                label: Text(_isUploading ? 'Subiendo...' : 'Cargar al Sensor BLE'),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Autenticación PIN AoooG
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Seguridad y PIN del Sensor', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    initialValue: _authPin,
+                    decoration: const InputDecoration(
+                      labelText: 'Contraseña de Acceso (PIN de fábrica: 12345678)',
+                      border: OutlineInputBorder(),
+                      helperText: 'Requerido por protocolo AoooG para grabar calibración',
+                    ),
+                    onChanged: (v) => _authPin = v,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-        Expanded(
-          child: ListView.separated(
-            itemCount: rows.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, idx) {
-              final r = rows[idx];
-              return ListTile(
-                dense: true,
-                leading: CircleAvatar(
-                  radius: 12,
-                  backgroundColor: const Color(0xFF0B1329),
-                  child: Text('${idx + 1}', style: const TextStyle(fontSize: 10, color: Colors.white)),
-                ),
-                title: Text('${r.volumeL.toStringAsFixed(1)} Litros  (${r.levelMm} mm)', style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Coord Fix: ${r.fixValue}  •  Frecuencia Esperada: ${r.expectedFreqHz.toStringAsFixed(0)} Hz'),
-                trailing: Text('${((r.fixValue / 5000) * 100).toStringAsFixed(0)} %', style: const TextStyle(color: Color(0xFFD97706), fontWeight: FontWeight.bold)),
-              );
-            },
+          const SizedBox(height: 10),
+
+          // Puntos Frecuencia Extremos
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Puntos Extremos de Frecuencia AoooG (Hz)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(child: _buildNumField('Frecuencia Vacío Hz', _emptyFreq, (v) => setState(() => _emptyFreq = v))),
+                      const SizedBox(width: 10),
+                      Expanded(child: _buildNumField('Frecuencia Lleno Hz', _fullFreq, (v) => setState(() => _fullFreq = v))),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 10),
+
+          // Parámetros de Transmisión BLE
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Parámetros de Transmisión y Salida', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          value: _outputMode,
+                          decoration: const InputDecoration(labelText: 'Tipo de Salida', border: OutlineInputBorder()),
+                          items: const [
+                            DropdownMenuItem(value: 0, child: Text('Normalizado (0-100%)')),
+                            DropdownMenuItem(value: 1, child: Text('Milímetros (mm)')),
+                            DropdownMenuItem(value: 2, child: Text('Litros (L)')),
+                          ],
+                          onChanged: !_isConnected ? null : (v) async {
+                            if (v != null) {
+                              setState(() => _outputMode = v);
+                              await _bleManager.setOutputMode(v);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: DropdownButtonFormField<int>(
+                          value: _broadcastInterval,
+                          decoration: const InputDecoration(labelText: 'Intervalo BLE', border: OutlineInputBorder()),
+                          items: const [
+                            DropdownMenuItem(value: 1, child: Text('1 segundo')),
+                            DropdownMenuItem(value: 5, child: Text('5 segundos')),
+                            DropdownMenuItem(value: 10, child: Text('10 segundos')),
+                            DropdownMenuItem(value: 20, child: Text('20 segundos')),
+                          ],
+                          onChanged: !_isConnected ? null : (v) async {
+                            if (v != null) {
+                              setState(() => _broadcastInterval = v);
+                              await _bleManager.setBroadcastInterval(v);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: !_isConnected ? null : () async {
+                      bool ok = await _bleManager.restartSensor();
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(ok ? 'Sensor reiniciado' : 'Error al reiniciar sensor')),
+                      );
+                    },
+                    icon: const Icon(Icons.restart_alt, color: Colors.red),
+                    label: const Text('Reiniciar Sensor AoooG (Comando 01)'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Botón Carga de Calibración
+          if (_isUploading)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Column(
+                children: [
+                  LinearProgressIndicator(value: _uploadProgress, color: const Color(0xFFD97706)),
+                  const SizedBox(height: 6),
+                  Text('Grabando bloques de calibración... (${(_uploadProgress * 100).toInt()}%)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+          ElevatedButton.icon(
+            onPressed: _isUploading ? null : _uploadCalibrationToSensor,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0B1329),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            icon: const Icon(Icons.cloud_upload),
+            label: Text(_isUploading ? 'Grabando...' : 'Cargar Tabla al Sensor AoooG (${rows.length} Puntos)'),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildNumField(String label, double val, Function(double) onChanged) {
     return TextFormField(
-      initialValue: !val.isFinite
-          ? ''
-          : (val == val.roundToDouble() ? val.toInt().toString() : val.toString()),
+      initialValue: val % 1 == 0 ? val.toInt().toString() : val.toString(),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         labelText: label,
@@ -830,8 +1002,8 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       ),
       onChanged: (v) {
-        final parsed = double.tryParse(v);
-        if (parsed != null && parsed.isFinite) onChanged(parsed);
+        double? d = double.tryParse(v);
+        if (d != null) onChanged(d);
       },
     );
   }
