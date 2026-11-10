@@ -31,6 +31,7 @@ class FuelMasterApp extends StatelessWidget {
       title: 'Fuel Master Pro',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        useMaterial3: true,
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xFFF8FAFC),
         colorScheme: const ColorScheme.light(
@@ -42,6 +43,33 @@ class FuelMasterApp extends StatelessWidget {
           backgroundColor: Color(0xFF0B1329),
           foregroundColor: Colors.white,
           elevation: 0,
+          centerTitle: false,
+          toolbarHeight: 64,
+          titleTextStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white),
+        ),
+        inputDecorationTheme: const InputDecorationTheme(
+          filled: true,
+          fillColor: Color(0xFFF8FAFC),
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+            borderSide: BorderSide(color: Color(0xFFE2E8F0)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+            borderSide: BorderSide(color: Color(0xFFE2E8F0)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.all(Radius.circular(12)),
+            borderSide: BorderSide(color: Color(0xFFD97706), width: 1.6),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ButtonStyle(
+            minimumSize: WidgetStatePropertyAll(Size(48, 44)),
+            shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(12)))),
+            elevation: WidgetStatePropertyAll(0),
+          ),
         ),
       ),
       home: const MainScreen(),
