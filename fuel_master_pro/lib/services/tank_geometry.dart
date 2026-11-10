@@ -34,6 +34,7 @@ class TankGeometryEngine {
     double dRBottomFront = 200,
     double dRTopFront = 100,
     double dRBackCorners = 40,
+    String cylHead = 'flat',
   }) {
     final dimensions = [length, width, height, thickness, hMm];
     if (dimensions.any((value) => !value.isFinite) ||
@@ -68,7 +69,6 @@ class TankGeometryEngine {
         L: effL,
         W: effW,
         H: effH,
-        t: t,
         rInfLi: rInfLi,
         rInfLd: rInfLd,
         rSupLi: rSupLi,
@@ -87,6 +87,7 @@ class TankGeometryEngine {
         dRBottomFront: dRBottomFront,
         dRTopFront: dRTopFront,
         dRBackCorners: dRBackCorners,
+        cylHead: cylHead,
       );
       double a2 = _getSliceArea(
         z: z2,
@@ -127,7 +128,6 @@ class TankGeometryEngine {
     required double L,
     required double W,
     required double H,
-    required double t,
     required double rInfLi,
     required double rInfLd,
     required double rSupLi,
@@ -146,13 +146,19 @@ class TankGeometryEngine {
     required double dRBottomFront,
     required double dRTopFront,
     required double dRBackCorners,
+    required String cylHead,
   }) {
     if (type == 'cylinder_horizontal') {
       double R = H / 2.0;
       double dist = (R - z).abs();
       if (dist >= R) return 0.0;
-      double chordW = 2.0 * math.sqrt(math.max(0.0, R * R - dist * dist));
-      return chordW * L;
+      final radiusAtHeight = math.sqrt(math.max(0.0, R * R - dist * dist));
+      final chordW = 2.0 * radiusAtHeight;
+      var area = chordW * L;
+      if (cylHead == 'hemispherical') {
+        area += math.pi * radiusAtHeight * radiusAtHeight;
+      }
+      return area;
     } else if (type == 'elliptical_horizontal') {
       double a = W / 2.0;
       double b = H / 2.0;
@@ -179,6 +185,9 @@ class TankGeometryEngine {
       double a2 = (z <= H2) ? (W2 * L2) : 0.0;
       return a1 + a2;
     } else if (type == 'd_shape') {
+      dRBottomFront = math.min(math.min(W * 0.8, H * 0.8), dRBottomFront).toDouble();
+      dRTopFront = math.min(math.min(W * 0.8, H * 0.8), dRTopFront).toDouble();
+      dRBackCorners = math.min(math.min(W * 0.2, H * 0.2), dRBackCorners).toDouble();
       double dxFront = 0.0;
       if (z < dRBottomFront && dRBottomFront > 0) {
         dxFront = dRBottomFront - math.sqrt(math.max(0.0, dRBottomFront * dRBottomFront - math.pow(dRBottomFront - z, 2)));
@@ -198,6 +207,15 @@ class TankGeometryEngine {
       return effW * L;
     } else {
       // Rectangular con radios
+      rInfLi = math.min(math.min(W / 2.0, H / 2.0), rInfLi).toDouble();
+      rInfLd = math.min(math.min(W / 2.0, H / 2.0), rInfLd).toDouble();
+      rSupLi = math.min(math.min(W / 2.0, H / 2.0), rSupLi).toDouble();
+      rSupLd = math.min(math.min(W / 2.0, H / 2.0), rSupLd).toDouble();
+      rInfAf = math.min(math.min(L / 2.0, H / 2.0), rInfAf).toDouble();
+      rInfAp = math.min(math.min(L / 2.0, H / 2.0), rInfAp).toDouble();
+      rSupAf = math.min(math.min(L / 2.0, H / 2.0), rSupAf).toDouble();
+      rSupAp = math.min(math.min(L / 2.0, H / 2.0), rSupAp).toDouble();
+
       double dxL = 0.0;
       if (z < rInfLi && rInfLi > 0) {
         dxL = rInfLi - math.sqrt(math.max(0.0, rInfLi * rInfLi - math.pow(rInfLi - z, 2)));
@@ -234,8 +252,9 @@ class TankGeometryEngine {
       double effL = math.max(0.0, L - dyF - dyB).toDouble();
       double area = effW * effL;
 
-      if (rVert > 0) {
-        area -= (4.0 - math.pi) * rVert * rVert;
+      final verticalRadius = math.min(math.min(W / 4.0, L / 4.0), rVert).toDouble();
+      if (verticalRadius > 0) {
+        area -= (4.0 - math.pi) * verticalRadius * verticalRadius;
       }
       return math.max(0.0, area);
     }
