@@ -817,7 +817,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 
   Widget _buildNumField(String label, double val, Function(double) onChanged) {
     return TextFormField(
-      initialValue: val.toInt().toString(),
+      initialValue: val == val.roundToDouble() ? val.toInt().toString() : val.toString(),
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       decoration: InputDecoration(
         labelText: label,
