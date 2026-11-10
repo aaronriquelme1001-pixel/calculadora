@@ -197,6 +197,8 @@ class AoooGManager {
     var previousFix = -1;
     for (final row in rows) {
       if (!row.volumeL.isFinite ||
+          !row.expectedFreqHz.isFinite ||
+          row.expectedFreqHz <= 0 ||
           row.volumeL < 0 ||
           row.levelMm < 0 ||
           row.levelMm > 0xFFFF ||
@@ -216,9 +218,11 @@ class AoooGManager {
         return false;
       }
     }
-    return rows.first.fixValue == 0 &&
+    return rows.first.levelMm == 0 &&
+        rows.first.fixValue == 0 &&
+        rows.first.volumeL == 0 &&
         rows.last.fixValue == 5000 &&
-        rows.first.volumeL == 0;
+        rows.last.volumeL > 0;
   }
 
   Future<bool> uploadCalibrationTable(
