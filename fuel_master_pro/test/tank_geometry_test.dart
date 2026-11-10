@@ -27,7 +27,8 @@ void main() {
 
     test('rejects corrupted CRC and a response from another sensor', () {
       final frame = AoooGProtocol.buildFrame(0x123456, 0x12, [1, 2, 3]);
-      final corrupted = List<int>.from(frame)..[frame.length - 1] ^= 0xFF;
+      final corrupted = List<int>.from(frame);
+      corrupted[corrupted.length - 1] = corrupted.last ^ 0xFF;
 
       expect(AoooGProtocol.isValidFrame(corrupted), isFalse);
       expect(
