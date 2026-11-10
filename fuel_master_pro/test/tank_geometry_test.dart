@@ -2,8 +2,40 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fuel_master_pro/services/tank_geometry.dart';
+import 'package:fuel_master_pro/services/aooog_ble.dart';
 
 void main() {
+  group('AoooGProtocol framing', () {
+    test('builds a frame with a consistent length and valid CRC', () {
+      final frame = AoooGProtocol.buildFrame(
+        0x123456,
+        0x12,
+        List<int>.filled(8, 0x31),
+      );
+
+      expect(frame.first, 0x0C);
+      expect(frame[1], frame.length - 2);
+      expect(
+        AoooGProtocol.isValidFrame(
+          frame,
+          expectedSensorId: 0x123456,
+          expectedCommand: 0x12,
+        ),
+        isTrue,
+      );
+    });
+
+    test('rejects corrupted CRC and a response from another sensor', () {
+      final frame = AoooGProtocol.buildFrame(0x123456, 0x12, [1, 2, 3]);
+      final corrupted = List<int>.from(frame)..[frame.length - 1] ^= 0xFF;
+
+      expect(AoooGProtocol.isValidFrame(corrupted), isFalse);
+      expect(
+        AoooGProtocol.isValidFrame(frame, expectedSensorId: 0x654321),
+        isFalse,
+      );
+    });
+  });
   group('TankGeometryEngine', () {
     test('rectangular tank returns zero, half and full volume correctly', () {
       const length = 850.0;
