@@ -1717,8 +1717,11 @@
     setText('sideEmptySpace', `${emptyVol.toFixed(1)} L`);
 
     renderTable();
-    renderCad();
-    // update3DLiquidLevel();
+    if (state.viewMode === 'view-3d') {
+      updateThreeTank();
+    } else {
+      renderCad();
+    }
   }
 
   function renderTable() {
@@ -1788,6 +1791,248 @@
   // 6. EVENTOS Y VINCULACIÓN
   // ==========================================================================
 
+  // ==========================================================================
+  // 5. VISOR 3D REAL CON THREE.JS (INSPECCIÓN PURA, SIN EDICIÓN DE FORMAS)
+  // ==========================================================================
+  let threeScene = null;
+  let threeCamera = null;
+  let threeRenderer = null;
+  let threeControls = null;
+  let threeTankMesh = null;
+  let threeTankEdges = null;
+  let threeLiquidMesh = null;
+  let threeProbeMesh = null;
+  let threeGrid = null;
+  let threeAnimFrame = null;
+
+  function initThreeViewer() {
+    const container = document.getElementById('threeContainer');
+    if (!container || threeRenderer || !window.THREE) return;
+
+    const width = container.clientWidth || 600;
+    const height = 420;
+
+    // Escena profesional con fondo oscuro
+    threeScene = new THREE.Scene();
+    threeScene.background = new THREE.Color(0x0f172a);
+
+    // Cámara de perspectiva
+    threeCamera = new THREE.PerspectiveCamera(45, width / height, 1, 10000);
+    threeCamera.position.set(900, 700, 1100);
+
+    // Renderer WebGL
+    threeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    threeRenderer.setSize(width, height);
+    threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    container.innerHTML = '';
+    container.appendChild(threeRenderer.domElement);
+
+    // OrbitControls: rotación suave 360°, zoom con scroll, desplazamiento con clic derecho
+    if (THREE.OrbitControls) {
+      threeControls = new THREE.OrbitControls(threeCamera, threeRenderer.domElement);
+      threeControls.enableDamping = true;
+      threeControls.dampingFactor = 0.08;
+      threeControls.enablePan = true;
+      threeControls.enableZoom = true;
+      threeControls.minDistance = 20;
+      threeControls.maxDistance = 8000;
+    }
+
+    // Luces
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+    threeScene.add(ambientLight);
+
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.85);
+    dirLight1.position.set(800, 1500, 1000);
+    threeScene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0x38bdf8, 0.4);
+    dirLight2.position.set(-800, -400, -800);
+    threeScene.add(dirLight2);
+
+    function animate() {
+      threeAnimFrame = requestAnimationFrame(animate);
+      if (threeControls) threeControls.update();
+      if (threeRenderer && threeScene && threeCamera) {
+        threeRenderer.render(threeScene, threeCamera);
+      }
+    }
+    animate();
+
+    window.addEventListener('resize', onThreeResize);
+  }
+
+  function onThreeResize() {
+    const container = document.getElementById('threeContainer');
+    if (!container || !threeRenderer || !threeCamera) return;
+    const width = container.clientWidth;
+    if (width > 0) {
+      threeCamera.aspect = width / 420;
+      threeCamera.updateProjectionMatrix();
+      threeRenderer.setSize(width, 420);
+    }
+  }
+
+  function updateThreeTank() {
+    if (!threeScene || !window.THREE) return;
+
+    if (threeTankMesh) {
+      threeScene.remove(threeTankMesh);
+      threeTankMesh.geometry.dispose();
+      threeTankMesh = null;
+    }
+    if (threeTankEdges) {
+      threeScene.remove(threeTankEdges);
+      threeTankEdges.geometry.dispose();
+      threeTankEdges = null;
+    }
+    if (threeLiquidMesh) {
+      threeScene.remove(threeLiquidMesh);
+      threeLiquidMesh.geometry.dispose();
+      threeLiquidMesh = null;
+    }
+    if (threeProbeMesh) {
+      threeScene.remove(threeProbeMesh);
+      threeProbeMesh = null;
+    }
+    if (threeGrid) {
+      threeScene.remove(threeGrid);
+      threeGrid.geometry.dispose();
+      threeGrid = null;
+    }
+
+    const eff = getEffectiveDimensions();
+    const L = Math.max(10, eff.L);
+    const W = Math.max(10, eff.W);
+    const H = Math.max(10, eff.H);
+
+    const w = W;
+    const h = H;
+    const r1 = Math.min(Number(state.tank.r_inf_li) || 0, w / 2 - 1, h / 2 - 1);
+    const r2 = Math.min(Number(state.tank.r_inf_ld) || 0, w / 2 - 1, h / 2 - 1);
+    const r3 = Math.min(Number(state.tank.r_sup_ld) || 0, w / 2 - 1, h / 2 - 1);
+    const r4 = Math.min(Number(state.tank.r_sup_li) || 0, w / 2 - 1, h / 2 - 1);
+
+    const x0 = -w / 2;
+    const y0 = 0;
+    const x1 = w / 2;
+    const y1 = h;
+
+    const tankShape = new THREE.Shape();
+    tankShape.moveTo(x0 + r1, y0);
+    tankShape.lineTo(x1 - r2, y0);
+    if (r2 > 0) tankShape.quadraticCurveTo(x1, y0, x1, y0 + r2);
+    tankShape.lineTo(x1, y1 - r3);
+    if (r3 > 0) tankShape.quadraticCurveTo(x1, y1, x1 - r3, y1);
+    tankShape.lineTo(x0 + r4, y1);
+    if (r4 > 0) tankShape.quadraticCurveTo(x0, y1, x0, y1 - r4);
+    tankShape.lineTo(x0, y0 + r1);
+    if (r1 > 0) tankShape.quadraticCurveTo(x0, y0, x0 + r1, y0);
+
+    const extrudeSettings = {
+      depth: L,
+      bevelEnabled: false,
+      steps: 1,
+      curveSegments: 16
+    };
+
+    const tankGeom = new THREE.ExtrudeGeometry(tankShape, extrudeSettings);
+    tankGeom.translate(0, 0, -L / 2);
+
+    const tankMat = new THREE.MeshPhysicalMaterial({
+      color: 0x94a3b8,
+      metalness: 0.5,
+      roughness: 0.2,
+      transmission: 0.55,
+      transparent: true,
+      opacity: 0.38,
+      depthWrite: false,
+      side: THREE.DoubleSide
+    });
+
+    threeTankMesh = new THREE.Mesh(tankGeom, tankMat);
+    threeScene.add(threeTankMesh);
+
+    const edgesGeom = new THREE.EdgesGeometry(tankGeom, 25);
+    const edgesMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2, transparent: true, opacity: 0.85 });
+    threeTankEdges = new THREE.LineSegments(edgesGeom, edgesMat);
+    threeScene.add(threeTankEdges);
+
+    // Líquido Diésel Ámbar
+    const curLevel = Math.max(0, Math.min(H, state.currentLevelMm));
+    if (curLevel > 1) {
+      const liqH = curLevel;
+      const liqShape = new THREE.Shape();
+      const lr1 = Math.min(r1, liqH);
+      const lr2 = Math.min(r2, liqH);
+
+      liqShape.moveTo(x0 + lr1, y0 + 0.5);
+      liqShape.lineTo(x1 - lr2, y0 + 0.5);
+      if (lr2 > 0) liqShape.quadraticCurveTo(x1, y0 + 0.5, x1, y0 + lr2);
+      liqShape.lineTo(x1, y0 + liqH);
+      liqShape.lineTo(x0, y0 + liqH);
+      liqShape.lineTo(x0, y0 + lr1);
+      if (lr1 > 0) liqShape.quadraticCurveTo(x0, y0 + 0.5, x0 + lr1, y0 + 0.5);
+
+      const liqGeom = new THREE.ExtrudeGeometry(liqShape, {
+        depth: L - 2,
+        bevelEnabled: false,
+        steps: 1,
+        curveSegments: 16
+      });
+      liqGeom.translate(0, 0, -(L - 2) / 2);
+
+      const liqMat = new THREE.MeshStandardMaterial({
+        color: 0xd97706,
+        roughness: 0.15,
+        metalness: 0.15,
+        transparent: true,
+        opacity: 0.82,
+        side: THREE.DoubleSide
+      });
+
+      threeLiquidMesh = new THREE.Mesh(liqGeom, liqMat);
+      threeScene.add(threeLiquidMesh);
+    }
+
+    // Sonda y sensor AoooG
+    const probeGroup = new THREE.Group();
+    const rodGeom = new THREE.CylinderGeometry(3, 3, H + 10, 16);
+    const rodMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.1 });
+    const rodMesh = new THREE.Mesh(rodGeom, rodMat);
+    rodMesh.position.set(0, H / 2, 0);
+    probeGroup.add(rodMesh);
+
+    const headGeom = new THREE.CylinderGeometry(14, 14, 28, 24);
+    const headMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8, roughness: 0.2 });
+    const headMesh = new THREE.Mesh(headGeom, headMat);
+    headMesh.position.set(0, H + 14, 0);
+    probeGroup.add(headMesh);
+
+    const ringGeom = new THREE.TorusGeometry(13, 1.5, 8, 24);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x2563eb });
+    const ringMesh = new THREE.Mesh(ringGeom, ringMat);
+    ringMesh.rotation.x = Math.PI / 2;
+    ringMesh.position.set(0, H + 20, 0);
+    probeGroup.add(ringMesh);
+
+    threeProbeMesh = probeGroup;
+    threeScene.add(threeProbeMesh);
+
+    // Suelo
+    const maxDim = Math.max(L, W, H);
+    threeGrid = new THREE.GridHelper(maxDim * 2.5, 20, 0x334155, 0x1e293b);
+    threeGrid.position.set(0, -1, 0);
+    threeScene.add(threeGrid);
+
+    if (threeControls) {
+      threeControls.target.set(0, H / 2, 0);
+      const camDist = maxDim * 2.1;
+      threeCamera.position.set(camDist * 0.85, H + camDist * 0.45, camDist * 0.85);
+      threeControls.update();
+    }
+  }
+
   function bindEvents() {
     const typeSelect = document.getElementById('tankTypeSelect');
     if (typeSelect) {
@@ -1813,18 +2058,31 @@
       state.viewMode = mode;
       [btnTransverse, btnLongitudinal, btn3D].forEach(b => b && b.classList.remove('active'));
 
+      const threeCont = document.getElementById('threeContainer');
+
       if (mode === 'plane-transverse') {
         if (btnTransverse) btnTransverse.classList.add('active');
-        if (hintEl) hintEl.innerText = 'Arrastra las esquinas para elegir el radio • Arrastra el nivel para aforar';
+        if (hintEl) hintEl.innerText = 'Arrastra el nivel para aforar • Arrastra las esquinas para ajustar radios';
+        if (cadCanvasEl) cadCanvasEl.style.display = 'block';
+        if (threeCont) threeCont.style.display = 'none';
+        resizeCadCanvas();
+        renderCad();
       } else if (mode === 'plane-longitudinal') {
         if (btnLongitudinal) btnLongitudinal.classList.add('active');
-        if (hintEl) hintEl.innerText = 'Arrastra las esquinas longitudinales • Arrastra el nivel para aforar';
+        if (hintEl) hintEl.innerText = 'Arrastra el nivel para aforar • Arrastra las esquinas para ajustar radios';
+        if (cadCanvasEl) cadCanvasEl.style.display = 'block';
+        if (threeCont) threeCont.style.display = 'none';
+        resizeCadCanvas();
+        renderCad();
       } else if (mode === 'view-3d') {
         if (btn3D) btn3D.classList.add('active');
-        if (hintEl) hintEl.innerText = 'Vista 3D Isométrica • Arrastra esquinas o medidas • Arrastra fuera para orbitar';
+        if (hintEl) hintEl.innerText = 'Vista 3D Interactiva • Clic izquierdo: orbitar • Rueda: zoom • Clic derecho: mover';
+        if (cadCanvasEl) cadCanvasEl.style.display = 'none';
+        if (threeCont) threeCont.style.display = 'block';
+        initThreeViewer();
+        onThreeResize();
+        updateThreeTank();
       }
-      resizeCadCanvas();
-      renderCad();
     }
 
     if (btnTransverse) btnTransverse.addEventListener('click', () => setActiveView('plane-transverse'));
