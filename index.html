@@ -161,7 +161,7 @@
           </div>
 
           <!-- RADIOS EN BAJADAS DE LAS ESQUINAS / VERTICALES (MM) -->
-          <div style="background: #f1f5f9; padding: 12px; border-radius: 10px; margin-bottom: 16px;">
+          <div style="background: #f1f5f9; padding: 12px; border-radius: 10px; margin-bottom: 14px;">
             <div style="font-size: 0.74rem; font-weight: 800; color: #475569; letter-spacing: 0.5px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
               <span>RADIOS BAJADAS DE ESQUINAS (MM)</span>
               <span style="font-size: 0.68rem; color: #64748b; font-weight: 700;">Aristas Verticales</span>
@@ -182,6 +182,76 @@
               <div class="form-item">
                 <label for="r_vert_pd" style="font-size: 0.72rem; color: #64748b;">P. Der.</label>
                 <input type="number" id="r_vert_pd" value="0" style="padding: 6px 2px; text-align: center; border-radius: 6px; border: 1px solid #cbd5e1; width: 100%; font-weight: 700;">
+              </div>
+            </div>
+          </div>
+
+          <!-- BOTÓN TOGGLE: ESTANQUE PLÁSTICO (RECOVECOS Y 2 CINTAS) -->
+          <div style="margin-bottom: 12px;">
+            <button id="btnToggleRecovecos" type="button" class="btn" style="width: 100%; padding: 10px 12px; background: #f8fafc; border: 2px dashed #94a3b8; border-radius: 10px; font-weight: 700; color: #1e293b; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: all 0.2s ease;">
+              <span style="display: flex; align-items: center; gap: 8px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px; color: #0284c7;">
+                  <path d="M4 4h16v16H4z"></path>
+                  <path d="M4 14h6v6"></path>
+                </svg>
+                <span style="font-size: 0.8rem; font-weight: 800;">Estanque Plástico (Recovecos y 2 Cintas)</span>
+              </span>
+              <span id="badgeRecovecosState" style="font-size: 0.7rem; padding: 2px 8px; border-radius: 9999px; background: #e2e8f0; color: #64748b; font-weight: 800;">OFF</span>
+            </button>
+          </div>
+
+          <!-- PANEL SIMPLIFICADO DE ESTANQUE PLÁSTICO (MARCAS GENÉRICAS + TEXTURAS MENOS/MÁS) -->
+          <div id="panelRecovecos" style="display: none; background: #eff6ff; border: 1.5px solid #93c5fd; padding: 12px; border-radius: 12px; margin-bottom: 14px;">
+            <div style="font-size: 0.76rem; font-weight: 800; color: #1e40af; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+              <span>MODELO PLÁSTICO (2 CINTAS INCLUIDAS)</span>
+              <span style="font-size: 0.65rem; background: #dbeafe; color: #1d4ed8; padding: 2px 6px; border-radius: 4px; font-weight: 700;">Rotomoldeado</span>
+            </div>
+
+            <!-- Botones de Marcas y Modelos Genéricos -->
+            <div style="margin-bottom: 10px;">
+              <div style="font-size: 0.7rem; color: #475569; font-weight: 700; margin-bottom: 5px;">Marcas / Modelos Genéricos:</div>
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+                <button type="button" id="btnPresetBepo300" class="btn btn-secondary" style="font-size: 0.72rem; padding: 6px 2px; font-weight: 700; background: #ffffff; border: 1px solid #bfdbfe; color: #1e40af; text-align: center;">
+                  Bepô 300L
+                </button>
+                <button type="button" id="btnPresetVW150" class="btn btn-secondary" style="font-size: 0.72rem; padding: 6px 2px; font-weight: 700; background: #ffffff; border: 1px solid #bfdbfe; color: #1e40af; text-align: center;">
+                  VW 150L
+                </button>
+                <button type="button" id="btnPresetGenerico200" class="btn btn-secondary" style="font-size: 0.72rem; padding: 6px 2px; font-weight: 700; background: #ffffff; border: 1px solid #bfdbfe; color: #1e40af; text-align: center;">
+                  Genérico 200L
+                </button>
+              </div>
+            </div>
+
+            <!-- Control de Texturas y Recovecos: Menos / Normal / Más -->
+            <div style="background: #ffffff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-size: 0.72rem; font-weight: 800; color: #1e3a8a;">Textura / Recovecos:</span>
+                <span id="lblTexturaLevel" style="font-size: 0.72rem; font-weight: 800; color: #0284c7; background: #e0f2fe; padding: 2px 8px; border-radius: 6px;">Normal (Medio)</span>
+              </div>
+
+              <!-- Slider Textura Menos <---> Más -->
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <span style="font-size: 0.68rem; font-weight: 700; color: #64748b;">Menos</span>
+                <input type="range" id="sliderTexturaRecoveco" min="10" max="90" value="50" step="5" style="flex: 1; accent-color: #0284c7; cursor: pointer;">
+                <span style="font-size: 0.68rem; font-weight: 700; color: #64748b;">Más</span>
+              </div>
+
+              <!-- Botones rápidos de 1 clic: Menos / Normal / Más -->
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+                <button type="button" id="btnTexturaMenos" class="btn" style="font-size: 0.7rem; padding: 5px; background: #f1f5f9; border: 1px solid #cbd5e1; font-weight: 700; color: #334155; border-radius: 6px; cursor: pointer;">
+                  – Menos
+                </button>
+                <button type="button" id="btnTexturaNormal" class="btn" style="font-size: 0.7rem; padding: 5px; background: #e0f2fe; border: 1px solid #7dd3fc; font-weight: 700; color: #0369a1; border-radius: 6px; cursor: pointer;">
+                  Normal
+                </button>
+                <button type="button" id="btnTexturaMas" class="btn" style="font-size: 0.7rem; padding: 5px; background: #f1f5f9; border: 1px solid #cbd5e1; font-weight: 700; color: #334155; border-radius: 6px; cursor: pointer;">
+                  + Más
+                </button>
+              </div>
+
+              <div style="font-size: 0.65rem; color: #64748b; margin-top: 6px; text-align: center;">
+                (Asume 2 cintas estándar y escalón de larguero automáticamente)
               </div>
             </div>
           </div>

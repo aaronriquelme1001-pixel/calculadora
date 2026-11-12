@@ -47,6 +47,17 @@
       r_vert_pi: 0,
       r_vert_pd: 0,
 
+      // Recovecos y Muescas Estructurales (Estanques Plásticos)
+      hasRecovecos: false,
+      texturaLevel: 50, // 10 (Menos) a 90 (Más), 50 = Normal
+      recovecoWidth: 190,
+      recovecoHeight: 175,
+      recovecoLength: 0,
+      recovecoSide: 'bottom_right',
+      cinchasCount: 2,
+      cinchasWidth: 70,
+      cinchasDepth: 25,
+
       // Retroexcavadora con escalón
       stepWidth: 200,
       stepHeight: 250,
@@ -229,6 +240,30 @@
 
         const cornerLostVert = (1 - Math.PI / 4) * (rv_fi * rv_fi + rv_fd * rv_fd + rv_pi * rv_pi + rv_pd * rv_pd);
         area = Math.max(0, area - cornerLostVert);
+
+        // Descuento de Texturas y Canales Estructurales (Estanques Plásticos)
+        if (state.tank.hasRecovecos) {
+          const depthScale = (Number(state.tank.texturaLevel) || 50) / 50;
+
+          // 1. Canales de las 2 cinchas / zunchos (hundidos en la pared)
+          const cinchasW = 70;
+          const cinchasD = (Number(state.tank.cinchasDepth) || 22) * depthScale;
+          const cinchasLoss = 2 * cinchasW * (2 * cinchasD);
+          area = Math.max(0, area - cinchasLoss);
+
+          // 2. Nicho empotrado de la boca de llenado (cerca del techo)
+          if (z > (H - 85)) {
+            const neckAreaLoss = 180 * (26 * depthScale);
+            area = Math.max(0, area - neckAreaLoss);
+          }
+
+          // 3. Nervadura perimetral de refuerzo de rotomoldeo (a media altura)
+          if (Math.abs(z - H / 2) < 45) {
+            const ribAreaLoss = 2 * (9 * depthScale) * L;
+            area = Math.max(0, area - ribAreaLoss);
+          }
+        }
+
         return area;
       }
 
@@ -799,12 +834,25 @@
         ctx.moveTo(ox + r_li, oy);
         ctx.lineTo(ox + dw - r_ld, oy);
         ctx.arcTo(ox + dw, oy, ox + dw, oy - r_ld, r_ld);
-        ctx.lineTo(ox + dw, oy - dh + r_sld);
-        ctx.arcTo(ox + dw, oy - dh, ox + dw - r_sld, oy - dh, r_sld);
-        ctx.lineTo(ox + r_sli, oy - dh);
+
+        if (state.tank.hasRecovecos && isTransverse) {
+          // Nicho de boca de carga en esquina superior derecha
+          const neckDepth = 20 * scale;
+          const neckH = 32 * scale;
+          ctx.lineTo(ox + dw, oy - dh + neckH);
+          ctx.lineTo(ox + dw - neckDepth, oy - dh + neckH);
+          ctx.lineTo(ox + dw - neckDepth, oy - dh);
+          ctx.lineTo(ox + r_sli, oy - dh);
+        } else {
+          ctx.lineTo(ox + dw, oy - dh + r_sld);
+          ctx.arcTo(ox + dw, oy - dh, ox + dw - r_sld, oy - dh, r_sld);
+          ctx.lineTo(ox + r_sli, oy - dh);
+        }
+
         ctx.arcTo(ox, oy - dh, ox, oy - dh + r_sli, r_sli);
         ctx.lineTo(ox, oy - r_li);
         ctx.arcTo(ox, oy, ox + r_li, oy, r_li);
+        ctx.closePath();
       } else {
         ctx.rect(ox, oy - dh, dw, dh);
       }
@@ -1819,6 +1867,7 @@
   let threeTankEdges = null;
   let threeLiquidMesh = null;
   let threeProbeMesh = null;
+  let threeStrapsMesh = null;
   let threeGrid = null;
   let threeAnimFrame = null;
 
@@ -1911,6 +1960,10 @@
     if (threeProbeMesh) {
       threeScene.remove(threeProbeMesh);
       threeProbeMesh = null;
+    }
+    if (threeStrapsMesh) {
+      threeScene.remove(threeStrapsMesh);
+      threeStrapsMesh = null;
     }
     if (threeGrid) {
       threeScene.remove(threeGrid);
@@ -2011,23 +2064,84 @@
             if (effRx > 0) v.x = cx + (nx / d) * effRx;
             if (effRy > 0) v.y = cy + (ny / d) * effRy;
             if (effRz > 0) v.z = cz + (nz / d) * effRz;
-            pos.setXYZ(i, v.x, v.y, v.z);
           }
         }
+
+        // Texturas y hendiduras estructurales de estanque plástico rotomoldeado (estilo Bepô / Caren)
+        if (state.tank.hasRecovecos) {
+          const depthScale = (Number(state.tank.texturaLevel) || 50) / 50;
+
+          // 1. Canales para las 2 Cinchas / Zunchos (hendiduras en Z en las posiciones de las correas)
+          const z1 = -l * 0.26;
+          const z2 = l * 0.26;
+          const strapHalfW = 42;
+          const strapDepth = (Number(state.tank.cinchasDepth) || 22) * depthScale;
+
+          const distZ1 = Math.abs(v.z - z1);
+          const distZ2 = Math.abs(v.z - z2);
+          const minDistZ = Math.min(distZ1, distZ2);
+
+          if (minDistZ < strapHalfW) {
+            const factor = Math.cos((minDistZ / strapHalfW) * (Math.PI / 2));
+            const indent = factor * factor * strapDepth;
+
+            // Indentar paredes frontal y trasera
+            if (v.x > w * 0.20) {
+              v.x = Math.max(0, v.x - indent);
+            } else if (v.x < -w * 0.20) {
+              v.x = Math.min(0, v.x + indent);
+            }
+
+            // Indentar techo y piso suavemente
+            if (v.y > h * 0.20) {
+              v.y = Math.max(0, v.y - indent * 0.55);
+            } else if (v.y < -h * 0.20) {
+              v.y = Math.min(0, v.y + indent * 0.55);
+            }
+          }
+
+          // 2. Nicho / Alojamiento de Boca de Carga (Centro frontal superior)
+          const isFrontWall = v.x > w * 0.28;
+          const isTopHalf = v.y > h * 0.15;
+          const isCenterZ = Math.abs(v.z) < (l * 0.18);
+
+          if (isFrontWall && isTopHalf && isCenterZ) {
+            const zNorm = Math.abs(v.z) / (l * 0.18);
+            const yNorm = (v.y - h * 0.15) / (h * 0.35);
+            const neckIndent = (1 - zNorm) * Math.min(1, yNorm) * 26 * depthScale;
+            v.x = Math.max(0, v.x - neckIndent);
+          }
+
+          // 3. Nervadura horizontal de refuerzo (a media altura)
+          const isWallX = Math.abs(v.x) > w * 0.35;
+          if (isWallX) {
+            const yDistMid = Math.abs(v.y);
+            const ribSpan = h * 0.14;
+            if (yDistMid < ribSpan) {
+              const ribFactor = Math.cos((yDistMid / ribSpan) * (Math.PI / 2));
+              const ribIndent = ribFactor * ribFactor * 9 * depthScale;
+              if (v.x > 0) v.x -= ribIndent;
+              else v.x += ribIndent;
+            }
+          }
+        }
+
+        pos.setXYZ(i, v.x, v.y, v.z);
       }
       geom.translate(0, h / 2, 0);
       geom.computeVertexNormals();
       return geom;
     }
 
-    const tankGeom = create3DTankGeometry(W, H, L, rInf, rSup, rVerts, 28);
+    const isPlastic = Boolean(state.tank.hasRecovecos);
+    const tankGeom = create3DTankGeometry(W, H, L, rInf, rSup, rVerts, 36);
     const tankMat = new THREE.MeshPhysicalMaterial({
-      color: 0x94a3b8,
-      metalness: 0.5,
-      roughness: 0.2,
-      transmission: 0.55,
+      color: isPlastic ? 0x232931 : 0x94a3b8, // Negro antracita PEHD para plástico rotomoldeado
+      metalness: isPlastic ? 0.08 : 0.5,
+      roughness: isPlastic ? 0.65 : 0.2,
+      transmission: isPlastic ? 0.30 : 0.55,
       transparent: true,
-      opacity: 0.38,
+      opacity: isPlastic ? 0.88 : 0.38,
       depthWrite: false,
       side: THREE.DoubleSide
     });
@@ -2035,7 +2149,12 @@
     threeScene.add(threeTankMesh);
 
     const edgesGeom = new THREE.EdgesGeometry(tankGeom, 8);
-    const edgesMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, linewidth: 2, transparent: true, opacity: 0.85 });
+    const edgesMat = new THREE.LineBasicMaterial({
+      color: isPlastic ? 0x0284c7 : 0x38bdf8,
+      linewidth: 1.5,
+      transparent: true,
+      opacity: isPlastic ? 0.35 : 0.85
+    });
     threeTankEdges = new THREE.LineSegments(edgesGeom, edgesMat);
     threeScene.add(threeTankEdges);
 
@@ -2078,6 +2197,54 @@
 
     threeProbeMesh = probeGroup;
     threeScene.add(threeProbeMesh);
+
+    // 2 Cintas / Zunchos de Sujeción y Tapa de Llenado (Estanques Plásticos)
+    if (state.tank.hasRecovecos) {
+      const strapsGroup = new THREE.Group();
+      const strapMat = new THREE.MeshStandardMaterial({
+        color: 0x0f172a, // Acero / caucho oscuro
+        metalness: 0.8,
+        roughness: 0.3
+      });
+      const strapWidth = 46;
+      const strapThick = 4;
+      const zOffset = L * 0.26;
+
+      [-zOffset, zOffset].forEach(zPos => {
+        // Banda superior en el canal
+        const topBar = new THREE.Mesh(new THREE.BoxGeometry(W + strapThick, strapThick, strapWidth), strapMat);
+        topBar.position.set(0, H + strapThick / 2, zPos);
+        strapsGroup.add(topBar);
+
+        // Banda lateral izquierda
+        const leftBar = new THREE.Mesh(new THREE.BoxGeometry(strapThick, H + strapThick, strapWidth), strapMat);
+        leftBar.position.set(-W / 2 - strapThick / 2, H / 2, zPos);
+        strapsGroup.add(leftBar);
+
+        // Banda lateral derecha
+        const rightBar = new THREE.Mesh(new THREE.BoxGeometry(strapThick, H + strapThick, strapWidth), strapMat);
+        rightBar.position.set(W / 2 + strapThick / 2, H / 2, zPos);
+        strapsGroup.add(rightBar);
+      });
+
+      // Tapa y cuello de boca de carga rotomoldeada en el nicho frontal (como en foto Bepô)
+      const capGroup = new THREE.Group();
+      const capMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7, roughness: 0.3 });
+      const neckMesh = new THREE.Mesh(new THREE.CylinderGeometry(18, 20, 22, 24), capMat);
+      neckMesh.rotation.z = Math.PI * 0.12;
+      neckMesh.position.set(W / 2 - 18, H - 2, 0);
+      capGroup.add(neckMesh);
+
+      const capMesh = new THREE.Mesh(new THREE.CylinderGeometry(24, 24, 10, 24), capMat);
+      capMesh.rotation.z = Math.PI * 0.12;
+      capMesh.position.set(W / 2 - 15, H + 9, 0);
+      capGroup.add(capMesh);
+
+      strapsGroup.add(capGroup);
+
+      threeStrapsMesh = strapsGroup;
+      threeScene.add(threeStrapsMesh);
+    }
 
     // Suelo
     const maxDim = Math.max(L, W, H);
@@ -2204,6 +2371,125 @@
     bindInput('r_vert_fd', (v) => { state.tank.r_vert_fd = v; });
     bindInput('r_vert_pi', (v) => { state.tank.r_vert_pi = v; });
     bindInput('r_vert_pd', (v) => { state.tank.r_vert_pd = v; });
+
+    // Botón Toggle y Controles Simplificados de Estanque Plástico
+    const btnToggleRecovecos = document.getElementById('btnToggleRecovecos');
+    if (btnToggleRecovecos) {
+      btnToggleRecovecos.addEventListener('click', () => {
+        state.tank.hasRecovecos = !state.tank.hasRecovecos;
+        syncRecovecosUI();
+        updateAllUI();
+      });
+    }
+
+    const sliderTextura = document.getElementById('sliderTexturaRecoveco');
+    if (sliderTextura) {
+      sliderTextura.addEventListener('input', (e) => {
+        state.tank.texturaLevel = Number(e.target.value) || 50;
+        applyTextura();
+        updateAllUI();
+      });
+    }
+
+    const btnMenos = document.getElementById('btnTexturaMenos');
+    if (btnMenos) {
+      btnMenos.addEventListener('click', () => {
+        state.tank.texturaLevel = Math.max(10, (state.tank.texturaLevel || 50) - 15);
+        if (sliderTextura) sliderTextura.value = state.tank.texturaLevel;
+        applyTextura();
+        updateAllUI();
+      });
+    }
+
+    const btnNormal = document.getElementById('btnTexturaNormal');
+    if (btnNormal) {
+      btnNormal.addEventListener('click', () => {
+        state.tank.texturaLevel = 50;
+        if (sliderTextura) sliderTextura.value = 50;
+        applyTextura();
+        updateAllUI();
+      });
+    }
+
+    const btnMas = document.getElementById('btnTexturaMas');
+    if (btnMas) {
+      btnMas.addEventListener('click', () => {
+        state.tank.texturaLevel = Math.min(90, (state.tank.texturaLevel || 50) + 15);
+        if (sliderTextura) sliderTextura.value = state.tank.texturaLevel;
+        applyTextura();
+        updateAllUI();
+      });
+    }
+
+    // Plantillas Rápidas Genéricas (Asumen 2 Cintas)
+    const btnPresetBepo300 = document.getElementById('btnPresetBepo300');
+    if (btnPresetBepo300) {
+      btnPresetBepo300.addEventListener('click', () => {
+        state.tank.type = 'rectangular';
+        state.tank.length = 1100;
+        state.tank.width = 700;
+        state.tank.height = 500;
+        state.tank.thickness = 8.0;
+        state.tank.dimType = 'external';
+        state.tank.hasRecovecos = true;
+        state.tank.texturaLevel = 50;
+        state.tank.r_inf_li = 100; state.tank.r_inf_ld = 100; state.tank.r_inf_af = 100; state.tank.r_inf_ap = 100;
+        state.tank.r_sup_li = 70; state.tank.r_sup_ld = 70; state.tank.r_sup_af = 70; state.tank.r_sup_ap = 70;
+        state.tank.r_vert = 100; state.tank.r_vert_fi = 100; state.tank.r_vert_fd = 100; state.tank.r_vert_pi = 100; state.tank.r_vert_pd = 100;
+        state.tank.recovecoLength = 0;
+        state.tank.recovecoSide = 'bottom_right';
+        state.currentLevelMm = 500;
+        applyTextura();
+        syncInputsFromState();
+        updateAllUI();
+      });
+    }
+
+    const btnPresetVW150 = document.getElementById('btnPresetVW150');
+    if (btnPresetVW150) {
+      btnPresetVW150.addEventListener('click', () => {
+        state.tank.type = 'rectangular';
+        state.tank.length = 1200;
+        state.tank.width = 520;
+        state.tank.height = 370;
+        state.tank.thickness = 8.0;
+        state.tank.dimType = 'external';
+        state.tank.hasRecovecos = true;
+        state.tank.texturaLevel = 50;
+        state.tank.r_inf_li = 90; state.tank.r_inf_ld = 90; state.tank.r_inf_af = 90; state.tank.r_inf_ap = 90;
+        state.tank.r_sup_li = 60; state.tank.r_sup_ld = 60; state.tank.r_sup_af = 60; state.tank.r_sup_ap = 60;
+        state.tank.r_vert = 80; state.tank.r_vert_fi = 80; state.tank.r_vert_fd = 80; state.tank.r_vert_pi = 80; state.tank.r_vert_pd = 80;
+        state.tank.recovecoLength = 0;
+        state.tank.recovecoSide = 'bottom_right';
+        state.currentLevelMm = 370;
+        applyTextura();
+        syncInputsFromState();
+        updateAllUI();
+      });
+    }
+
+    const btnPresetGenerico200 = document.getElementById('btnPresetGenerico200');
+    if (btnPresetGenerico200) {
+      btnPresetGenerico200.addEventListener('click', () => {
+        state.tank.type = 'rectangular';
+        state.tank.length = 1000;
+        state.tank.width = 600;
+        state.tank.height = 420;
+        state.tank.thickness = 8.0;
+        state.tank.dimType = 'external';
+        state.tank.hasRecovecos = true;
+        state.tank.texturaLevel = 50;
+        state.tank.r_inf_li = 80; state.tank.r_inf_ld = 80; state.tank.r_inf_af = 80; state.tank.r_inf_ap = 80;
+        state.tank.r_sup_li = 60; state.tank.r_sup_ld = 60; state.tank.r_sup_af = 60; state.tank.r_sup_ap = 60;
+        state.tank.r_vert = 70; state.tank.r_vert_fi = 70; state.tank.r_vert_fd = 70; state.tank.r_vert_pi = 70; state.tank.r_vert_pd = 70;
+        state.tank.recovecoLength = 0;
+        state.tank.recovecoSide = 'bottom_right';
+        state.currentLevelMm = 420;
+        applyTextura();
+        syncInputsFromState();
+        updateAllUI();
+      });
+    }
 
     bindInput('sensorDataMin', (v) => { state.sensor.dataMin = v; });
     bindInput('sensorDataMax', (v) => { state.sensor.dataMax = v; });
@@ -2347,6 +2633,76 @@
     setVal('sensorDataMin', state.sensor.dataMin);
     setVal('sensorDataMax', state.sensor.dataMax);
     setVal('sensorBottomDead', state.sensor.bottomDeadZone);
+
+    syncRecovecosUI();
+  }
+
+  function applyTextura() {
+    const lvl = Number(state.tank.texturaLevel) || 50;
+    // Factor de textura/muesca: en 50 = 1.0, en 10 = 0.5, en 90 = 1.5
+    const f = 0.5 + (lvl - 10) * (1.0 / 80);
+    const eff = getEffectiveDimensions();
+    const W = eff.W;
+    const H = eff.H;
+
+    state.tank.recovecoWidth = Math.round(W * 0.28 * f);
+    state.tank.recovecoHeight = Math.round(H * 0.36 * f);
+    state.tank.cinchasCount = 2; // Asumiendo siempre 2 cintas estándar
+    state.tank.cinchasWidth = 70;
+    state.tank.cinchasDepth = Math.round(25 * f);
+
+    const lbl = document.getElementById('lblTexturaLevel');
+    if (lbl) {
+      if (lvl <= 30) {
+        lbl.innerText = 'Leve / Menos (' + lvl + '%)';
+        lbl.style.background = '#f1f5f9';
+        lbl.style.color = '#475569';
+      } else if (lvl >= 70) {
+        lbl.innerText = 'Marcada / Más (' + lvl + '%)';
+        lbl.style.background = '#fef3c7';
+        lbl.style.color = '#b45309';
+      } else {
+        lbl.innerText = 'Normal (Medio)';
+        lbl.style.background = '#e0f2fe';
+        lbl.style.color = '#0284c7';
+      }
+    }
+  }
+
+  function syncRecovecosUI() {
+    const badge = document.getElementById('badgeRecovecosState');
+    const panel = document.getElementById('panelRecovecos');
+    const btn = document.getElementById('btnToggleRecovecos');
+    const sliderTextura = document.getElementById('sliderTexturaRecoveco');
+
+    if (sliderTextura) {
+      sliderTextura.value = state.tank.texturaLevel || 50;
+    }
+    applyTextura();
+
+    if (state.tank.hasRecovecos) {
+      if (badge) {
+        badge.innerText = 'ACTIVO / ON';
+        badge.style.background = '#16a34a';
+        badge.style.color = '#ffffff';
+      }
+      if (btn) {
+        btn.style.borderColor = '#16a34a';
+        btn.style.background = '#f0fdf4';
+      }
+      if (panel) panel.style.display = 'block';
+    } else {
+      if (badge) {
+        badge.innerText = 'OFF';
+        badge.style.background = '#e2e8f0';
+        badge.style.color = '#64748b';
+      }
+      if (btn) {
+        btn.style.borderColor = '#94a3b8';
+        btn.style.background = '#f8fafc';
+      }
+      if (panel) panel.style.display = 'none';
+    }
   }
 
   function setVal(id, val) {
