@@ -512,7 +512,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
 
   Future<String?> _promptUserForPin({String? errorMsg}) async {
     final pinCtrl = TextEditingController();
-    return showDialog<String>(
+    final result = await showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
@@ -559,6 +559,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
             TextField(
               controller: pinCtrl,
               autofocus: true,
+              obscureText: true,
               keyboardType: TextInputType.text,
               maxLength: 16,
               textCapitalization: TextCapitalization.characters,
@@ -588,6 +589,9 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
         ],
       ),
     );
+    pinCtrl.clear();
+    pinCtrl.dispose();
+    return result;
   }
 
   Future<void> _uploadCalibrationToSensor() async {
