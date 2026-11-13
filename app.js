@@ -2791,6 +2791,31 @@
     return !!response && response.cmd === command && response.payload.length === 1 && response.payload[0] === 0x00;
   }
 
+  // La credencial se convierte en ocho bytes solo al autenticar; nunca se
+  // conserva en estado ni se registra.
+  function parseBleCredential(value) {
+    const credential = String(value || '').trim();
+    if (!/^[0-9a-fA-F]{16}$/.test(credential)) return null;
+    return Array.from({ length: 8 }, (_, i) => parseInt(credential.slice(i * 2, i * 2 + 2), 16));
+  }
+
+  // Un CRC válido por sí solo no identifica un AG-BFLS. Solo se acepta una
+  // trama 0x14 completa y coherente como fuente espontánea de identidad.
+  function isValidTelemetryFrame(parsed) {
+    if (!parsed || parsed.cmd !== 0x14 || !Array.isArray(parsed.sensorId) ||
+        parsed.sensorId.length !== 3 || parsed.sensorId.every(v => v === 0) ||
+        !parsed.payload || parsed.payload.length !== 22) return false;
+    const view = new DataView(parsed.payload.buffer, parsed.payload.byteOffset, parsed.payload.byteLength);
+    const temp = view.getInt16(2, false) / 8;
+    const fullFreq = view.getFloat32(6, true);
+    const emptyFreq = view.getFloat32(10, true);
+    const freq = view.getFloat32(14, true);
+    const output = view.getFloat32(18, true);
+    return [temp, fullFreq, emptyFreq, freq, output].every(Number.isFinite) &&
+      temp >= -40 && temp <= 125 &&
+      fullFreq >= 0 && emptyFreq >= 0 && freq >= 0 && output >= 0;
+  }
+
   function extractSensorDataFromAdvertisement(event) {
     if (!event || !event.manufacturerData) return null;
     const res = AoooGProtocol.parseAdvertisement(event.manufacturerData);
@@ -2953,10 +2978,10 @@
     const parsed = AoooGProtocol.parseFrame(bytes);
     if (!parsed) return;
 
-    // Aprender ID directamente de la telemetría periódica del hardware
-    if (!bleState.sensorId && parsed.sensorId && parsed.sensorId.some(v => v !== 0)) {
-      bleState.sensorId = parsed.sensorId;
-      console.log('ID aprendido desde telemetría física:', bleState.sensorId, 'SN:', AoooGProtocol.sensorIdToSN(bleState.sensorId));
+    // No aprender identidad desde cualquier trama con CRC válido. Un periférico
+    // ajeno o una respuesta incompleta no puede fijar el ID de sesión.
+    if (!bleState.sensorId && isValidTelemetryFrame(parsed)) {
+      bleState.sensorId = parsed.sensorId.slice();
       updateBleUI();
     }
 
@@ -2969,7 +2994,7 @@
       pending.resolve(parsed);
     }
 
-    if (parsed.cmd === 0x14 && parsed.payload.length >= 22) {
+    if (isValidTelemetryFrame(parsed)) {
       const view = new DataView(parsed.payload.buffer, parsed.payload.byteOffset, parsed.payload.byteLength);
       const batteryCode = view.getUint16(0, false);
       const battery = Math.max(0, Math.min(100, Math.round(((batteryCode - 500) * 100) / 220)));
@@ -2996,40 +3021,10 @@
     }
   }
 
-  // Búsqueda orientada: filtra por anunciantes AoooG (0xFF43) o Universal (0xFFFF).
-  // Evita que el técnico en terreno vea dispositivos Bluetooth ajenos.
+  // Búsqueda principal abierta: algunos AG-BFLS no exponen manufacturerData
+  // antes del emparejamiento. La identidad se confirma después por GATT/SN y 0x1A.
   async function connectBleSensorTargeted() {
-    if (!window.isSecureContext) {
-      alert('Bluetooth web requiere un contexto seguro HTTPS. Abre la calculadora desde GitHub Pages o http://localhost.');
-      return;
-    }
-    if (!navigator.bluetooth || typeof navigator.bluetooth.requestDevice !== 'function') {
-      alert('Este navegador no ofrece Web Bluetooth. Usa Google Chrome o Microsoft Edge actualizado en Windows/macOS/Linux, o Chrome en Android.');
-      return;
-    }
-    try {
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { manufacturerData: [{ companyIdentifier: 0xff43 }] },
-          { manufacturerData: [{ companyIdentifier: 0xffff }] }
-        ],
-        optionalServices: [AoooGProtocol.SERVICE_UUID]
-      });
-      bleState.targetDevice = device;
-      return await connectBleSensor();
-    } catch (error) {
-      if (error.name === 'NotFoundError') {
-        const tryOpen = confirm(
-          'No se seleccionó ningún sensor con filtro AoooG/Universal.\n\n' +
-          '¿Deseas buscar entre TODOS los dispositivos Bluetooth cercanos sin filtro?'
-        );
-        if (tryOpen) {
-          return connectBleSensor();
-        }
-      } else if (error.name !== 'AbortError') {
-        alert('Error al buscar sensor BLE:\n' + error.message);
-      }
-    }
+    return connectBleSensor();
   }
 
   async function connectBleSensor() {
@@ -3182,8 +3177,8 @@
 
   async function authenticateBleSensor() {
     const input = document.getElementById('bleCredentialInput');
-    const credential = (input?.value || '').trim();
-    if (!/^[0-9a-fA-F]{16}$/.test(credential)) {
+    const bytes = parseBleCredential(input?.value || '');
+    if (!bytes) {
       alert('Introduce exactamente 16 caracteres hexadecimales (8 bytes) entregados por el fabricante.');
       return;
     }
@@ -3193,7 +3188,6 @@
     }
     if (!bleState.isConnected) { alert('Conecta el sensor primero.'); return; }
     try {
-      const bytes = Array.from({ length: 8 }, (_, i) => parseInt(credential.slice(i * 2, i * 2 + 2), 16));
       const response = await sendBleCommand(0x12, bytes, 6000);
       bleState.isAuthenticated = isSuccessAck(response, 0x12);
       updateBleUI();
