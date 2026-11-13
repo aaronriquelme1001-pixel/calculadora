@@ -133,7 +133,7 @@ test('advertisement parser extracts sensor ID, SN, battery, frequency and temper
   assert.ok(parsedAoooG);
   assert.deepEqual(Array.from(parsedAoooG.id), [0x0c, 0x52, 0x02]);
   assert.equal(parsedAoooG.sn, 807426);
-  assert.equal(parsedAoooG.battery, 98);
+  assert.equal(parsedAoooG.battery, 97);
   assert.equal(parsedAoooG.temperature, 20);
   assert.ok(Math.abs(parsedAoooG.frequency - 546.2) < 0.01);
   assert.ok(Math.abs(parsedAoooG.output - 249.2) < 0.01);
@@ -234,4 +234,83 @@ test('authentication requires a positive 0x12 ACK and never logs the credential'
   assert.match(auth, /isSuccessAck\(response, 0x12\)/);
   assert.match(auth, /bleState\.isAuthenticated = false/);
   assert.doesNotMatch(auth, /console\.(log|info|debug).*credential/i);
+});
+
+
+test('official AG-BFLS command decoders match the published 8.27 response layouts', () => {
+  const protocol = loadProtocolFromApplication();
+
+  const current = new Uint8Array(22);
+  const currentView = new DataView(current.buffer);
+  currentView.setUint16(0, 700, false);
+  currentView.setInt16(2, 216, false);
+  current[4] = 0x52;
+  currentView.setFloat32(6, 10000, true);
+  currentView.setFloat32(10, 15000, true);
+  currentView.setFloat32(14, 13250, true);
+  currentView.setFloat32(18, 5000, true);
+  const decoded = protocol.parseCurrentData(current);
+  assert.equal(decoded.battery, 90);
+  assert.equal(decoded.temperature, 27);
+  assert.equal(decoded.fullFrequency, 10000);
+  assert.equal(decoded.emptyFrequency, 15000);
+  assert.equal(decoded.frequency, 13250);
+  assert.equal(decoded.output, 5000);
+
+  const params = new Uint8Array(13);
+  const paramsView = new DataView(params.buffer);
+  params[0] = 20; params[2] = 1; params[3] = 0xfc;
+  paramsView.setFloat32(4, 15000, true);
+  paramsView.setFloat32(8, 10000, true);
+  params[12] = 2;
+  assert.deepEqual(protocol.parseParameters(params), {
+    broadcastInterval: 20, continueAfterRestart: true, transmitPower: -4,
+    emptyFrequency: 15000, fullFrequency: 10000, outputMode: 2
+  });
+
+  const coordinate = new Uint8Array(4);
+  new DataView(coordinate.buffer).setFloat32(0, 2500, true);
+  assert.equal(protocol.parseCalibrationCoordinate(coordinate), 2500);
+  assert.equal(protocol.parseFirmwareVersion(Uint8Array.from([8, 27])), '8.27');
+  assert.equal(protocol.parseBleAddress(Uint8Array.from([0x66,0x55,0x44,0x33,0x22,0x11])), '11:22:33:44:55:66');
+  assert.equal(protocol.parseAdvertisingProtocol(Uint8Array.from([0])), 0);
+  assert.equal(protocol.parseAdvertisingProtocol(Uint8Array.from([1])), 1);
+  assert.throws(() => protocol.parseCurrentData(current.slice(0, 21)));
+  assert.throws(() => protocol.parseAdvertisingProtocol(Uint8Array.from([2])));
+});
+
+test('battery percentage uses the manufacturer floor conversion, not rounding', () => {
+  const protocol = loadProtocolFromApplication();
+  const payload = new Uint8Array(15);
+  payload.set([0x0c, 0x52, 0x02]);
+  const code = 715;
+  payload[3] = (code >> 8) & 0x0f;
+  payload[4] = code & 0xff;
+  new DataView(payload.buffer).setInt16(5, 160, false);
+  new DataView(payload.buffer).setFloat32(7, 500, true);
+  new DataView(payload.buffer).setFloat32(11, 50, true);
+  const result = protocol.parseAdvertisement(new Map([[0xff43, payload]]));
+  assert.equal(result.battery, 97);
+});
+
+test('protected public-profile commands are centrally guarded by authentication', () => {
+  const start = source.indexOf('  function sendBleCommand(');
+  const end = source.indexOf('\n  function isSuccessAck', start);
+  const send = source.slice(start, end);
+  assert.match(send, /0x01, 0x02, 0x04, 0x0a, 0x0c, 0x10, 0x11, 0x16/);
+  assert.match(send, /protectedCommands\.has\(command\) && !bleState\.isAuthenticated/);
+  assert.match(send, /maxWriteValueLength\('with-response'\)/);
+});
+
+test('web UI exposes every remaining public AG-BFLS diagnostic and configuration command', () => {
+  for (const id of ['btnBleDiagnostics','btnBleSetInterval','btnBleSetPower','btnBleSetContinue','btnBleSetAdvertising']) {
+    assert.match(source, new RegExp(id));
+  }
+  assert.match(source, /sendBleCommand\(0x0a/);
+  assert.match(source, /sendBleCommand\(0x0c/);
+  assert.match(source, /sendBleCommand\(0x22/);
+  assert.match(source, /sendBleCommand\(0x20/);
+  assert.match(source, /sendBleCommand\(0x21/);
+  assert.match(source, /sendBleCommand\(0x26/);
+  assert.match(source, /sendBleCommand\(0x1b/);
 });
