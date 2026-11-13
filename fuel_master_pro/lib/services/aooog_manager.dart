@@ -167,6 +167,18 @@ class AoooGManager {
   }) async {
     final characteristic = writeChar;
     final sensorId = currentSensorId;
+    if (AoooGProtocol.isProtectedCommand(command) && !_isAuthenticated) {
+      debugPrint('[BLE TX] Comando protegido 0x${command.toRadixString(16)} bloqueado: falta autenticación.');
+      return null;
+    }
+    if (command == 0x15 && (negotiatedMtu ?? 0) < 90) {
+      debugPrint('[BLE TX] Lectura 0x15 requiere ATT MTU >= 90.');
+      return null;
+    }
+    if (command == 0x16 && (negotiatedMtu ?? 0) < 91) {
+      debugPrint('[BLE TX] Escritura 0x16 requiere ATT MTU >= 91.');
+      return null;
+    }
     if (characteristic == null || sensorId == null) {
       debugPrint('[BLE TX] Error: writeChar o sensorId nulo');
       return null;
@@ -234,25 +246,19 @@ class AoooGManager {
   /// Lee parámetros guardados (comando 0x0D): Frecuencia vacío y lleno
   Future<Map<String, double>?> readParameters() async {
     final response = await sendCommand(0x0D, []);
-    if (response == null || !AoooGProtocol.isValidFrame(response, expectedSensorId: currentSensorId, expectedCommand: 0x0D)) {
-      return null;
-    }
-    if (response.length != 20) return null;
-
-    try {
-      final data = ByteData.sublistView(Uint8List.fromList(response), 6);
-      final emptyFrequency = data.getFloat32(4, Endian.little);
-      final fullFrequency = data.getFloat32(8, Endian.little);
-      if (!emptyFrequency.isFinite || !fullFrequency.isFinite || emptyFrequency <= 0 || fullFrequency <= 0) {
-        return null;
-      }
-      return {
-        'emptyFreq': emptyFrequency,
-        'fullFreq': fullFrequency,
-      };
-    } catch (_) {
-      return null;
-    }
+    if (response == null ||
+        !AoooGProtocol.isValidFrame(response, expectedSensorId: currentSensorId, expectedCommand: 0x0D) ||
+        response.length != 20) return null;
+    final parsed = AoooGProtocol.parseParameters(response.sublist(6, 19));
+    if (parsed == null) return null;
+    return {
+      'broadcastInterval': (parsed['broadcastInterval'] as int).toDouble(),
+      'continueAfterRestart': (parsed['continueAfterRestart'] as bool) ? 1.0 : 0.0,
+      'transmitPower': (parsed['transmitPower'] as int).toDouble(),
+      'emptyFreq': parsed['emptyFreq'] as double,
+      'fullFreq': parsed['fullFreq'] as double,
+      'outputMode': (parsed['outputMode'] as int).toDouble(),
+    };
   }
 
   /// Lee telemetría en tiempo real (comando 0x14)
@@ -266,7 +272,7 @@ class AoooGManager {
     try {
       final data = ByteData.sublistView(Uint8List.fromList(response), 6);
       final battCode = data.getUint16(0, Endian.big);
-      final battPct = ((battCode - 500) * 100 / 220).clamp(0, 100).toDouble();
+      final battPct = AoooGProtocol.batteryPercent(battCode).toDouble();
       final tempRaw = data.getInt16(2, Endian.big);
       final tempC = tempRaw / 8.0;
       final fullF = data.getFloat32(6, Endian.little);
@@ -309,9 +315,10 @@ class AoooGManager {
 
   /// Configura el intervalo de transmisión BLE (comando 0x04)
   Future<bool> setBroadcastInterval(int seconds) async {
-    final s = seconds.clamp(1, 255).toInt();
-    final resp = await sendCommand(0x04, [s]);
-    return _isSuccessStatus(resp, 0x04);
+    if (seconds < 1 || seconds > 255) return false;
+    final resp = await sendCommand(0x04, [seconds]);
+    if (!_isSuccessStatus(resp, 0x04)) return false;
+    return await readBroadcastInterval() == seconds;
   }
 
   /// Lee el intervalo de transmisión BLE (comando 0x05)
@@ -325,17 +332,67 @@ class AoooGManager {
 
   /// Configura el modo de salida (comando 0x19): 00=normalizado (%), 01=mm, 02=litros
   Future<bool> setOutputMode(int mode) async {
-    final resp = await sendCommand(0x19, [mode.clamp(0, 2).toInt()]);
-    return _isSuccessStatus(resp, 0x19);
+    if (mode < 0 || mode > 2) return false;
+    final resp = await sendCommand(0x19, [mode]);
+    if (!_isSuccessStatus(resp, 0x19)) return false;
+    return await readOutputMode() == mode;
   }
 
   /// Lee el modo de salida actual (comando 0x1A)
   Future<int?> readOutputMode() async {
     final resp = await sendCommand(0x1A, []);
-    if (resp != null && AoooGProtocol.isValidFrame(resp, expectedSensorId: currentSensorId, expectedCommand: 0x1A) && resp.length == 8) {
+    if (resp != null &&
+        AoooGProtocol.isValidFrame(resp, expectedSensorId: currentSensorId, expectedCommand: 0x1A) &&
+        resp.length == 8 && resp[6] <= 2) {
       return resp[6];
     }
     return null;
+  }
+
+  Future<int?> readTransmitPower() async {
+    final resp = await sendCommand(0x0B, []);
+    if (resp == null || !AoooGProtocol.isValidFrame(resp, expectedSensorId: currentSensorId, expectedCommand: 0x0B) || resp.length != 8) return null;
+    return AoooGProtocol.signedInt8(resp[6]);
+  }
+
+  Future<bool> setTransmitPower(int dbm) async {
+    const allowed = {-40, -20, -16, -12, -8, -4, 0, 3, 4};
+    if (!allowed.contains(dbm)) return false;
+    final resp = await sendCommand(0x0A, [dbm & 0xff]);
+    if (!_isSuccessStatus(resp, 0x0A)) return false;
+    return await readTransmitPower() == dbm;
+  }
+
+  Future<bool> setContinueAfterRestart(bool enabled) async {
+    final resp = await sendCommand(0x0C, [enabled ? 1 : 0]);
+    if (!_isSuccessStatus(resp, 0x0C)) return false;
+    final params = await readParameters();
+    return params != null && params['continueAfterRestart'] == (enabled ? 1.0 : 0.0);
+  }
+
+  Future<String?> readFirmwareVersion() async {
+    final resp = await sendCommand(0x26, [], timeout: const Duration(seconds: 3));
+    if (resp == null || !AoooGProtocol.isValidFrame(resp, expectedSensorId: currentSensorId, expectedCommand: 0x26)) return null;
+    return AoooGProtocol.parseFirmwareVersion(resp.sublist(6, resp.length - 1));
+  }
+
+  Future<String?> readBleAddress() async {
+    final resp = await sendCommand(0x20, []);
+    if (resp == null || !AoooGProtocol.isValidFrame(resp, expectedSensorId: currentSensorId, expectedCommand: 0x20)) return null;
+    return AoooGProtocol.parseBleAddress(resp.sublist(6, resp.length - 1));
+  }
+
+  Future<int?> readAdvertisingProtocol() async {
+    final resp = await sendCommand(0x21, []);
+    if (resp == null || !AoooGProtocol.isValidFrame(resp, expectedSensorId: currentSensorId, expectedCommand: 0x21)) return null;
+    return AoooGProtocol.parseAdvertisingProtocol(resp.sublist(6, resp.length - 1));
+  }
+
+  Future<bool> setAdvertisingProtocol(int protocol) async {
+    if (protocol < 0 || protocol > 1) return false;
+    final resp = await sendCommand(0x22, [protocol]);
+    if (!_isSuccessStatus(resp, 0x22)) return false;
+    return await readAdvertisingProtocol() == protocol;
   }
 
   Future<Uint8List?> _readCalibrationBlockBytes(int startIndex) async {
@@ -375,6 +432,13 @@ class AoooGManager {
         .getFloat32(0, Endian.little);
     if (!value.isFinite || value < 0 || value > 5000) return null;
     return value;
+  }
+
+  Future<double?> readCalibrationCoordinate() async {
+    final response = await sendCommand(0x1B, []);
+    if (response == null ||
+        !AoooGProtocol.isValidFrame(response, expectedSensorId: currentSensorId, expectedCommand: 0x1B)) return null;
+    return AoooGProtocol.parseCalibrationCoordinate(response.sublist(6, response.length - 1));
   }
 
   bool _validCalibrationRows(List<CalibrationRow> rows) {
