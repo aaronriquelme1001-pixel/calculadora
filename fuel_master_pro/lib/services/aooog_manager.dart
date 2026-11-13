@@ -305,7 +305,7 @@ class AoooGManager {
 
   /// Configura el intervalo de transmisión BLE (comando 0x04)
   Future<bool> setBroadcastInterval(int seconds) async {
-    final s = seconds.clamp(1, 255);
+    final s = seconds.clamp(1, 255).toInt();
     final resp = await sendCommand(0x04, [s]);
     return _isSuccessStatus(resp, 0x04);
   }
@@ -321,7 +321,7 @@ class AoooGManager {
 
   /// Configura el modo de salida (comando 0x19): 00=normalizado (%), 01=mm, 02=litros
   Future<bool> setOutputMode(int mode) async {
-    final resp = await sendCommand(0x19, [mode.clamp(0, 2)]);
+    final resp = await sendCommand(0x19, [mode.clamp(0, 2).toInt()]);
     return _isSuccessStatus(resp, 0x19);
   }
 
