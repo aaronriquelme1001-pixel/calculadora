@@ -3069,8 +3069,8 @@
       bleState.sensorId = null;
       updateBleUI();
 
-      // Algunos firmwares envían una trama espontánea al activar notifications.
-      // Si ocurre, handleBleNotification aprende el ID desde esa trama con CRC válido.
+      // Algunos firmwares envían telemetría espontánea al activar notifications.
+      // Solo una trama 0x14 completa y coherente puede establecer el ID de sesión.
       const advertisedId = await advertisedIdPromise;
       if (!bleState.sensorId && advertisedId) bleState.sensorId = advertisedId;
 
