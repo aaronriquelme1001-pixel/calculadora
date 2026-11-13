@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'aooog_ble.dart';
@@ -64,6 +65,7 @@ class AoooGManager {
   StreamSubscription<BluetoothConnectionState>? _connectionSub;
 
   int? currentSensorId;
+  int? negotiatedMtu;
   final _responseCompleters = <int, Completer<List<int>>>{};
   bool _commandInFlight = false;
 
@@ -87,7 +89,7 @@ class AoooGManager {
       });
 
       try {
-        await sensor.device.requestMtu(247);
+        negotiatedMtu = await sensor.device.requestMtu(247);
       } catch (_) {}
 
       final services = await sensor.device.discoverServices();
@@ -129,6 +131,7 @@ class AoooGManager {
     notifyChar = null;
     connectedDevice = null;
     currentSensorId = null;
+    negotiatedMtu = null;
     _isAuthenticated = false;
     _failPendingCommands();
   }
@@ -175,6 +178,10 @@ class AoooGManager {
       await Future.delayed(const Duration(milliseconds: 100));
       waitLimit++;
     }
+    if (_commandInFlight) {
+      debugPrint('[BLE TX] Comando omitido: existe otra solicitud sin respuesta.');
+      return null;
+    }
 
     _commandInFlight = true;
     final completer = Completer<List<int>>();
@@ -203,100 +210,25 @@ class AoooGManager {
           expectedSensorId: currentSensorId,
           expectedCommand: command,
         ) &&
-        response.length >= 7 &&
+        response.length == 8 &&
         response[6] == 0x00;
   }
 
   bool _isAuthenticated = false;
   bool get isAuthenticated => _isAuthenticated;
-  String _lastAcceptedPin = '12345678';
-  String get lastAcceptedPin => _lastAcceptedPin;
 
-  /// Autentica con contraseña (comando 0x12)
-  /// Prueba candidatos automáticos o el PIN provisto por el usuario
-  Future<bool> authenticate([String? explicitPin]) async {
-    final cleanPin = explicitPin?.trim() ?? '';
-    final sensorId = currentSensorId ?? 0;
-
-    // Generar candidatos de credenciales (exactamente 8 bytes)
-    final candidates = <List<int>>[];
-
-    // 1. PIN ingresado explícitamente
-    if (cleanPin.isNotEmpty) {
-      if (cleanPin.length == 8) {
-        candidates.add(cleanPin.codeUnits);
-      } else {
-        candidates.add(cleanPin.padLeft(8, '0').substring(0, 8).codeUnits);
-        candidates.add(cleanPin.padRight(8, '0').substring(0, 8).codeUnits);
-      }
-      if (RegExp(r'^[0-9a-fA-F]{1,16}$').hasMatch(cleanPin)) {
-        try {
-          final hexStr = cleanPin.padLeft(16, '0').substring(0, 16);
-          final hexBytes = <int>[];
-          for (int i = 0; i < 16; i += 2) {
-            hexBytes.add(int.parse(hexStr.substring(i, i + 2), radix: 16));
-          }
-          candidates.add(hexBytes);
-        } catch (_) {}
-      }
+  /// AoooG entrega exactamente ocho bytes de credencial.
+  /// No se prueban claves por defecto ni variantes derivadas del número de serie.
+  Future<bool> authenticate(List<int> credentialBytes) async {
+    if (credentialBytes.length != 8 ||
+        credentialBytes.any((byte) => byte < 0 || byte > 0xff)) {
+      _isAuthenticated = false;
+      return false;
     }
-
-    // 2. Último PIN aceptado (si se configuró)
-    if (_lastAcceptedPin.isNotEmpty && _lastAcceptedPin != cleanPin) {
-      candidates.add(_lastAcceptedPin.codeUnits);
-    }
-
-    // 3. Clave oficial de fábrica AoooG '12345678'
-    candidates.add('12345678'.codeUnits);
-
-    // 4. Clave alternativa '00000000'
-    candidates.add('00000000'.codeUnits);
-
-    // 5. Claves derivadas del sensor ID / SN
-    if (sensorId > 0) {
-      final snStr = sensorId.toString();
-      candidates.add(snStr.padLeft(8, '0').codeUnits);
-      candidates.add(snStr.padRight(8, '0').codeUnits);
-
-      int id2 = (sensorId >> 16) & 0xFF;
-      int id1 = (sensorId >> 8) & 0xFF;
-      int id0 = sensorId & 0xFF;
-      candidates.add([id2, id1, id0, 0, 0, 0, 0, 0]);
-      candidates.add([0, 0, 0, 0, 0, id2, id1, id0]);
-      candidates.add([0, id2, id1, id0, 0, 0, 0, 0]);
-    }
-
-    // 6. Ceros y FFs
-    candidates.add(List<int>.filled(8, 0x00));
-    candidates.add(List<int>.filled(8, 0xFF));
-
-    // Deduplicar candidatos
-    final seen = <String>{};
-    final uniqueCandidates = <List<int>>[];
-    for (final c in candidates) {
-      if (c.length != 8) continue;
-      final key = c.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-      if (!seen.contains(key)) {
-        seen.add(key);
-        uniqueCandidates.add(c);
-      }
-    }
-
-    for (final pwdBytes in uniqueCandidates) {
-      debugPrint('[AUTH] Probando clave: ${pwdBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}');
-      final resp = await sendCommand(0x12, pwdBytes, timeout: const Duration(seconds: 3));
-      if (_isSuccessStatus(resp, 0x12)) {
-        debugPrint('[AUTH] ¡AUTENTICACIÓN EXITOSA! Clave aceptada.');
-        _isAuthenticated = true;
-        if (cleanPin.isNotEmpty) _lastAcceptedPin = cleanPin;
-        return true;
-      }
-      await Future.delayed(const Duration(milliseconds: 100));
-    }
-
-    debugPrint('[AUTH] Ningún candidato fue aceptado por el sensor.');
-    _isAuthenticated = false;
-    return false;
+    final response = await sendCommand(0x12, credentialBytes,
+        timeout: const Duration(seconds: 4));
+    _isAuthenticated = _isSuccessStatus(response, 0x12);
+    return _isAuthenticated;
   }
 
   /// Lee parámetros guardados (comando 0x0D): Frecuencia vacío y lleno
@@ -305,7 +237,7 @@ class AoooGManager {
     if (response == null || !AoooGProtocol.isValidFrame(response, expectedSensorId: currentSensorId, expectedCommand: 0x0D)) {
       return null;
     }
-    if (response.length < 19) return null;
+    if (response.length != 20) return null;
 
     try {
       final data = ByteData.sublistView(Uint8List.fromList(response), 6);
@@ -329,7 +261,7 @@ class AoooGManager {
     if (response == null || !AoooGProtocol.isValidFrame(response, expectedSensorId: currentSensorId, expectedCommand: 0x14)) {
       return null;
     }
-    if (response.length < 28) return null;
+    if (response.length != 29) return null;
 
     try {
       final data = ByteData.sublistView(Uint8List.fromList(response), 6);
@@ -377,7 +309,7 @@ class AoooGManager {
 
   /// Configura el intervalo de transmisión BLE (comando 0x04)
   Future<bool> setBroadcastInterval(int seconds) async {
-    final s = seconds.clamp(1, 255);
+    final s = seconds.clamp(1, 255).toInt();
     final resp = await sendCommand(0x04, [s]);
     return _isSuccessStatus(resp, 0x04);
   }
@@ -385,7 +317,7 @@ class AoooGManager {
   /// Lee el intervalo de transmisión BLE (comando 0x05)
   Future<int?> readBroadcastInterval() async {
     final resp = await sendCommand(0x05, []);
-    if (resp != null && resp.length >= 8 && resp[5] == 0x05) {
+    if (resp != null && AoooGProtocol.isValidFrame(resp, expectedSensorId: currentSensorId, expectedCommand: 0x05) && resp.length == 8) {
       return resp[6];
     }
     return null;
@@ -393,81 +325,137 @@ class AoooGManager {
 
   /// Configura el modo de salida (comando 0x19): 00=normalizado (%), 01=mm, 02=litros
   Future<bool> setOutputMode(int mode) async {
-    final resp = await sendCommand(0x19, [mode.clamp(0, 2)]);
+    final resp = await sendCommand(0x19, [mode.clamp(0, 2).toInt()]);
     return _isSuccessStatus(resp, 0x19);
   }
 
   /// Lee el modo de salida actual (comando 0x1A)
   Future<int?> readOutputMode() async {
     final resp = await sendCommand(0x1A, []);
-    if (resp != null && resp.length >= 8 && resp[5] == 0x1A) {
+    if (resp != null && AoooGProtocol.isValidFrame(resp, expectedSensorId: currentSensorId, expectedCommand: 0x1A) && resp.length == 8) {
       return resp[6];
     }
     return null;
   }
 
-  /// Lee un bloque de la tabla de calibración (comando 0x15)
-  Future<List<CalibrationRow>?> readCalibrationBlock(int startIndex) async {
-    final resp = await sendCommand(0x15, [startIndex.clamp(0, 90)]);
-    if (resp == null || resp.length < 87 || resp[5] != 0x15) return null;
-
-    final rows = <CalibrationRow>[];
-    final bd = ByteData.sublistView(Uint8List.fromList(resp), 6);
-    for (int i = 0; i < 10; i++) {
-      final offset = i * 8;
-      final vol = bd.getFloat32(offset, Endian.little);
-      final lvl = bd.getUint16(offset + 4, Endian.little);
-      final fix = bd.getUint16(offset + 6, Endian.little);
-      rows.add(CalibrationRow(
-        index: startIndex + i,
-        volumeL: vol,
-        levelMm: lvl,
-        fixValue: fix,
-        expectedFreqHz: 0,
-      ));
-    }
-    return rows;
+  Future<Uint8List?> _readCalibrationBlockBytes(int startIndex) async {
+    if (startIndex < 0 || startIndex > 90 || startIndex % 10 != 0) return null;
+    final response = await sendCommand(0x15, [startIndex],
+        timeout: const Duration(seconds: 8));
+    if (response == null ||
+        !AoooGProtocol.isValidFrame(response, expectedSensorId: currentSensorId, expectedCommand: 0x15) ||
+        response.length != 87) return null;
+    return Uint8List.fromList(response.sublist(6, 86));
   }
 
-  /// Carga la tabla de 30 puntos por bloques (comando 0x16)
-  Future<bool> uploadCalibrationTable(
-    List<CalibrationRow> rows, {
-    void Function(int current, int total)? onProgress,
-  }) async {
-    if (connectedDevice == null || rows.isEmpty) return false;
-
-    // Intentar autenticación silenciosa de forma no bloqueante
-    if (!_isAuthenticated) {
-      try {
-        await authenticate();
-      } catch (_) {}
-    }
-
-    const rowsPerBlock = 10;
-    final totalBlocks = (rows.length / rowsPerBlock).ceil();
-    for (var block = 0; block < totalBlocks; block++) {
-      final startIndex = block * rowsPerBlock;
-      final payload = <int>[startIndex];
-      for (var offset = 0; offset < rowsPerBlock; offset++) {
-        final index = startIndex + offset;
-        payload.addAll(index < rows.length ? rows[index].toBytes() : List<int>.filled(8, 0));
-      }
-
-      final response = await sendCommand(
-        0x16,
-        payload,
-        timeout: const Duration(seconds: 8),
+  /// Lee un bloque de diez registros y conserva el índice solicitado.
+  Future<List<CalibrationRow>?> readCalibrationBlock(int startIndex) async {
+    final bytes = await _readCalibrationBlockBytes(startIndex);
+    if (bytes == null) return null;
+    final data = ByteData.sublistView(bytes);
+    return List<CalibrationRow>.generate(10, (i) {
+      final offset = i * 8;
+      return CalibrationRow(
+        index: startIndex + i,
+        volumeL: data.getFloat32(offset, Endian.little),
+        levelMm: data.getUint16(offset + 4, Endian.little),
+        fixValue: data.getUint16(offset + 6, Endian.little),
+        expectedFreqHz: 0,
       );
-      if (!_isSuccessStatus(response, 0x16)) return false;
-      onProgress?.call(block + 1, totalBlocks);
-      await Future.delayed(const Duration(milliseconds: 100));
-    }
+    });
+  }
 
-    // Configurar modo de salida a LITROS (0x02)
-    await setOutputMode(0x02);
+  /// Lee la coordenada real del sensor (comando 0x1B), no una interpolación.
+  Future<double?> readCalibrationCoordinate() async {
+    final response = await sendCommand(0x1B, []);
+    if (response == null ||
+        !AoooGProtocol.isValidFrame(response, expectedSensorId: currentSensorId, expectedCommand: 0x1B) ||
+        response.length != 11) return null;
+    final value = ByteData.sublistView(Uint8List.fromList(response), 6)
+        .getFloat32(0, Endian.little);
+    if (!value.isFinite || value < 0 || value > 5000) return null;
+    return value;
+  }
+
+  bool _validCalibrationRows(List<CalibrationRow> rows) {
+    if (rows.length != 100) return false;
+    var ended = false;
+    var active = 0;
+    var previousVolume = -1.0;
+    var previousLevel = -1;
+    var previousFix = -1;
+    for (var i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      if (row.index != i) return false;
+      final isTerminator = row.volumeL == 0 && row.levelMm == 0 && row.fixValue == 0;
+      if (i > 0 && isTerminator) {
+        ended = true;
+        continue;
+      }
+      if (ended || !row.volumeL.isFinite || row.volumeL < previousVolume ||
+          row.levelMm <= previousLevel || row.fixValue <= previousFix ||
+          row.fixValue > 5000) return false;
+      try { row.toBytes(); } catch (_) { return false; }
+      active++;
+      previousVolume = row.volumeL;
+      previousLevel = row.levelMm;
+      previousFix = row.fixValue;
+    }
+    return active >= 2;
+  }
+
+  bool _bytesEqual(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
     return true;
   }
 
+  Future<bool> _restoreCalibrationBackup(List<Uint8List> backup) async {
+    if (backup.length != 10 || connectedDevice == null || !_isAuthenticated) return false;
+    for (var block = 0; block < 10; block++) {
+      final start = block * 10;
+      final payload = <int>[start, ...backup[block]];
+      final response = await sendCommand(0x16, payload, timeout: const Duration(seconds: 8));
+      if (!_isSuccessStatus(response, 0x16)) return false;
+      final check = await _readCalibrationBlockBytes(start);
+      if (check == null || !_bytesEqual(check, backup[block])) return false;
+    }
+    return true;
+  }
+
+  /// Requiere autenticación explícita, backup previo y verificación de los 10 bloques.
+  /// Requiere autenticación explícita, respaldo previo y verificación de los 10 bloques.
+  /// Si falla la escritura o el modo de salida, restaura tabla y modo anteriores.
+  Future<bool> uploadCalibrationTable(List<CalibrationRow> rows, {void Function(int current, int total)? onProgress}) async {
+    if (connectedDevice == null || !_isAuthenticated || (negotiatedMtu ?? 0) < 91 || !_validCalibrationRows(rows)) return false;
+    final originalOutputMode = await readOutputMode();
+    if (originalOutputMode == null) return false;
+    final backup = <Uint8List>[];
+    for (var start = 0; start <= 90; start += 10) {
+      final block = await _readCalibrationBlockBytes(start);
+      if (block == null) return false;
+      backup.add(block);
+    }
+    Future<bool> rollback() async {
+      final tableRestored = await _restoreCalibrationBackup(backup);
+      final modeRestored = await setOutputMode(originalOutputMode) && await readOutputMode() == originalOutputMode;
+      return tableRestored && modeRestored;
+    }
+    for (var start = 0; start <= 90; start += 10) {
+      final payload = <int>[start];
+      for (var i = start; i < start + 10; i++) payload.addAll(rows[i].toBytes());
+      final response = await sendCommand(0x16, payload, timeout: const Duration(seconds: 8));
+      if (!_isSuccessStatus(response, 0x16)) { await rollback(); return false; }
+      final readBack = await _readCalibrationBlockBytes(start);
+      final expected = Uint8List.fromList(payload.sublist(1));
+      if (readBack == null || !_bytesEqual(readBack, expected)) { await rollback(); return false; }
+      onProgress?.call(start ~/ 10 + 1, 10);
+    }
+    if (!await setOutputMode(0x02) || await readOutputMode() != 0x02) { await rollback(); return false; }
+    return true;
+  }
   Future<void> disconnect() async {
     await _notifySub?.cancel();
     _notifySub = null;
