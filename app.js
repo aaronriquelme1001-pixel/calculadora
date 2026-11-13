@@ -1749,6 +1749,17 @@
       rows.forEach((r) => {
         const row = ws.getRow(r.rowNum);
 
+        if (state.isImported) {
+          row.getCell(1).value = r.dataVal;
+          row.getCell(2).value = r.levelVal;
+          row.getCell(3).value = r.volumeVal;
+          row.getCell(1).numFmt = '0';
+          row.getCell(2).numFmt = '0';
+          row.getCell(3).numFmt = '0.0';
+          row.font = { name: 'Calibri', size: 11, bold: false };
+          return;
+        }
+
         if (r.rowNum === 2) {
           row.getCell(1).value = 0;
         } else if (r.rowNum === 3) {
@@ -2639,7 +2650,10 @@
         bleState.emptyFreq = emptyFreq;
         bleState.fullFreq = fullFreq;
         setText('bleLiveLevel', bleState.outputMode === 1 ? output.toFixed(0) + ' mm' : '-- mm');
-        setText('bleLiveVolume', bleState.outputMode === 0 ? output.toFixed(1) + ' %' : (bleState.outputMode === 1 ? '-- L' : output.toFixed(1) + ' L'));
+        const outputLabel = bleState.outputMode === 0 ? output.toFixed(1) + ' %' :
+          (bleState.outputMode === 1 ? '-- (salida en mm)' :
+            (bleState.outputMode === 2 ? output.toFixed(1) + ' L' : output.toFixed(1) + ' (modo no leído)'));
+        setText('bleLiveVolume', outputLabel);
         setText('bleLiveFreq', freq.toFixed(1) + ' Hz');
         setText('bleLiveBatteryTemp', battery.toFixed(0) + '% • ' + temp.toFixed(1) + '°C');
       }
@@ -2672,6 +2686,8 @@
       bleState.isSimulated = false;
       bleState.isAuthenticated = false;
       updateBleUI();
+      try { bleState.outputMode = await readOutputMode(); }
+      catch (modeError) { console.warn('No se pudo leer el modo de salida inicial:', modeError.message); }
       if (bleState.pollTimer) clearInterval(bleState.pollTimer);
       bleState.pollTimer = setInterval(async () => {
         if (!bleState.isConnected || bleState.pendingCommand) return;
@@ -3178,7 +3194,7 @@
     };
     let headerRow = -1, columns = { data: 0, level: 1, volume: 2 };
     for (let r = 0; r < Math.min(matrix.length, 10); r++) {
-      const row = matrix[r].map(value => normalizeCalibrationHeader(calibrationCellValue(value)));
+      const row = (matrix[r] || []).map(value => normalizeCalibrationHeader(calibrationCellValue(value)));
       const found = {};
       for (const key of Object.keys(aliases)) found[key] = row.findIndex(value => aliases[key].has(value));
       if (found.data >= 0 && found.level >= 0 && found.volume >= 0 &&
