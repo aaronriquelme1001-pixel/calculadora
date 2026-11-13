@@ -2668,6 +2668,8 @@
     try {
       const device = await navigator.bluetooth.requestDevice({
         filters: [
+          { manufacturerData: [{ companyIdentifier: 0xff43 }] },
+          { manufacturerData: [{ companyIdentifier: 0xffff }] },
           { namePrefix: 'AOOG' }, { namePrefix: 'BFLS' }, { namePrefix: 'FM' }, { namePrefix: 'Fuel' }
         ],
         optionalServices: [AoooGProtocol.SERVICE_UUID]
