@@ -100,6 +100,33 @@ void main() {
     });
   });
 
+  group('AG-BFLS command payload sizing', () {
+    test('calibration write frame is 88 bytes and validates against its sensor ID', () {
+      final frame = AoooGProtocol.buildFrame(0x123456, 0x16, [
+        0, ...List<int>.filled(80, 0),
+      ]);
+      expect(frame.length, 88);
+      expect(frame[1], 86);
+      expect(AoooGProtocol.isValidFrame(frame, expectedSensorId: 0x123456, expectedCommand: 0x16), isTrue);
+    });
+
+    test('calibration read request carries one block index byte', () {
+      final frame = AoooGProtocol.buildFrame(0x123456, 0x15, [90]);
+      expect(frame.length, 8);
+      expect(frame[5], 0x15);
+      expect(frame[6], 90);
+      expect(AoooGProtocol.isValidFrame(frame, expectedSensorId: 0x123456, expectedCommand: 0x15), isTrue);
+    });
+
+    test('rejects malformed frame length, CRC and sensor identity', () {
+      final frame = AoooGProtocol.buildFrame(0x123456, 0x12, List<int>.filled(8, 0x5a));
+      expect(AoooGProtocol.isValidFrame(frame, expectedSensorId: 0x654321), isFalse);
+      final badCrc = List<int>.from(frame)..[frame.length - 1] ^= 0xff;
+      expect(AoooGProtocol.isValidFrame(badCrc), isFalse);
+      expect(AoooGProtocol.isValidFrame(frame.sublist(0, frame.length - 1)), isFalse);
+    });
+  });
+
   group('TankGeometryEngine', () {
     test('rectangular tank returns zero, half and full volume correctly', () {
       const length = 850.0;
