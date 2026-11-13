@@ -54,7 +54,7 @@ class CalibrationTableCodec {
     for (var i = 0; i < rows.length; i++) {
       final row = rows[i];
       if (row.index != i) throw FormatException('Índice inconsistente en registro ${i + 1}.');
-      if (!row.volumeL.isFinite || row.volumeL < 0 || row.levelMm < 0 || row.levelMm > 65535 || row.fixValue < 0 || row.fixValue > 5000) throw FormatException('Registro ${i + 1} fuera de rango.');
+      if (!row.volumeL.isFinite || row.volumeL < 0 || row.volumeL > 1000000 || row.levelMm < 0 || row.levelMm > 65535 || row.fixValue < 0 || row.fixValue > 5000) throw FormatException('Registro ${i + 1} fuera de rango.');
       if (i > 0 && (row.fixValue <= previousFix || row.levelMm <= previousLevel || row.volumeL < previousVolume)) throw FormatException('Data y Level deben crecer; Volume no puede disminuir (registro ${i + 1}).');
       row.toBytes(); previousFix = row.fixValue; previousLevel = row.levelMm; previousVolume = row.volumeL;
     }
