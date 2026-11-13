@@ -54,6 +54,10 @@ La consola web BLE (`#panelBleSensor`) utiliza el mismo sistema de diseño blanc
    - Columna 1: Puntos Cero (Vacío y Lleno) con botones fijar (0x10/0x11), más altura local y delta Hz.
    - Columna 2: Subida y lectura de 100 posiciones (0x15/0x16), selector de modo litros (0x19), credencial de 16 hex y acciones de energía (0x01/0x02).
 
+### Protocolo AG-BFLS completo
+
+La consola web y el servicio Flutter implementan los comandos del perfil público AG-BFLS, incluidos parámetros, telemetría, autenticación, calibración por bloques, modo de salida, dirección BLE, formato de publicidad y versión de firmware. La matriz de comandos, estructuras, requisitos de MTU y límites Web/Flutter está documentada en [AG-BFLS Public Protocol Implementation](docs/AG_BFLS_PUBLIC_PROTOCOL_IMPLEMENTATION.md) y contrastada con la [especificación oficial AoooG](https://www.aooog.com/bluetooth-protocol.html).
+
 ### Búsqueda e identificación Bluetooth
 
 - Tanto **Buscar Sensor** como **Todos** abren el selector sin filtros mediante `acceptAllDevices: true`. Es deliberado: algunos AG-BFLS no exponen `manufacturerData` antes de la conexión, por lo que un filtro AoooG/Universal puede ocultarlos.
