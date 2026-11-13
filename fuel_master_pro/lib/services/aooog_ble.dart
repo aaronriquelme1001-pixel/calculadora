@@ -9,7 +9,7 @@ class AoooGSensor {
   final double frequency;
   final double emptyFreq;
   final double output;
-  final int temperature;
+  final double temperature;
   final int battery;
   final int? outputMode;
   AoooGSensor({required this.device, required this.id, required this.mac,
@@ -134,7 +134,7 @@ class AoooGProtocol {
       final data = ByteData.sublistView(Uint8List.fromList(aooog));
       final batteryCode = ((aooog[3] & 0x0f) << 8) | aooog[4];
       final outputMode = aooog[3] >> 4;
-      final temperature = (data.getInt16(5, Endian.big) / 8).round();
+      final temperature = data.getInt16(5, Endian.big) / 8.0;
       final frequency = data.getFloat32(7, Endian.little);
       final output = data.getFloat32(11, Endian.little);
       if (outputMode > 2 || !frequency.isFinite || !output.isFinite || frequency < 0 || output < 0) return null;
@@ -145,7 +145,7 @@ class AoooGProtocol {
 
     if (universal == null || universal.length != 24 ||
         universal[0] != 0x3f || universal[1] != 0x36 ||
-        universal[2] != 0xb4 || universal[5] != 0x5b) return null;
+        universal[2] != 0xb4 || universal[5] != 0x5b || universal[13] != 0x01) return null;
     final id = (universal[6] << 16) | (universal[7] << 8) | universal[8];
     if (id == 0) return null;
     final frequency = ((universal[14] << 8) | universal[15]).toDouble();
@@ -153,7 +153,7 @@ class AoooGProtocol {
     final output = ((universal[20] << 8) | universal[21]).toDouble();
     return AoooGSensor(device: result.device, id: id, mac: result.device.remoteId.str,
       rssi: result.rssi, frequency: frequency, emptyFreq: emptyFrequency,
-      output: output, temperature: universal[22] - 40,
+      output: output, temperature: (universal[22] - 40).toDouble(),
       battery: universal[23].clamp(0, 100).toInt());
   }
 }
