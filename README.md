@@ -1,114 +1,87 @@
-# 🛢️ Sistema Integral de Calibración de Estanques y Sensores AoooG BLE
+# Fuel Master Pro — Calculadora de estanques y calibración AOOOG AG-BFLS
 
-Plataforma integral de ingeniería para el cálculo volumétrico de estanques de combustible y calibración directa por Bluetooth Low Energy (BLE) para sensores de varilla **AoooG AG-BFLS / BL Fuel Sensor**.
+Repositorio único de trabajo: **`main`**. Contiene la calculadora web (HTML/CSS/JavaScript) y la aplicación Android Flutter (`fuel_master_pro/`). La APK se genera fuera de este repositorio, según el flujo de trabajo acordado.
 
-Incluye:
-1. **Web App de Calibración & Modelado:** Motor 2D/3D axonométrico en Canvas, aforo milimétrico, cálculo de capacidad con geometrías complejas y exportación Excel (.xlsx) estricta a 30 filas compatible con la plataforma AoooG.
-2. **App Nativa Android (Fuel Master Pro):** Escaneo de sensores BLE, lectura de telemetría (frecuencia Hz, temperatura, batería, RSSI), triangulación física capacitiva inversa y envío directo de la tabla de calibración (Comando `0x16`) y cambio a salida en Litros (Comando `0x19`) sin intermediarios ni computadoras en terreno.
+## Componentes
 
----
+- **Calculadora web:** modelado 2D/3D y cálculo volumétrico de estanques, exportación/importación de tablas y consola BLE experimental.
+- **Fuel Master Pro Android:** conexión BLE, telemetría, autenticación explícita, importación de tablas Excel/CSV, lectura de memoria, escritura verificada y restauración ante fallos.
+- **Protocolo compartido:** servicio GATT FFF0, escritura FFF1 y notificaciones FFF2.
 
-## 📐 1. Geometrías de Estanque Soportadas
+## Protocolo AOOOG AG-BFLS
 
-- **Prisma Rectangular con Múltiples Radios:** 4 radios transversales independientes (piso izq/der, techo izq/der), 4 radios longitudinales (frontal/posterior) y aristas verticales.
-- **Cilindro Horizontal & Elíptico / Ovalado:** Integración exacta de cuerda circular y elíptica.
-- **Forma D (Volvo / Scania):** Frente redondeado con radios superior e inferior independientes y esquinas dorsales de alivio.
-- **Muesca / Escalón (Retroexcavadoras y Maquinaria Pesada):** Configuración de ancho, alto y lado del escalón.
-- **Doble Estanque Conectado:** Dimensiones y geometrías independientes para tanque primario y secundario con tubo de interconexión.
-
----
-
-## ⚡ 2. Protocolo BLE AoooG AG-BFLS
-
-- **Servicio GATT Primario:** `0000FFF0-1212-EFDE-1523-785FEABCD123`
-- **Característica de Comando (Write):** `0000FFF1-1212-EFDE-1523-785FEABCD123`
-- **Característica de Respuesta (Notify):** `0000FFF2-1212-EFDE-1523-785FEABCD123`
-
-### Estructura de Trama:
+Trama:
 ```
 0C [LL] [ID2 ID1 ID0] [CMD] [DATA...] [CRC8]
 ```
-- **CRC-8:** Polinomio `0x31` (implementación reflexiva `0x8C`, Maxim/Dallas).
-- **Comando 0x12:** Autenticación con contraseña de 8 bytes (por defecto `12345678`).
-- **Comando 0x0D:** Lectura de frecuencias de fábrica (Vacío y Lleno en Hz).
-- **Comando 0x14:** Lectura de telemetría en tiempo real (frecuencia actual, temperatura, batería y salida).
-- **Comando 0x16:** Escritura de tabla de calibración en bloques de 10 puntos (80 bytes por bloque: `float32 LE volume`, `uint16 LE level_mm`, `uint16 LE fix_value`).
-- **Comando 0x19:** Selección de modo de salida (`0x02` = Litros directos).
 
----
+- ID del sensor: tres bytes obtenidos del anuncio BLE AOOOG (manufacturer ID `0xFF43`) o Universal/Dominator (`0xFFFF`). No se inventa ni se fija un ID genérico.
+- CRC-8: implementación reflejada con polinomio `0x8C`.
+- `0x12`: autenticación con los ocho bytes de credencial entregados por el fabricante. No hay PIN ni clave predeterminada.
+- `0x0D`: lectura de parámetros.
+- `0x14`: telemetría.
+- `0x15`: lectura de un bloque de diez registros.
+- `0x16`: escritura de diez registros (80 bytes).
+- `0x19` / `0x1A`: escritura y lectura del modo de salida (`0x02` = litros).
+- Las respuestas se validan por ID, comando, longitud y CRC. Las operaciones de escritura requieren ACK explícito.
 
-## 🔬 3. Triangulación de Frecuencia Capacitiva
+## Tabla de calibración
 
-En las sondas de nivel capacitivas, la capacidad eléctrica $C$ es inversamente proporcional a la frecuencia del oscilador ($f$):
-$$C(x) \propto \frac{1}{f(x)}$$
+Formato oficial: `Data | Level | Volume`.
 
-Por tanto, para una fracción de llenado $x \in [0, 1]$:
-$$\frac{1}{f(x)} = \frac{1}{f_{\text{vacío}}} + \left(\frac{1}{f_{\text{lleno}}} - \frac{1}{f_{\text{vacío}}}\right) \cdot x$$
+- `Data`: entero de 0 a 5000, conservado como coordenada del sensor (`fixValue`).
+- `Level`: entero de 0 a 65535 mm.
+- `Volume`: litros, finito y no negativo.
+- Entre 2 y 100 registros activos, con origen `0 / 0 / 0`.
+- Data y Level estrictamente crecientes; Volume no decreciente.
+- Los slots restantes hasta 100 se rellenan con terminadores cero.
+- La importación de Excel/CSV valida encabezados, filas y rangos; no convierte silenciosamente datos inválidos a cero.
+- Las coordenadas Data importadas se preservan al exportar y transferir.
+- Las tablas generadas por geometría no se escriben al sensor como si sus coordenadas fueran mediciones reales. La consola web exige una tabla importada con Data real.
 
-La aplicación implementa esta conversión física real para triangular el `fix_value` (0 a 5000 puntos) a partir de los Hz reales del sensor, garantizando exactitud milimétrica incluso ante no linealidades del dieléctrico.
+La tabla de referencia SHVS36 contiene 29 registros incluyendo origen y termina en Data=5000, Level=546 mm y Volume=249.2 L. El Excel del cliente no se versiona.
 
----
+## Consola BLE web
 
-## 📱 4. Aplicación Android (Fuel Master Pro)
+La consola web valida el ID del sensor desde los anuncios BLE. Si el navegador no ofrece `watchAdvertisements()` o no recibe un anuncio AOOOG/Universal válido, la conexión se detiene de forma segura; no se envían comandos con un ID inventado.
 
-El código fuente de la app nativa en Flutter se encuentra en el directorio `/fuel_master_pro`:
-- **Compilar APK Release:**
-  ```bash
-  cd fuel_master_pro
-  flutter build apk --release
-  ```
-- **Instalar en dispositivo por ADB:**
-  ```bash
-  adb install -r build/app/outputs/flutter-apk/app-release.apk
-  ```
+La escritura de tabla requiere autenticación, respaldo de los diez bloques, ACK por bloque, lectura de retorno byte a byte y verificación del modo de salida. Ante un fallo intenta restaurar tabla y modo originales. La API Web Bluetooth no expone una lectura fiable del MTU negociado; si el navegador/dispositivo no acepta el paquete de bloque, la operación falla y activa la ruta de restauración. Para la validación BLE física completa se recomienda la app Flutter.
 
----
+El modo DEMO no se presenta como conexión ni escritura física. La altura de sonda modificada desde el formulario web se aplica únicamente al modelo de cálculo local; no cambia parámetros del sensor.
 
-## 💻 5. Web App de Oficina / PC
+## Desarrollo y validación
 
-- Abrir directamente `index.html` en cualquier navegador moderno.
-- 100% offline (sin librerías remotas dependientes de internet).
-- Generación y descarga de archivos `.xlsx` formateados con las 30 filas exactas requeridas para importación batch en la plataforma AoooG.
-
-
----
-
-## 🧪 6. Validación técnica y seguridad de calibración
-
-La rama de correcciones incorpora:
-
-- Integración volumétrica Android alineada con el aforo web: secciones evaluadas en el punto medio de cada milímetro e interpolación lineal para alturas fraccionarias.
-- Reglas geométricas alineadas para radios rectangulares, Forma D, escalón, estanques dobles y tapas cilíndricas hemisféricas.
-- Soporte Android para las dimensiones independientes del segundo estanque y los parámetros geométricos que antes no estaban disponibles en la interfaz.
-- Validación de dimensiones, espesores, frecuencias y monotonicidad de los 30 puntos antes de iniciar una escritura BLE.
-- Validación de trama BLE: cabecera, longitud declarada, CRC-8, identificador del sensor y comando esperado.
-- Escritura serializada, confirmación de cada bloque y confirmación explícita del comando de salida en litros. Una escritura parcial o sin ACK final no se informa como calibración exitosa.
-- PIN del sensor solicitado al técnico; no se utiliza una contraseña predeterminada en la aplicación.
-
-### Ejecutar validaciones Android
-
-Desde `fuel_master_pro/`:
-
-```bash
-flutter pub get
-flutter analyze
-flutter test
-```
-
-### Validar sintaxis de la aplicación web
-
-Desde la raíz:
-
+Web:
 ```bash
 node --check app.js
 ```
 
-El workflow de GitHub Actions queda configurado para ejecutar estas comprobaciones en los cambios de la rama de correcciones; la ejecución debe confirmarse en la pestaña Actions del repositorio.
+Android:
+```bash
+cd fuel_master_pro
+flutter pub get
+flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
+flutter test --no-pub
+```
 
-### Supuesto físico para doble estanque
+GitHub Actions ejecuta validación JavaScript y análisis/pruebas Flutter en `main`.
 
-El cálculo de estanques conectados supone que ambos comparten la misma cota inferior y que el tubo permite igualar el nivel de líquido. Si están montados a distintas alturas, debe incorporarse un desplazamiento vertical entre estanques antes de usar la tabla como calibración física.
+## Seguridad y publicación
 
-### Validación pendiente en terreno
+- No versionar credenciales, PIN, claves, keystores, APK firmadas ni archivos privados de clientes.
+- GitHub Pages publica exclusivamente `index.html`, `app.js` y `app.css` desde un directorio de distribución temporal. No publica el repositorio completo ni planillas internas.
+- No incluir datos sensibles en logs ni documentación.
 
-Las pruebas automatizadas definidas cubren el motor matemático y el formato de las tramas, pero aún deben ejecutarse y no sustituyen una prueba con un sensor AoooG real. Antes de usar la escritura BLE en producción, se debe validar con un sensor de prueba que acepte los bloques, confirme el ACK y mantenga la salida en litros después de desconectar y reconectar.
+## Validación física pendiente
+
+Los tests automáticos no prueban compatibilidad con hardware real. Antes de distribuir o afirmar interoperabilidad con Fuel Master oficial se debe probar en un AG-BFLS de banco:
+
+1. Autenticación con credencial real, sin registrarla.
+2. Lectura de los diez bloques y respaldo de los 100 slots.
+3. Importación de la tabla SHVS36 de 29 filas.
+4. Escritura y lectura de retorno byte a byte de los 100 slots.
+5. Verificación del modo litros y telemetría.
+6. Prueba de rollback controlada.
+7. Prueba de ida y vuelta con la aplicación oficial.
+
+Registrar modelo, firmware, MTU cuando esté disponible, fecha y logs saneados. No declarar compatibilidad física hasta completar estas pruebas.
