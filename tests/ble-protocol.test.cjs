@@ -133,6 +133,7 @@ test('advertisement parser extracts sensor ID, SN, battery, frequency and temper
   assert.ok(parsedAoooG);
   assert.deepEqual(Array.from(parsedAoooG.id), [0x0c, 0x52, 0x02]);
   assert.equal(parsedAoooG.sn, 807426);
+  assert.equal(parsedAoooG.outputMode, 0);
   assert.equal(parsedAoooG.battery, 97);
   assert.equal(parsedAoooG.temperature, 20);
   assert.ok(Math.abs(parsedAoooG.frequency - 546.2) < 0.01);
@@ -158,6 +159,8 @@ test('advertisement parser extracts sensor ID, SN, battery, frequency and temper
   assert.equal(parsedUni.battery, 95);
   assert.equal(parsedUni.temperature, 22);
   assert.equal(parsedUni.frequency, 546);
+  const invalidStatus = Uint8Array.from(uniBuf); invalidStatus[13] = 0;
+  assert.equal(protocol.parseAdvertisement(new Map([[0xffff, invalidStatus]])), null);
 });
 
 
