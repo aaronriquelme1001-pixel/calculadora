@@ -3539,6 +3539,7 @@
         const restored = await restoreCalibration(backup, originalMode);
         throw new Error(writeError.message + (restored ? ' Se restauraron y verificaron tabla y modo anteriores.' : ' ATENCIÓN: no se pudo confirmar la restauración completa; no desconectes el sensor y revisa la memoria.'));
       }
+      bleState.calibrationTable = rows.map(row => ({ volume: row.volume, level: row.level, data: row.data }));
       if (label) label.innerText = '100 slots escritos y leídos de retorno; modo litros verificado.';
       if (log) log.innerText = '[' + new Date().toLocaleTimeString() + '] PASS: 10 bloques escritos, 10 lecturas byte a byte y modo 0x02 leído de vuelta.';
       showToast('Calibración transferida y verificada por lectura de retorno.');
@@ -3572,13 +3573,33 @@
     } catch (error) { alert('No se fijó el punto lleno: ' + error.message); }
   }
 
+  function isValidSensorCalibrationTable(rows) {
+    if (!Array.isArray(rows) || rows.length !== 100) return false;
+    let ended = false, active = 0;
+    let previous = { volume: -1, level: -1, data: -1 };
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const terminator = row.volume === 0 && row.level === 0 && row.data === 0;
+      if (i > 0 && terminator) { ended = true; continue; }
+      if (ended || !Number.isFinite(row.volume) || row.volume < 0 ||
+          !Number.isInteger(row.level) || row.level < 0 ||
+          !Number.isInteger(row.data) || row.data < 0 || row.data > 5000 ||
+          row.volume < previous.volume || row.level <= previous.level || row.data <= previous.data) return false;
+      previous = row;
+      active++;
+    }
+    return active >= 2;
+  }
+
   async function setBleOutputModeFromSelect() {
     const select = document.getElementById('selBleOutputMode');
     const mode = Number.parseInt(select?.value || '2', 10);
     if (![0, 1, 2].includes(mode)) { alert('Modo de salida inválido.'); return; }
     try {
       if (bleState.isSimulated) throw new Error('DEMO: no se modifica ningún sensor físico.');
-      if (!bleState.isAuthenticated) throw new Error('Autentica el sensor primero.');
+      if ((mode === 1 || mode === 2) && !isValidSensorCalibrationTable(bleState.calibrationTable)) {
+        throw new Error('Los modos mm/L requieren una tabla de calibración válida. Lee la tabla del sensor o transfiere una tabla y verifica los 100 slots antes de cambiar el modo.');
+      }
       await writeOutputMode(mode);
       showToast('Modo de salida confirmado: ' + ({ 0: 'Porcentaje', 1: 'Milímetros', 2: 'Litros' })[mode] + '.');
     } catch (error) { alert('No se pudo aplicar el modo: ' + error.message); }
