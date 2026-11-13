@@ -2676,9 +2676,10 @@
       });
       bleState.device = device;
       device.addEventListener('gattserverdisconnected', disconnectBleSensor);
+      // Capturar el ID desde el anuncio antes de abrir GATT; nunca se usa un ID fijo.
+      bleState.sensorId = await waitForAdvertisedSensorId(device);
       const server = await device.gatt.connect();
       bleState.server = server;
-      bleState.sensorId = await waitForAdvertisedSensorId(device);
       const service = await server.getPrimaryService(AoooGProtocol.SERVICE_UUID);
       bleState.charWrite = await service.getCharacteristic(AoooGProtocol.CHAR_WRITE_UUID);
       bleState.charNotify = await service.getCharacteristic(AoooGProtocol.CHAR_NOTIFY_UUID);
