@@ -729,15 +729,18 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     }
 
     final rowsToSend = _generatedRows.isNotEmpty ? _generatedRows : _generate30PointCalibration();
-    if (rowsToSend.length < 2 || rowsToSend.length > 100) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('La tabla debe tener entre 2 y 100 puntos medidos.')));
+    final terminatorIndex = rowsToSend.indexWhere((row) =>
+        row.index > 0 && row.volumeL == 0 && row.levelMm == 0 && row.fixValue == 0);
+    final activeRows = terminatorIndex < 0 ? rowsToSend : rowsToSend.take(terminatorIndex).toList();
+    if (activeRows.length < 2 || rowsToSend.length > 100) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('La tabla debe contener entre 2 y 100 puntos medidos.')));
       return;
     }
-    if (_capturedFixValues.length != rowsToSend.length) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Antes de grabar, captura la coordenada real 0x1B de cada punto con el sensor conectado.')));
+    if (List.generate(activeRows.length, (i) => _capturedFixValues.containsKey(i)).any((captured) => !captured)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Antes de grabar, captura la coordenada real 0x1B de cada punto medido con el sensor conectado.')));
       return;
     }
-    final coordinates = List<int>.generate(rowsToSend.length, (i) => _capturedFixValues[i] ?? -1);
+    final coordinates = List<int>.generate(activeRows.length, (i) => _capturedFixValues[i] ?? -1);
     if (coordinates.any((v) => v < 0 || v > 5000) ||
         coordinates.asMap().entries.skip(1).any((e) => e.value <= coordinates[e.key - 1])) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Las coordenadas reales deben estar entre 0 y 5000 y ser estrictamente crecientes.')));
@@ -759,8 +762,8 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     }
 
     final rowsToWrite = <CalibrationRow>[];
-    for (var i = 0; i < rowsToSend.length; i++) {
-      final row = rowsToSend[i];
+    for (var i = 0; i < activeRows.length; i++) {
+      final row = activeRows[i];
       rowsToWrite.add(CalibrationRow(index: i, volumeL: row.volumeL,
         levelMm: row.levelMm, fixValue: coordinates[i],
         expectedFreqHz: row.expectedFreqHz));
@@ -806,8 +809,8 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
           ),
           content: Text(
             'Se verificaron los 100 espacios de tabla del sensor #${_connectedSensor!.id} (${rowsToSend.length} puntos medidos).\n\n'
-            '• Volumen Total: ${rowsToSend.last.volumeL.toStringAsFixed(1)} L\n'
-            '• Nivel Máximo: ${rowsToSend.last.levelMm} mm\n'
+            '• Volumen Total: ${activeRows.last.volumeL.toStringAsFixed(1)} L\n'
+            '• Nivel Máximo: ${activeRows.last.levelMm} mm\n'
             '• Modo de salida: Litros (L)',
           ),
           actions: [
