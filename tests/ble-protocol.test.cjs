@@ -75,6 +75,6 @@ test('web connection treats advertisement monitoring as optional and verifies ID
   const end = source.indexOf('\n  async function disconnectBleSensor()', start);
   const connect = source.slice(start, end);
   assert.match(connect, /await readOutputMode\(\)/);
-  assert.match(connect, /No se enviaron escrituras/);
-  assert.match(connect, /'\s*'\s*\)/);
+  assert.match(connect, /ID real válido/);
+  assert.match(connect, /\n\s*''\s*\n\s*\);/);
 });
