@@ -281,7 +281,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
         _liveTemperature = sensor.temperature.toDouble();
         _liveBattery = sensor.battery.toDouble();
         _liveFuelLiters = sensor.output;
-        _outputMode = sensor.outputMode ?? 2;
+        _outputMode = _bleManager.currentOutputMode ?? sensor.outputMode ?? 2;
       });
 
       // Leer parámetros
