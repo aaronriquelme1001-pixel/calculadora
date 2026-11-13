@@ -2501,7 +2501,7 @@
 
     rowToBytes(volumeL, levelMm, fixVal) {
       const volume = Number(volumeL), level = Number(levelMm), fix = Number(fixVal);
-      if (!Number.isFinite(volume) || volume < 0 || !Number.isInteger(level) || level < 0 || level > 65535 ||
+      if (!Number.isFinite(volume) || volume < 0 || volume > 1000000 || !Number.isInteger(level) || level < 0 || level > 65535 ||
           !Number.isInteger(fix) || fix < 0 || fix > 5000) throw new Error('Registro de calibración fuera de rango.');
       const bytes = new Uint8Array(8);
       const view = new DataView(bytes.buffer);
@@ -3220,7 +3220,7 @@
       const volume = parseCalibrationNumber(row[columns.volume], 'Volume', r + 1);
       if (!Number.isInteger(data) || data < 0 || data > 5000) throw new Error('Data debe ser entero entre 0 y 5000 en fila ' + (r + 1) + '.');
       if (!Number.isInteger(level) || level < 0 || level > 65535) throw new Error('Level debe ser entero entre 0 y 65535 mm en fila ' + (r + 1) + '.');
-      if (volume < 0) throw new Error('Volume no puede ser negativo en fila ' + (r + 1) + '.');
+      if (volume < 0 || volume > 1000000) throw new Error('Volume debe estar entre 0 y 1000000 L en fila ' + (r + 1) + '.');
       rows.push({ data, level, volume });
       if (rows.length > 100) throw new Error('La tabla supera los 100 registros admitidos.');
     }
