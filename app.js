@@ -2697,7 +2697,7 @@
       const universal = dataMap.get(0xffff);
       if (universal && (universal.byteLength === 24 || universal.length === 24)) {
         const bytes = new Uint8Array(universal.buffer || universal, universal.byteOffset || 0, universal.byteLength || universal.length);
-        if (bytes[0] === 0x3f && bytes[1] === 0x36 && bytes[2] === 0xb4 && bytes[5] === 0x5b) {
+        if (bytes[0] === 0x3f && bytes[1] === 0x36 && bytes[2] === 0xb4 && bytes[5] === 0x5b && bytes[13] === 0x01) {
           const id = [bytes[6], bytes[7], bytes[8]];
           if (id.some(v => v !== 0)) {
             const frequency = (bytes[14] << 8) | bytes[15];
