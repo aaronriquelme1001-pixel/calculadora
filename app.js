@@ -2458,73 +2458,130 @@
     CHAR_NOTIFY_UUID: '0000fff2-1212-efde-1523-785feabcd123',
 
     crc8(data) {
-      let crc = 0x00;
-      for (let i = 0; i < data.length; i++) {
-        crc ^= data[i];
-        for (let j = 0; j < 8; j++) {
-          if ((crc & 0x01) !== 0) {
-            crc = (crc >>> 1) ^ 0x8C;
-          } else {
-            crc >>>= 1;
-          }
-        }
+      let crc = 0;
+      for (const byte of data) {
+        crc ^= byte & 0xff;
+        for (let bit = 0; bit < 8; bit++) crc = (crc & 1) ? ((crc >>> 1) ^ 0x8c) : (crc >>> 1);
       }
-      return crc & 0xFF;
+      return crc & 0xff;
     },
 
     buildFrame(sensorId, cmd, payload = []) {
-      const len = 4 + 1 + payload.length + 1;
-      const frame = new Uint8Array(2 + len);
-      frame[0] = 0x0C;
-      frame[1] = len;
-      frame[2] = sensorId[0] || 0;
-      frame[3] = sensorId[1] || 0;
-      frame[4] = sensorId[2] || 0;
-      frame[5] = sensorId[3] || 0;
-      frame[6] = cmd & 0xFF;
-      for (let i = 0; i < payload.length; i++) {
-        frame[7 + i] = payload[i];
+      if (!Array.isArray(sensorId) || sensorId.length !== 3 || sensorId.some(v => !Number.isInteger(v) || v < 0 || v > 255)) {
+        throw new Error('ID BLE del sensor inválido; se requieren 3 bytes de anuncio.');
       }
-      const crc = this.crc8(frame.subarray(2, frame.length - 1));
-      frame[frame.length - 1] = crc;
-      return frame;
+      if (!Number.isInteger(cmd) || cmd < 0 || cmd > 255 || payload.length > 250 || payload.some(v => !Number.isInteger(v) || v < 0 || v > 255)) {
+        throw new Error('Comando o payload BLE fuera de rango.');
+      }
+      const length = 5 + payload.length;
+      const body = [length, ...sensorId, cmd, ...payload];
+      return Uint8Array.from([0x0c, ...body, this.crc8(body)]);
     },
 
     parseFrame(data) {
-      if (!data || data.length < 8) return null;
-      if (data[0] !== 0x0C) return null;
-      const len = data[1];
-      if (data.length !== 2 + len) return null;
-      const expectedCrc = this.crc8(data.subarray(2, data.length - 1));
-      if (data[data.length - 1] !== expectedCrc) return null;
-
-      const sensorId = [data[2], data[3], data[4], data[5]];
-      const cmd = data[6];
-      const payload = data.subarray(7, data.length - 1);
-      return { sensorId, cmd, payload };
+      if (!data || data.length < 7 || data[0] !== 0x0c || data[1] !== data.length - 2) return null;
+      if (this.crc8(data.subarray(1, data.length - 1)) !== data[data.length - 1]) return null;
+      return {
+        sensorId: [data[2], data[3], data[4]],
+        cmd: data[5],
+        payload: data.subarray(6, data.length - 1)
+      };
     },
 
     rowToBytes(volumeL, levelMm, fixVal) {
-      const buf = new Uint8Array(8);
-      const view = new DataView(buf.buffer);
-      view.setFloat32(0, Number(volumeL) || 0, true);
-      view.setUint16(4, Math.round(Number(levelMm) || 0), true);
-      view.setUint16(6, Math.round(Number(fixVal) || 0), true);
-      return buf;
+      const volume = Number(volumeL), level = Number(levelMm), fix = Number(fixVal);
+      if (!Number.isFinite(volume) || volume < 0 || !Number.isInteger(level) || level < 0 || level > 65535 ||
+          !Number.isInteger(fix) || fix < 0 || fix > 5000) throw new Error('Registro de calibración fuera de rango.');
+      const bytes = new Uint8Array(8);
+      const view = new DataView(bytes.buffer);
+      view.setFloat32(0, volume, true);
+      view.setUint16(4, level, true);
+      view.setUint16(6, fix, true);
+      return bytes;
     }
   };
 
   const bleState = {
-    device: null,
-    server: null,
-    charWrite: null,
-    charNotify: null,
-    sensorId: [0, 0, 0, 0],
-    isAuthenticated: false,
-    isConnected: false,
-    isSimulated: false,
-    pollTimer: null
+    device: null, server: null, charWrite: null, charNotify: null,
+    sensorId: null, isAuthenticated: false, isConnected: false, isSimulated: false,
+    pollTimer: null, pendingCommand: null, emptyFreq: null, fullFreq: null,
+    outputMode: null, calibrationTable: null
   };
+
+  function sameSensorId(a, b) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === 3 && b.length === 3 && a.every((v, i) => v === b[i]);
+  }
+
+  function sendBleCommand(command, payload = [], timeoutMs = 5000) {
+    if (!bleState.isConnected || !bleState.charWrite || !bleState.sensorId) return Promise.reject(new Error('No hay conexión BLE válida.'));
+    if (bleState.pendingCommand) return Promise.reject(new Error('Hay otro comando BLE esperando respuesta.'));
+    return new Promise(async (resolve, reject) => {
+      const pending = { command, resolve, reject, timer: null };
+      pending.timer = setTimeout(() => {
+        if (bleState.pendingCommand === pending) bleState.pendingCommand = null;
+        reject(new Error('Tiempo de espera agotado para comando 0x' + command.toString(16).padStart(2, '0').toUpperCase() + '.'));
+      }, timeoutMs);
+      bleState.pendingCommand = pending;
+      try {
+        const frame = AoooGProtocol.buildFrame(bleState.sensorId, command, payload);
+        if (typeof bleState.charWrite.writeValueWithResponse === 'function') await bleState.charWrite.writeValueWithResponse(frame);
+        else await bleState.charWrite.writeValue(frame);
+      } catch (error) {
+        clearTimeout(pending.timer);
+        if (bleState.pendingCommand === pending) bleState.pendingCommand = null;
+        reject(error);
+      }
+    });
+  }
+
+  function isSuccessAck(response, command) {
+    return !!response && response.cmd === command && response.payload.length === 1 && response.payload[0] === 0x00;
+  }
+
+  function extractSensorIdFromAdvertisement(event) {
+    const dataMap = event && event.manufacturerData;
+    if (!dataMap || typeof dataMap.get !== 'function') return null;
+    const aooog = dataMap.get(0xff43);
+    if (aooog && aooog.byteLength === 15) {
+      const bytes = new Uint8Array(aooog.buffer, aooog.byteOffset, aooog.byteLength);
+      const id = Array.from(bytes.subarray(0, 3));
+      return id.some(v => v !== 0) ? id : null;
+    }
+    const universal = dataMap.get(0xffff);
+    if (universal && universal.byteLength === 24) {
+      const bytes = new Uint8Array(universal.buffer, universal.byteOffset, universal.byteLength);
+      if (bytes[0] === 0x3f && bytes[1] === 0x36 && bytes[2] === 0xb4 && bytes[5] === 0x5b) {
+        const id = Array.from(bytes.subarray(6, 9));
+        return id.some(v => v !== 0) ? id : null;
+      }
+    }
+    return null;
+  }
+
+  async function waitForAdvertisedSensorId(device, timeoutMs = 10000) {
+    return new Promise(async (resolve, reject) => {
+      let settled = false;
+      const finish = (error, id) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        device.removeEventListener('advertisementreceived', onAdvertisement);
+        if (error) reject(error); else resolve(id);
+      };
+      const onAdvertisement = event => {
+        const id = extractSensorIdFromAdvertisement(event);
+        if (id) finish(null, id);
+      };
+      const timer = setTimeout(() => finish(new Error('El sensor no publicó un ID AOOOG/BFLS válido. No se enviaron comandos.'), null), timeoutMs);
+      device.addEventListener('advertisementreceived', onAdvertisement);
+      try {
+        if (typeof device.watchAdvertisements !== 'function') throw new Error('Este navegador no expone los anuncios BLE necesarios para identificar el sensor de forma segura.');
+        await device.watchAdvertisements();
+      } catch (error) {
+        finish(error, null);
+      }
+    });
+  }
 
   function updateBleUI() {
     const panel = document.getElementById('panelBleSensor');
@@ -2534,332 +2591,406 @@
     const devInfo = document.getElementById('bleDeviceInfo');
     const lblBtn = document.getElementById('lblBleBtn');
     const btnUpload = document.getElementById('btnTableUploadBle');
-
     const active = bleState.isConnected || bleState.isSimulated;
     if (panel) panel.style.display = active ? 'block' : 'none';
     if (btnUpload) btnUpload.style.display = active ? 'inline-flex' : 'none';
-
-    if (lblBtn) {
-      lblBtn.innerText = active ? 'Sensor Conectado' : 'Conectar Sensor BLE';
-    }
-
+    if (lblBtn) lblBtn.innerText = active ? 'Sensor Conectado' : 'Conectar Sensor BLE';
     if (active) {
-      if (devName) {
-        devName.innerText = bleState.isSimulated ? 'AOOG_BL_DEMO (Simulador)' : (bleState.device ? bleState.device.name || 'AOOG_SENSOR' : 'AOOG_SENSOR');
-      }
-      if (devInfo) {
-        const idHex = bleState.sensorId.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(':');
-        devInfo.innerText = `ID: ${idHex} • GATT Conectado`;
-      }
+      if (devName) devName.innerText = bleState.isSimulated ? 'AOOG_BFLS_DEMO (SIMULADOR)' : (bleState.device?.name || 'Sensor AOOG/BFLS');
+      if (devInfo) devInfo.innerText = 'ID: ' + (bleState.sensorId || []).map(v => v.toString(16).padStart(2, '0').toUpperCase()).join(':') + ' • GATT Conectado';
       if (badgeAuth) {
-        badgeAuth.innerText = bleState.isAuthenticated ? 'AUTENTICADO' : 'BLOQUEADO';
-        badgeAuth.style.background = bleState.isAuthenticated ? '#16a34a' : '#eab308';
-        badgeAuth.style.color = bleState.isAuthenticated ? '#ffffff' : '#000000';
+        badgeAuth.innerText = bleState.isSimulated ? 'DEMO' : (bleState.isAuthenticated ? 'AUTENTICADO' : 'BLOQUEADO');
+        badgeAuth.style.background = bleState.isSimulated ? '#475569' : (bleState.isAuthenticated ? '#16a34a' : '#eab308');
+        badgeAuth.style.color = '#ffffff';
       }
       if (badgeLive) {
-        badgeLive.innerText = 'EN VIVO';
-        badgeLive.style.background = '#16a34a';
+        badgeLive.innerText = bleState.isSimulated ? 'SIMULADO' : 'CONECTADO';
+        badgeLive.style.background = bleState.isSimulated ? '#475569' : '#16a34a';
       }
+    } else {
+      if (badgeAuth) { badgeAuth.innerText = 'BLOQUEADO'; badgeAuth.style.background = '#1e293b'; }
+      if (badgeLive) { badgeLive.innerText = 'DESCONECTADO'; badgeLive.style.background = '#475569'; }
     }
   }
 
   function handleBleNotification(event) {
-    const value = new Uint8Array(event.target.value.buffer);
-    const parsed = AoooGProtocol.parseFrame(value);
-    if (!parsed) return;
+    const value = event.target.value;
+    const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+    const parsed = AoooGProtocol.parseFrame(bytes);
+    if (!parsed || !sameSensorId(parsed.sensorId, bleState.sensorId)) return;
 
-    if (parsed.cmd === 0x14 && parsed.payload.length >= 20) {
+    const pending = bleState.pendingCommand;
+    if (pending && parsed.cmd === pending.command) {
+      clearTimeout(pending.timer);
+      bleState.pendingCommand = null;
+      pending.resolve(parsed);
+    }
+
+    if (parsed.cmd === 0x14 && parsed.payload.length >= 22) {
       const view = new DataView(parsed.payload.buffer, parsed.payload.byteOffset, parsed.payload.byteLength);
-      const battery = view.getUint8(0);
-      const temp = view.getInt8(1);
-      const freq = view.getUint32(2, true);
-      const level = view.getUint16(6, true);
-      const fuel = view.getFloat32(8, true);
-
-      setText('bleLiveLevel', `${level} mm`);
-      setText('bleLiveVolume', `${fuel.toFixed(1)} L`);
-      setText('bleLiveFreq', `${freq} Hz`);
-      setText('bleLiveBatteryTemp', `${battery}% • ${temp}°C`);
-    } else if (parsed.cmd === 0x12) {
-      const status = parsed.payload[0];
-      if (status === 0x00 || status === 0x01) {
-        bleState.isAuthenticated = true;
-        updateBleUI();
-        showToast('Sensor autenticado correctamente.');
+      const batteryCode = view.getUint16(0, false);
+      const battery = Math.max(0, Math.min(100, (batteryCode - 500) * 100 / 220));
+      const temp = view.getInt16(2, false) / 8;
+      const fullFreq = view.getFloat32(6, true);
+      const emptyFreq = view.getFloat32(10, true);
+      const freq = view.getFloat32(14, true);
+      const output = view.getFloat32(18, true);
+      if ([temp, fullFreq, emptyFreq, freq, output].every(Number.isFinite)) {
+        bleState.emptyFreq = emptyFreq;
+        bleState.fullFreq = fullFreq;
+        setText('bleLiveLevel', bleState.outputMode === 1 ? output.toFixed(0) + ' mm' : '-- mm');
+        setText('bleLiveVolume', bleState.outputMode === 0 ? output.toFixed(1) + ' %' : (bleState.outputMode === 1 ? '-- L' : output.toFixed(1) + ' L'));
+        setText('bleLiveFreq', freq.toFixed(1) + ' Hz');
+        setText('bleLiveBatteryTemp', battery.toFixed(0) + '% • ' + temp.toFixed(1) + '°C');
       }
     }
   }
 
   async function connectBleSensor() {
     if (!navigator.bluetooth) {
-      alert('Web Bluetooth API no está soportada o habilitada en este navegador. Utilice Google Chrome o Microsoft Edge en PC/Android o pulse "Probar Demo" para simular.');
+      alert('Web Bluetooth no está disponible. Utiliza Chrome o Edge compatible en un contexto HTTPS.');
       return;
     }
-
     try {
       const device = await navigator.bluetooth.requestDevice({
         filters: [
-          { namePrefix: 'AOOG' },
-          { namePrefix: 'BFLS' },
-          { namePrefix: 'FM' },
-          { namePrefix: 'Fuel' }
+          { namePrefix: 'AOOG' }, { namePrefix: 'BFLS' }, { namePrefix: 'FM' }, { namePrefix: 'Fuel' }
         ],
         optionalServices: [AoooGProtocol.SERVICE_UUID]
       });
-
       bleState.device = device;
       device.addEventListener('gattserverdisconnected', disconnectBleSensor);
-
       const server = await device.gatt.connect();
       bleState.server = server;
-
+      bleState.sensorId = await waitForAdvertisedSensorId(device);
       const service = await server.getPrimaryService(AoooGProtocol.SERVICE_UUID);
       bleState.charWrite = await service.getCharacteristic(AoooGProtocol.CHAR_WRITE_UUID);
       bleState.charNotify = await service.getCharacteristic(AoooGProtocol.CHAR_NOTIFY_UUID);
-
       await bleState.charNotify.startNotifications();
       bleState.charNotify.addEventListener('characteristicvaluechanged', handleBleNotification);
-
       bleState.isConnected = true;
       bleState.isSimulated = false;
-      bleState.sensorId = [0x41, 0x4F, 0x4F, 0x47]; // 'AOOG'
+      bleState.isAuthenticated = false;
       updateBleUI();
-
       if (bleState.pollTimer) clearInterval(bleState.pollTimer);
       bleState.pollTimer = setInterval(async () => {
-        if (bleState.isConnected && bleState.charWrite) {
-          try {
-            const req = AoooGProtocol.buildFrame(bleState.sensorId, 0x14, []);
-            await bleState.charWrite.writeValue(req);
-          } catch (e) {
-            console.warn('Error solicitando telemetría BLE:', e);
-          }
-        }
-      }, 2000);
-
-      showToast(`Conectado a ${device.name || 'Sensor AOOG'}`);
-    } catch (err) {
-      if (err.name !== 'NotFoundError') {
-        alert('Error al conectar por Bluetooth: ' + err.message);
-      }
+        if (!bleState.isConnected || bleState.pendingCommand) return;
+        try { await sendBleCommand(0x14, [], 4000); } catch (error) { console.warn('Telemetría BLE:', error.message); }
+      }, 2500);
+      showToast('Conectado e identificado: ' + (device.name || 'Sensor AOOG/BFLS'));
+    } catch (error) {
+      await disconnectBleSensor();
+      alert('No se pudo establecer una conexión BLE segura: ' + error.message);
     }
   }
 
-  function disconnectBleSensor() {
-    if (bleState.pollTimer) {
-      clearInterval(bleState.pollTimer);
-      bleState.pollTimer = null;
+  async function disconnectBleSensor() {
+    if (bleState.pollTimer) clearInterval(bleState.pollTimer);
+    bleState.pollTimer = null;
+    if (bleState.pendingCommand) {
+      clearTimeout(bleState.pendingCommand.timer);
+      bleState.pendingCommand.reject(new Error('Conexión BLE cerrada.'));
+      bleState.pendingCommand = null;
     }
-    if (bleState.device && bleState.device.gatt && bleState.device.gatt.connected) {
-      bleState.device.gatt.disconnect();
+    const device = bleState.device;
+    if (bleState.charNotify) {
+      try { bleState.charNotify.removeEventListener('characteristicvaluechanged', handleBleNotification); } catch (_) {}
     }
-    bleState.device = null;
-    bleState.server = null;
-    bleState.charWrite = null;
-    bleState.charNotify = null;
-    bleState.isConnected = false;
-    bleState.isSimulated = false;
-    bleState.isAuthenticated = false;
+    bleState.device = null; bleState.server = null; bleState.charWrite = null; bleState.charNotify = null;
+    bleState.sensorId = null; bleState.isConnected = false; bleState.isSimulated = false;
+    bleState.isAuthenticated = false; bleState.emptyFreq = null; bleState.fullFreq = null; bleState.outputMode = null;
     updateBleUI();
-    showToast('Sensor desconectado.');
+    if (device?.gatt?.connected) {
+      try { device.gatt.disconnect(); } catch (_) {}
+    }
   }
 
   function simulateBleSensor() {
-    bleState.isConnected = false;
-    bleState.isSimulated = true;
-    bleState.isAuthenticated = true;
-    bleState.sensorId = [0x53, 0x49, 0x4D, 0x31]; // 'SIM1'
-    updateBleUI();
-
     if (bleState.pollTimer) clearInterval(bleState.pollTimer);
-    let simAngle = 0;
+    bleState.device = null; bleState.server = null; bleState.charWrite = null; bleState.charNotify = null;
+    bleState.sensorId = [0x53, 0x49, 0x4d];
+    bleState.isConnected = false; bleState.isSimulated = true; bleState.isAuthenticated = false;
+    bleState.emptyFreq = 15200; bleState.fullFreq = 10400; bleState.outputMode = 2;
+    bleState.calibrationTable = Array.from({ length: 100 }, (_, i) => ({ volume: 0, level: 0, data: 0 }));
+    updateBleUI();
+    let angle = 0;
     bleState.pollTimer = setInterval(() => {
       if (!bleState.isSimulated) return;
-      simAngle += 0.08;
-      const H = state.calcCache.effH || 370;
-      const simLevel = Math.round((H * 0.6) + Math.sin(simAngle) * (H * 0.15));
-      const simVol = getVolumeAtHeight(simLevel);
-      const simFreq = Math.round(1520 + Math.sin(simAngle) * 38);
-
-      setText('bleLiveLevel', `${simLevel} mm`);
-      setText('bleLiveVolume', `${simVol.toFixed(1)} L`);
-      setText('bleLiveFreq', `${simFreq} Hz`);
-      setText('bleLiveBatteryTemp', `98% • 24.5°C`);
-    }, 1500);
-
-    showToast('Simulador de sensor AOOG BLE iniciado con telemetría en vivo.');
-  }
-
-  async function authenticateBleSensor() {
-    const credInput = document.getElementById('bleCredentialInput');
-    const credStr = (credInput ? credInput.value : '0000000000000000').trim();
-
+      angle += 0.08;
+      const level = Math.round((state.calcCache.effH || 370) * (0.6 + Math.sin(angle) * 0.15));
+      setText('bleLiveLevel', level + ' mm');
+      setText('bleLiveVolume', getVolumeAtHeight(level).toFixed(1) + ' L');
+      setText('bleLiveFreq', Math.round(15200 - (angle % 6.28)   async function authenticateBleSensor() {
+    const input = document.getElementById('bleCredentialInput');
+    const credential = (input?.value || '').trim();
+    if (!/^[0-9a-fA-F]{16}$/.test(credential)) {
+      alert('Introduce exactamente 16 caracteres hexadecimales (8 bytes) entregados por el fabricante.');
+      return;
+    }
     if (bleState.isSimulated) {
-      bleState.isAuthenticated = true;
+      showToast('DEMO: no se autentica ningún sensor físico.');
+      return;
+    }
+    if (!bleState.isConnected) { alert('Conecta el sensor primero.'); return; }
+    try {
+      const bytes = Array.from({ length: 8 }, (_, i) => parseInt(credential.slice(i * 2, i * 2 + 2), 16));
+      const response = await sendBleCommand(0x12, bytes, 6000);
+      bleState.isAuthenticated = isSuccessAck(response, 0x12);
       updateBleUI();
-      showToast('Sensor (Demo) autenticado con éxito.');
-      return;
-    }
-
-    if (!bleState.isConnected || !bleState.charWrite) {
-      alert('No hay sensor conectado.');
-      return;
-    }
-
-    const credBytes = new Uint8Array(8);
-    for (let i = 0; i < 8; i++) {
-      const byteHex = credStr.substr(i * 2, 2);
-      credBytes[i] = parseInt(byteHex, 16) || 0;
-    }
-
-    try {
-      const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x12, credBytes);
-      await bleState.charWrite.writeValue(frame);
-      bleState.isAuthenticated = true;
-      updateBleUI();
-      showToast('Credencial enviada al sensor.');
-    } catch (err) {
-      alert('Error al autenticar: ' + err.message);
-    }
-  }
-
-  async function uploadCalibrationTableToBle() {
-    if (!bleState.isConnected && !bleState.isSimulated) {
-      alert('Conecte el sensor Bluetooth antes de transferir la calibración.');
-      return;
-    }
-
-    const rows = computeCalibrationRows(100);
-    const progressCont = document.getElementById('bleProgressContainer');
-    const progressBar = document.getElementById('bleProgressBar');
-    const progressLbl = document.getElementById('bleProgressLabel');
-    const progressPct = document.getElementById('bleProgressPct');
-    const statusLog = document.getElementById('bleStatusLog');
-
-    if (progressCont) progressCont.style.display = 'block';
-
-    const totalBlocks = 10;
-    for (let b = 0; b < totalBlocks; b++) {
-      const startSlot = b * 10;
-      const blockRows = rows.slice(startSlot, startSlot + 10);
-      const payload = new Uint8Array(1 + 80);
-      payload[0] = startSlot;
-      for (let r = 0; r < 10; r++) {
-        const row = blockRows[r] || { volume: 0, level: 0, data: 0 };
-        const rowBytes = AoooGProtocol.rowToBytes(row.volume || row.volumeVal, row.level || row.levelVal, row.data || row.dataVal);
-        payload.set(rowBytes, 1 + r * 8);
-      }
-
-      const pct = Math.round(((b + 1) / totalBlocks) * 100);
-      if (progressLbl) progressLbl.innerText = `Escribiendo bloque ${b + 1}/${totalBlocks} (posiciones ${startSlot + 1}-${startSlot + 10})...`;
-      if (progressBar) progressBar.style.width = pct + '%';
-      if (progressPct) progressPct.innerText = pct + '%';
-
-      if (bleState.isSimulated) {
-        await new Promise(r => setTimeout(r, 120));
-      } else {
-        const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x16, payload);
-        await bleState.charWrite.writeValue(frame);
-        await new Promise(r => setTimeout(r, 60));
-      }
-    }
-
-    if (progressLbl) progressLbl.innerText = 'Fijando modo salida en Litros (0x02)...';
-    if (!bleState.isSimulated && bleState.charWrite) {
-      const modeFrame = AoooGProtocol.buildFrame(bleState.sensorId, 0x19, [0x02]);
-      await bleState.charWrite.writeValue(modeFrame);
-    }
-    await new Promise(r => setTimeout(r, 200));
-
-    if (progressLbl) progressLbl.innerText = '¡Calibración de 100 posiciones transferida con éxito!';
-    if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] 100 registros escritos y modo litros 0x02 activado.`;
-    showToast('¡Tabla de 100 puntos y modo litros transferidos al sensor!');
-  }
-
-  async function setBleEmptyPoint() {
-    if (!bleState.isConnected && !bleState.isSimulated) {
-      alert('Conecte el sensor Bluetooth antes de calibrar el punto vacío.');
-      return;
-    }
-    if (!confirm('¿Desea establecer el valor actual como punto VACÍO (0%)?\nAsegúrese de que la sonda esté seca en aire o el estanque esté totalmente vacío.')) {
-      return;
-    }
-
-    if (bleState.isSimulated) {
-      bleState.emptyFreq = 15200;
-      setText('bleFreqEmpty', `${bleState.emptyFreq.toLocaleString()} Hz`);
-      const delta = Math.abs(bleState.emptyFreq - (bleState.fullFreq || 10400));
-      setText('bleDeltaFreq', `Delta: ${delta.toLocaleString()} Hz`);
-      const statusLog = document.getElementById('bleStatusLog');
-      if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Punto Vacío (0%) fijado en ${bleState.emptyFreq} Hz (CMD 0x10).`;
-      showToast('Punto Vacío (0%) guardado y verificado en sensor demo.');
-      return;
-    }
-
-    try {
-      const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x10, []);
-      await bleState.charWrite.writeValue(frame);
-      showToast('Comando 0x10 enviado. Calibrando punto Vacío...');
-    } catch (err) {
-      alert('Error enviando calibración de vacío: ' + err.message);
-    }
-  }
-
-  async function setBleFullPoint() {
-    if (!bleState.isConnected && !bleState.isSimulated) {
-      alert('Conecte el sensor Bluetooth antes de calibrar el punto lleno.');
-      return;
-    }
-    if (!confirm('¿Desea establecer el valor actual como punto LLENO (100%)?\nAsegúrese de que la sonda esté 100% sumergida en el combustible diésel.')) {
-      return;
-    }
-
-    if (bleState.isSimulated) {
-      bleState.fullFreq = 10400;
-      setText('bleFreqFull', `${bleState.fullFreq.toLocaleString()} Hz`);
-      const delta = Math.abs((bleState.emptyFreq || 15200) - bleState.fullFreq);
-      setText('bleDeltaFreq', `Delta: ${delta.toLocaleString()} Hz`);
-      const statusLog = document.getElementById('bleStatusLog');
-      if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Punto Lleno (100%) fijado en ${bleState.fullFreq} Hz (CMD 0x11).`;
-      showToast('Punto Lleno (100%) guardado y verificado en sensor demo.');
-      return;
-    }
-
-    try {
-      const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x11, []);
-      await bleState.charWrite.writeValue(frame);
-      showToast('Comando 0x11 enviado. Calibrando punto Lleno...');
-    } catch (err) {
-      alert('Error enviando calibración de lleno: ' + err.message);
+      if (!bleState.isAuthenticated) throw new Error('El sensor no confirmó la autenticación.');
+      if (input) input.value = '';
+      showToast('Autenticación confirmada por el sensor.');
+    } catch (error) {
+      bleState.isAuthenticated = false; updateBleUI();
+      alert('Autenticación no confirmada: ' + error.message);
     }
   }
 
   async function readBleSensorParameters() {
-    if (!bleState.isConnected && !bleState.isSimulated) {
-      alert('Conecte el sensor Bluetooth primero.');
-      return;
-    }
-
     if (bleState.isSimulated) {
-      bleState.emptyFreq = bleState.emptyFreq || 15200;
-      bleState.fullFreq = bleState.fullFreq || 10400;
-      setText('bleFreqEmpty', `${bleState.emptyFreq.toLocaleString()} Hz`);
-      setText('bleFreqFull', `${bleState.fullFreq.toLocaleString()} Hz`);
-      const delta = Math.abs(bleState.emptyFreq - bleState.fullFreq);
-      setText('bleDeltaFreq', `Delta: ${delta.toLocaleString()} Hz`);
-      const statusLog = document.getElementById('bleStatusLog');
-      if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Parámetros leídos de memoria (0x0D): Vacío=${bleState.emptyFreq} Hz, Lleno=${bleState.fullFreq} Hz.`;
-      showToast('Parámetros de memoria leídos correctamente.');
+      setText('bleFreqEmpty', bleState.emptyFreq.toLocaleString() + ' Hz');
+      setText('bleFreqFull', bleState.fullFreq.toLocaleString() + ' Hz');
+      setText('bleDeltaFreq', 'Delta: ' + Math.abs(bleState.emptyFreq - bleState.fullFreq).toLocaleString() + ' Hz');
+      showToast('DEMO: parámetros simulados, no leídos de un sensor.');
       return;
     }
-
     try {
-      const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x0D, []);
-      await bleState.charWrite.writeValue(frame);
-      showToast('Solicitando parámetros de memoria (0x0D)...');
-    } catch (err) {
-      alert('Error al leer parámetros: ' + err.message);
+      const response = await sendBleCommand(0x0d, [], 6000);
+      if (!response || response.payload.length !== 13) throw new Error('Respuesta 0x0D inválida.');
+      const view = new DataView(response.payload.buffer, response.payload.byteOffset, response.payload.byteLength);
+      const empty = view.getFloat32(4, true), full = view.getFloat32(8, true);
+      if (!Number.isFinite(empty) || !Number.isFinite(full) || empty <= 0 || full <= 0) throw new Error('Frecuencias devueltas fuera de rango.');
+      bleState.emptyFreq = empty; bleState.fullFreq = full;
+      setText('bleFreqEmpty', empty.toLocaleString() + ' Hz');
+      setText('bleFreqFull', full.toLocaleString() + ' Hz');
+      setText('bleDeltaFreq', 'Delta: ' + Math.abs(empty - full).toLocaleString() + ' Hz');
+      showToast('Parámetros leídos y validados desde el sensor.');
+    } catch (error) { alert('No se pudieron leer los parámetros: ' + error.message); }
+  }
+
+  function saveBleSensorHeight() {
+    const input = document.getElementById('bleSensorHeight');
+    const value = Number(input?.value || 0);
+    if (!Number.isFinite(value) || value <= 0 || value > 65535) {
+      alert('Introduce una altura local válida entre 1 y 65535 mm.'); return;
     }
+    state.tank.height = value; state.currentLevelMm = value;
+    syncInputsFromState(); updateAllUI();
+    const log = document.getElementById('bleStatusLog');
+    if (log) log.innerText = '[' + new Date().toLocaleTimeString() + '] Altura aplicada únicamente al modelo local: ' + value + ' mm. No se escribió en el sensor.';
+    showToast('Altura aplicada al cálculo local; no se modificó el sensor.');
+  }
+
+  function decodeCalibrationBlock(response, startIndex) {
+    if (!response || response.payload.length !== 80) throw new Error('Bloque 0x15 inválido en índice ' + startIndex + '.');
+    const view = new DataView(response.payload.buffer, response.payload.byteOffset, response.payload.byteLength);
+    return Array.from({ length: 10 }, (_, i) => ({
+      volume: view.getFloat32(i * 8, true),
+      level: view.getUint16(i * 8 + 4, true),
+      data: view.getUint16(i * 8 + 6, true)
+    }));
+  }
+
+  async function readBleCalibrationTable() {
+    const progress = document.getElementById('bleProgressContainer');
+    const bar = document.getElementById('bleProgressBar');
+    const label = document.getElementById('bleProgressLabel');
+    const pct = document.getElementById('bleProgressPct');
+    const log = document.getElementById('bleStatusLog');
+    if (progress) progress.style.display = 'block';
+    try {
+      const rows = [];
+      for (let block = 0; block < 10; block++) {
+        const start = block * 10;
+        if (label) label.innerText = 'Leyendo bloque ' + (block + 1) + '/10...';
+        let decoded;
+        if (bleState.isSimulated) {
+          await new Promise(resolve => setTimeout(resolve, 80));
+          decoded = bleState.calibrationTable.slice(start, start + 10);
+        } else {
+          const response = await sendBleCommand(0x15, [start], 9000);
+          decoded = decodeCalibrationBlock(response, start);
+        }
+        rows.push(...decoded);
+        if (bar) bar.style.width = ((block + 1) * 10) + '%';
+        if (pct) pct.innerText = ((block + 1) * 10) + '%';
+      }
+      if (rows.length !== 100) throw new Error('No se recibieron los 100 registros.');
+      bleState.calibrationTable = rows;
+      if (label) label.innerText = 'Lectura completa: 100 registros recibidos.';
+      if (log) log.innerText = '[' + new Date().toLocaleTimeString() + '] Lectura real completada: 100 slots, 10 bloques recibidos y decodificados.';
+      showToast(bleState.isSimulated ? 'DEMO: tabla simulada leída.' : 'Se leyeron los 100 registros del sensor.');
+      if (bleState.isSimulated) console.info('Tabla DEMO; no corresponde a memoria física.');
+    } catch (error) {
+      if (label) label.innerText = 'Lectura incompleta; no se verificó la tabla.';
+      if (log) log.innerText = '[' + new Date().toLocaleTimeString() + '] ERROR de lectura: ' + error.message;
+      alert('No se pudo leer la tabla completa: ' + error.message);
+    }
+  }
+
+  function calibrationRowsForUpload() {
+    if (!state.isImported || !Array.isArray(state.importedRows)) {
+      throw new Error('Para escribir el sensor debes importar una tabla con coordenadas Data reales. La tabla geométrica calculada no sustituye las coordenadas 0x1B medidas.');
+    }
+    const rows = state.importedRows.map(row => ({
+      data: Number(row.data), level: Number(row.level), volume: Number(row.volume)
+    }));
+    if (rows.length && (rows[0].data !== 0 || rows[0].level !== 0 || rows[0].volume !== 0)) rows.unshift({ data: 0, level: 0, volume: 0 });
+    if (rows.length < 2 || rows.length > 100) throw new Error('La tabla debe tener entre 2 y 100 registros.');
+    let previous = { data: -1, level: -1, volume: -1 };
+    rows.forEach((row, index) => {
+      if (!Number.isInteger(row.data) || row.data < 0 || row.data > 5000 ||
+          !Number.isInteger(row.level) || row.level < 0 || row.level > 65535 ||
+          !Number.isFinite(row.volume) || row.volume < 0) throw new Error('Registro ' + (index + 1) + ' fuera de rango.');
+      if (index > 0 && (row.data <= previous.data || row.level <= previous.level || row.volume < previous.volume)) {
+        throw new Error('Data y Level deben crecer estrictamente y Volume no puede disminuir (registro ' + (index + 1) + ').');
+      }
+      previous = row;
+    });
+    if (rows[0].data !== 0 || rows[0].level !== 0 || rows[0].volume !== 0) throw new Error('Falta el origen 0 / 0 / 0.');
+    while (rows.length < 100) rows.push({ data: 0, level: 0, volume: 0 });
+    return rows;
+  }
+
+  function bytesEqual(a, b) {
+    return a.length === b.length && a.every((value, index) => value === b[index]);
+  }
+
+  async function readOutputMode() {
+    const response = await sendBleCommand(0x1a, [], 6000);
+    if (!response || response.payload.length !== 1 || ![0, 1, 2].includes(response.payload[0])) throw new Error('No se pudo leer el modo de salida actual.');
+    return response.payload[0];
+  }
+
+  async function writeOutputMode(mode) {
+    const ack = await sendBleCommand(0x19, [mode], 6000);
+    if (!isSuccessAck(ack, 0x19)) throw new Error('El sensor no confirmó el cambio de modo.');
+    const actual = await readOutputMode();
+    if (actual !== mode) throw new Error('El modo leído (' + actual + ') no coincide con el solicitado (' + mode + ').');
+    bleState.outputMode = actual;
+    return actual;
+  }
+
+  async function restoreCalibration(backup, previousMode) {
+    let tableOk = true;
+    for (let block = 0; block < 10; block++) {
+      const start = block * 10;
+      const payload = [start, ...backup[block]];
+      const ack = await sendBleCommand(0x16, payload, 10000);
+      if (!isSuccessAck(ack, 0x16)) { tableOk = false; break; }
+      const check = await sendBleCommand(0x15, [start], 10000);
+      if (!check || !bytesEqual(Array.from(check.payload), backup[block])) { tableOk = false; break; }
+    }
+    let modeOk = false;
+    try { modeOk = (await writeOutputMode(previousMode)) === previousMode; } catch (_) {}
+    return tableOk && modeOk;
+  }
+
+  async function uploadCalibrationTableToBle() {
+    const log = document.getElementById('bleStatusLog');
+    const label = document.getElementById('bleProgressLabel');
+    const progress = document.getElementById('bleProgressContainer');
+    const bar = document.getElementById('bleProgressBar');
+    const pct = document.getElementById('bleProgressPct');
+    try {
+      if (bleState.isSimulated) throw new Error('Modo DEMO: no se permite simular una escritura como si fuera una calibración física.');
+      if (!bleState.isConnected || !bleState.isAuthenticated) throw new Error('Conecta y autentica el sensor con la credencial oficial antes de escribir.');
+      const rows = calibrationRowsForUpload();
+      if (progress) progress.style.display = 'block';
+      if (label) label.innerText = 'Leyendo modo y respaldando memoria original...';
+      const originalMode = await readOutputMode();
+      const backup = [];
+      for (let block = 0; block < 10; block++) {
+        const response = await sendBleCommand(0x15, [block * 10], 10000);
+        if (!response || response.payload.length !== 80) throw new Error('No se pudo respaldar el bloque ' + block + '. Escritura cancelada.');
+        backup.push(Array.from(response.payload));
+      }
+      try {
+        for (let block = 0; block < 10; block++) {
+          const start = block * 10;
+          const payload = [start];
+          for (let i = start; i < start + 10; i++) payload.push(...AoooGProtocol.rowToBytes(rows[i].volume, rows[i].level, rows[i].data));
+          if (label) label.innerText = 'Escribiendo bloque ' + (block + 1) + '/10...';
+          const ack = await sendBleCommand(0x16, payload, 10000);
+          if (!isSuccessAck(ack, 0x16)) throw new Error('El sensor no confirmó la escritura del bloque ' + block + '.');
+          const readBack = await sendBleCommand(0x15, [start], 10000);
+          if (!readBack || !bytesEqual(Array.from(readBack.payload), payload.slice(1))) throw new Error('La lectura de retorno no coincide en el bloque ' + block + '.');
+          if (bar) bar.style.width = ((block + 1) * 10) + '%';
+          if (pct) pct.innerText = ((block + 1) * 10) + '%';
+        }
+        if (label) label.innerText = 'Verificando modo de salida Litros (0x02)...';
+        await writeOutputMode(0x02);
+      } catch (writeError) {
+        if (label) label.innerText = 'Fallo detectado. Restaurando tabla y modo anteriores...';
+        const restored = await restoreCalibration(backup, originalMode);
+        throw new Error(writeError.message + (restored ? ' Se restauraron y verificaron tabla y modo anteriores.' : ' ATENCIÓN: no se pudo confirmar la restauración completa; no desconectes el sensor y revisa la memoria.'));
+      }
+      if (label) label.innerText = '100 slots escritos y leídos de retorno; modo litros verificado.';
+      if (log) log.innerText = '[' + new Date().toLocaleTimeString() + '] PASS: 10 bloques escritos, 10 lecturas byte a byte y modo 0x02 leído de vuelta.';
+      showToast('Calibración transferida y verificada por lectura de retorno.');
+    } catch (error) {
+      if (log) log.innerText = '[' + new Date().toLocaleTimeString() + '] ERROR: ' + error.message;
+      alert('No se completó la calibración: ' + error.message);
+    }
+  }
+
+  async function setBleEmptyPoint() {
+    if (!confirm('¿Estanque vacío y sonda seca? Se fijará el punto vacío en el sensor.')) return;
+    try {
+      if (bleState.isSimulated) throw new Error('DEMO: no se modifica ningún sensor físico.');
+      if (!bleState.isAuthenticated) throw new Error('Autentica el sensor primero.');
+      const response = await sendBleCommand(0x10, [], 6000);
+      if (!isSuccessAck(response, 0x10)) throw new Error('El sensor no confirmó el punto vacío.');
+      await readBleSensorParameters();
+      showToast('Punto vacío confirmado por el sensor.');
+    } catch (error) { alert('No se fijó el punto vacío: ' + error.message); }
+  }
+
+  async function setBleFullPoint() {
+    if (!confirm('¿La sonda está completamente sumergida? Se fijará el punto lleno en el sensor.')) return;
+    try {
+      if (bleState.isSimulated) throw new Error('DEMO: no se modifica ningún sensor físico.');
+      if (!bleState.isAuthenticated) throw new Error('Autentica el sensor primero.');
+      const response = await sendBleCommand(0x11, [], 6000);
+      if (!isSuccessAck(response, 0x11)) throw new Error('El sensor no confirmó el punto lleno.');
+      await readBleSensorParameters();
+      showToast('Punto lleno confirmado por el sensor.');
+    } catch (error) { alert('No se fijó el punto lleno: ' + error.message); }
+  }
+
+  async function setBleOutputModeFromSelect() {
+    const select = document.getElementById('selBleOutputMode');
+    const mode = Number.parseInt(select?.value || '2', 10);
+    if (![0, 1, 2].includes(mode)) { alert('Modo de salida inválido.'); return; }
+    try {
+      if (bleState.isSimulated) throw new Error('DEMO: no se modifica ningún sensor físico.');
+      if (!bleState.isAuthenticated) throw new Error('Autentica el sensor primero.');
+      await writeOutputMode(mode);
+      showToast('Modo de salida confirmado: ' + ({ 0: 'Porcentaje', 1: 'Milímetros', 2: 'Litros' })[mode] + '.');
+    } catch (error) { alert('No se pudo aplicar el modo: ' + error.message); }
+  }
+
+  async function rebootBleSensor() {
+    if (!confirm('¿Reiniciar el sensor?')) return;
+    try {
+      if (bleState.isSimulated) throw new Error('DEMO: no se reinicia ningún sensor físico.');
+      if (!bleState.isAuthenticated) throw new Error('Autentica el sensor primero.');
+      const response = await sendBleCommand(0x01, [], 6000);
+      if (!isSuccessAck(response, 0x01)) throw new Error('El sensor no confirmó el reinicio.');
+      showToast('Reinicio confirmado; el sensor puede desconectarse momentáneamente.');
+    } catch (error) { alert('No se pudo confirmar el reinicio: ' + error.message); }
+  }
+
+  async function sleepBleSensor() {
+    if (!confirm('¿Poner el sensor en hibernación? Se perderá la conexión BLE.')) return;
+    try {
+      if (bleState.isSimulated) throw new Error('DEMO: no se hiberna ningún sensor físico.');
+      if (!bleState.isAuthenticated) throw new Error('Autentica el sensor primero.');
+      const response = await sendBleCommand(0x02, [], 6000);
+      if (!isSuccessAck(response, 0x02)) throw new Error('El sensor no confirmó la hibernación.');
+      showToast('Hibernación confirmada por el sensor.');
+      await disconnectBleSensor();
+    } catch (error) { alert('No se pudo confirmar la hibernación: ' + error.message); }
   }
 
   function saveBleSensorHeight() {
