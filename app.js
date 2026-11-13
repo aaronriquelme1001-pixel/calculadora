@@ -2740,6 +2740,45 @@
       };
     },
 
+    validateCommandPayload(command, payload) {
+      if (!Array.isArray(payload) && !(payload instanceof Uint8Array)) throw new Error('Payload BLE inválido.');
+      const oneByte = (min, max) => payload.length === 1 && payload[0] >= min && payload[0] <= max;
+      switch (command) {
+        case 0x01: case 0x02: case 0x05: case 0x0b: case 0x0d:
+        case 0x10: case 0x11: case 0x14: case 0x1a: case 0x1b:
+        case 0x20: case 0x21: case 0x26:
+          if (payload.length !== 0) throw new Error('El comando 0x' + command.toString(16) + ' no admite payload.');
+          break;
+        case 0x04:
+          if (!oneByte(1, 255)) throw new Error('0x04 requiere intervalo de 1 a 255 segundos.');
+          break;
+        case 0x0a:
+          if (payload.length !== 1 || ![-40,-20,-16,-12,-8,-4,0,3,4].includes(payload[0] > 127 ? payload[0] - 256 : payload[0])) throw new Error('0x0A requiere una potencia TX permitida.');
+          break;
+        case 0x0c:
+          if (!oneByte(0, 1)) throw new Error('0x0C admite solo 00 o 01.');
+          break;
+        case 0x12:
+          if (payload.length !== 8) throw new Error('0x12 requiere exactamente 8 bytes de credencial.');
+          break;
+        case 0x15:
+          if (payload.length !== 1 || payload[0] > 90 || payload[0] % 10 !== 0) throw new Error('0x15 requiere índice 0,10,...,90.');
+          break;
+        case 0x16:
+          if (payload.length !== 81 || payload[0] > 90 || payload[0] % 10 !== 0) throw new Error('0x16 requiere índice 0,10,...,90 y exactamente 80 bytes de tabla.');
+          break;
+        case 0x19:
+          if (!oneByte(0, 2)) throw new Error('0x19 admite modo 00, 01 o 02.');
+          break;
+        case 0x22:
+          if (!oneByte(0, 1)) throw new Error('0x22 admite protocolo 00 o 01.');
+          break;
+        default:
+          throw new Error('Comando 0x' + command.toString(16).padStart(2, '0') + ' no documentado en el perfil público.');
+      }
+      return true;
+    },
+
     parseCurrentData(payload) {
       if (!payload || payload.length !== 22) throw new Error('La respuesta 0x14 debe contener 22 bytes.');
       const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
@@ -2834,6 +2873,8 @@
       return Promise.reject(new Error('El protocolo exige autenticar esta conexión antes del comando 0x' + command.toString(16).padStart(2, '0') + '.'));
     }
     if (bleState.pendingCommand) return Promise.reject(new Error('Hay otro comando BLE esperando respuesta.'));
+    try { AoooGProtocol.validateCommandPayload(command, payload); }
+    catch (error) { return Promise.reject(error); }
     return new Promise(async (resolve, reject) => {
       const pending = { command, resolve, reject, timer: null };
       pending.timer = setTimeout(() => {
@@ -2843,10 +2884,9 @@
       bleState.pendingCommand = pending;
       try {
         const frame = AoooGProtocol.buildFrame(bleState.sensorId, command, payload);
-        if (typeof bleState.charWrite.maxWriteValueLength === 'function') {
-          const maxBytes = bleState.charWrite.maxWriteValueLength('with-response');
-          if (frame.length > maxBytes) throw new Error('El MTU BLE negociado no permite enviar ' + frame.length + ' bytes (máximo ' + maxBytes + '). Para calibración 0x16 se requieren 88 bytes de escritura y ATT MTU ≥ 91.');
-        }
+        // Web Bluetooth no expone de forma estándar el ATT MTU negociado.
+        // El firmware exige MTU >= 91 para 0x16; si el stack no lo soporta,
+        // la escritura GATT fallará y el flujo de backup/rollback lo reportará.
         if (typeof bleState.charWrite.writeValueWithResponse === 'function') await bleState.charWrite.writeValueWithResponse(frame);
         else await bleState.charWrite.writeValue(frame);
       } catch (error) {
