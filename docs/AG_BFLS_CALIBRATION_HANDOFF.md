@@ -52,9 +52,10 @@ El objetivo es que nuestra aplicación importe una tabla oficial de calibración
   1. Barra de cabecera con estado, SN, HEX, porcentaje de batería y botones de acción limpios.
   2. Franja horizontal de telemetría de perfil bajo en gris suave (`#f8fafc`).
   3. Área de control en dos columnas limpias (Calibración base izquierda; Tabla EEPROM y seguridad derecha).
-- Búsqueda dual:
-  - `🔍 Buscar Sensor (Filtro AG-BFLS)`: filtra con `manufacturerData` (`0xFF43` y `0xFFFF`) para aislar los sensores en terreno.
-  - `🌐 Todos`: búsqueda abierta con `acceptAllDevices: true` para compatibilidad total ante adaptadores que no procesen datos de fabricante antes del emparejamiento.
+- Búsqueda abierta unificada:
+  - Tanto `🔍 Buscar Sensor` como `🌐 Todos` usan `acceptAllDevices: true` y `optionalServices: [SERVICE_UUID]`.
+  - No se filtra por `manufacturerData`, nombre o UUID anunciado porque algunos AG-BFLS no exponen esos datos antes de emparejar.
+  - La selección puede mostrar periféricos ajenos; la identidad se valida después por SN/ID y lectura GATT `0x1A`.
 
 ### Importación de calibración
 
@@ -89,7 +90,7 @@ La búsqueda web anterior utilizaba una lista restrictiva de filtros por nombre,
 - Ya no se filtra el periférico por nombre, manufacturer ID o UUID anunciado.
 - La selección la realiza el usuario en el selector nativo del navegador.
 - `watchAdvertisements()` quedó como fuente opcional de ID; si no existe/no funciona, no bloquea descubrimiento ni GATT.
-- Se puede aprender el ID de una trama espontánea válida por FFF2 (longitud y CRC comprobados).
+- Solo se aprende el ID de una trama espontánea `0x14` completa (22 bytes), CRC válido, ID no nulo y campos numéricos coherentes. Una trama de otro comando con CRC válido no establece identidad.
 - Si no se obtiene ID, se solicita el ID real de la etiqueta/documentación sin valor predeterminado.
 - Antes de permitir operaciones, se valida el ID con lectura de solo lectura `0x1A`; se exige respuesta correcta y modo 0, 1 o 2.
 - Si el ID no se confirma, se desconecta. No se autentica ni se escribe.
