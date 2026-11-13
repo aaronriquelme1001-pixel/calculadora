@@ -11,9 +11,11 @@ class AoooGSensor {
   final double output;
   final int temperature;
   final int battery;
+  final int? outputMode;
   AoooGSensor({required this.device, required this.id, required this.mac,
     required this.rssi, required this.frequency, required this.emptyFreq,
-    required this.output, required this.temperature, required this.battery});
+    required this.output, required this.temperature, required this.battery,
+    this.outputMode});
 }
 
 class AoooGProtocol {
@@ -57,6 +59,7 @@ class AoooGProtocol {
       const {0x01, 0x02, 0x04, 0x0a, 0x0c, 0x10, 0x11, 0x16}.contains(command);
 
   static bool isValidCommandPayload(int command, List<int> payload) {
+    if (payload.any((byte) => byte < 0 || byte > 0xff)) return false;
     bool oneByte(int min, int max) => payload.length == 1 && payload[0] >= min && payload[0] <= max;
     switch (command) {
       case 0x01: case 0x02: case 0x05: case 0x0b: case 0x0d:
@@ -72,9 +75,9 @@ class AoooGProtocol {
       case 0x12:
         return payload.length == 8 && payload.every((byte) => byte >= 0 && byte <= 0xff);
       case 0x15:
-        return payload.length == 1 && payload[0] <= 90 && payload[0] % 10 == 0;
+        return payload.length == 1 && payload[0] >= 0 && payload[0] <= 90 && payload[0] % 10 == 0;
       case 0x16:
-        return payload.length == 81 && payload[0] <= 90 && payload[0] % 10 == 0;
+        return payload.length == 81 && payload[0] >= 0 && payload[0] <= 90 && payload[0] % 10 == 0;
       case 0x19:
         return oneByte(0, 2);
       case 0x22:
@@ -130,13 +133,14 @@ class AoooGProtocol {
       if (id == 0) return null;
       final data = ByteData.sublistView(Uint8List.fromList(aooog));
       final batteryCode = ((aooog[3] & 0x0f) << 8) | aooog[4];
+      final outputMode = aooog[3] >> 4;
       final temperature = (data.getInt16(5, Endian.big) / 8).round();
       final frequency = data.getFloat32(7, Endian.little);
       final output = data.getFloat32(11, Endian.little);
-      if (!frequency.isFinite || !output.isFinite) return null;
+      if (outputMode > 2 || !frequency.isFinite || !output.isFinite || frequency < 0 || output < 0) return null;
       return AoooGSensor(device: result.device, id: id, mac: result.device.remoteId.str,
         rssi: result.rssi, frequency: frequency, emptyFreq: 0, output: output,
-        temperature: temperature, battery: batteryPercent(batteryCode));
+        temperature: temperature, battery: batteryPercent(batteryCode), outputMode: outputMode);
     }
 
     if (universal == null || universal.length != 24 ||
