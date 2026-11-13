@@ -119,3 +119,10 @@ Los tests automáticos no prueban compatibilidad con hardware real. Antes de dis
 7. Prueba de ida y vuelta con la aplicación oficial.
 
 Registrar modelo, firmware, MTU cuando esté disponible, fecha y logs saneados. No declarar compatibilidad física hasta completar estas pruebas.
+
+## Estado de integración (2026-11-13)
+
+- La implementación de endurecimiento BLE, identificación por SN, validación de protocolo, protecciones de autenticación, mejoras Flutter, pruebas y documentación técnica del PR #5 ya está integrada en `main` mediante merge commit `f000e4d0d66dfb2c841848145004841c89780ca5`.
+- Documentación de referencia para continuar: [handoff técnico](docs/AG_BFLS_CALIBRATION_HANDOFF.md), [matriz del protocolo público](docs/AG_BFLS_PUBLIC_PROTOCOL_IMPLEMENTATION.md) y [diagnóstico Web Bluetooth](docs/WEB_BLUETOOTH_DIAGNOSTICS.md).
+- GitHub Actions pasó en el HEAD del PR (validación web y análisis/pruebas Flutter). La prueba física con un AG-BFLS sigue pendiente; CI no demuestra compatibilidad BLE/GATT real.
+- No se ha escrito EEPROM en hardware ni se ha generado/publicado una APK propia. La APK propia se compila fuera del repositorio.
