@@ -20,6 +20,8 @@ jobs:
           node-version: 22
       - name: Check JavaScript syntax
         run: node --check app.js
+      - name: Run web protocol and BLE discovery tests
+        run: node --test tests/*.test.cjs
 
   android:
     name: Analyze and test Fuel Master Pro
