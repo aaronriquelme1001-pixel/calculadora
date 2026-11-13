@@ -51,7 +51,45 @@ class AoooGProtocol {
     return Uint8List.fromList([0x0c, ...body, crc8(body)]);
   }
 
-  static int _batteryPercent(int code) => (((code - 500) * 100) ~/ 220).clamp(0, 100).toInt();
+  static int batteryPercent(int code) => (((code - 500) * 100) ~/ 220).clamp(0, 100).toInt();
+
+  static bool isProtectedCommand(int command) =>
+      const {0x01, 0x02, 0x04, 0x0a, 0x0c, 0x10, 0x11, 0x16}.contains(command);
+
+  static int signedInt8(int value) => value > 127 ? value - 256 : value;
+
+  static Map<String, Object>? parseParameters(List<int> payload) {
+    if (payload.length != 13) return null;
+    final data = ByteData.sublistView(Uint8List.fromList(payload));
+    final empty = data.getFloat32(4, Endian.little);
+    final full = data.getFloat32(8, Endian.little);
+    final mode = payload[12];
+    if (!empty.isFinite || !full.isFinite || empty < 0 || full < 0 || mode > 2) return null;
+    return {
+      'broadcastInterval': payload[0],
+      'continueAfterRestart': payload[2] == 1,
+      'transmitPower': signedInt8(payload[3]),
+      'emptyFreq': empty,
+      'fullFreq': full,
+      'outputMode': mode,
+    };
+  }
+
+  static String? parseFirmwareVersion(List<int> payload) =>
+      payload.length == 2 ? '${payload[0]}.${payload[1]}' : null;
+
+  static String? parseBleAddress(List<int> payload) => payload.length == 6
+      ? payload.reversed.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(':')
+      : null;
+
+  static int? parseAdvertisingProtocol(List<int> payload) =>
+      payload.length == 1 && payload[0] <= 1 ? payload[0] : null;
+
+  static double? parseCalibrationCoordinate(List<int> payload) {
+    if (payload.length != 4) return null;
+    final value = ByteData.sublistView(Uint8List.fromList(payload)).getFloat32(0, Endian.little);
+    return value.isFinite && value >= 0 && value <= 5000 ? value : null;
+  }
 
   static AoooGSensor? parseAdvertisement(ScanResult result) {
     final manufacturer = result.advertisementData.manufacturerData;
@@ -70,7 +108,7 @@ class AoooGProtocol {
       if (!frequency.isFinite || !output.isFinite) return null;
       return AoooGSensor(device: result.device, id: id, mac: result.device.remoteId.str,
         rssi: result.rssi, frequency: frequency, emptyFreq: 0, output: output,
-        temperature: temperature, battery: _batteryPercent(batteryCode));
+        temperature: temperature, battery: batteryPercent(batteryCode));
     }
 
     if (universal == null || universal.length != 24 ||
