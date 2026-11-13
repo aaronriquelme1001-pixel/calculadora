@@ -148,7 +148,7 @@ class AoooGManager {
     for (var i = 0; i < rows.length; i++) {
       final row = rows[i];
       if (row.index != i) return false;
-      if (row.volumeL == 0 && row.levelMm == 0 && row.fixValue == 0) { terminated = true; continue; }
+      if (i > 0 && row.volumeL == 0 && row.levelMm == 0 && row.fixValue == 0) { terminated = true; continue; }
       if (terminated || !row.expectedFreqHz.isFinite || row.expectedFreqHz <= 0 ||
           row.volumeL < lastVolume || row.levelMm <= lastLevel ||
           row.fixValue <= lastFix || row.fixValue > 5000) return false;
