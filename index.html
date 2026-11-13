@@ -240,6 +240,35 @@
             </button>
           </div>
 
+          <!-- Comandos públicos adicionales del protocolo AG-BFLS -->
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;">
+            <button type="button" id="btnBleDiagnostics" class="btn btn-secondary" style="padding:4px 8px;font-size:0.7rem;">ℹ️ Leer datos del sensor (0x0B/20/21/26/1B)</button>
+            <label style="font-size:0.68rem;color:#64748b;">Intervalo s
+              <input id="bleBroadcastInterval" type="number" min="1" max="255" value="20" style="width:52px;padding:3px;border:1px solid #cbd5e1;border-radius:4px;">
+            </label>
+            <button type="button" id="btnBleSetInterval" class="btn btn-secondary" style="padding:4px 7px;font-size:0.68rem;">Aplicar 0x04</button>
+            <label style="font-size:0.68rem;color:#64748b;">TX
+              <select id="bleTransmitPower" style="padding:3px;border:1px solid #cbd5e1;border-radius:4px;">
+                <option value="-40">-40</option><option value="-20">-20</option><option value="-16">-16</option>
+                <option value="-12">-12</option><option value="-8">-8</option><option value="-4">-4</option>
+                <option value="0" selected>0</option><option value="3">+3</option><option value="4">+4</option>
+              </select>
+            </label>
+            <button type="button" id="btnBleSetPower" class="btn btn-secondary" style="padding:4px 7px;font-size:0.68rem;">Aplicar 0x0A</button>
+            <label style="font-size:0.68rem;color:#64748b;">Tras reinicio
+              <select id="bleContinueAfterRestart" style="padding:3px;border:1px solid #cbd5e1;border-radius:4px;">
+                <option value="0">Desactivado</option><option value="1">Activado</option>
+              </select>
+            </label>
+            <button type="button" id="btnBleSetContinue" class="btn btn-secondary" style="padding:4px 7px;font-size:0.68rem;">Aplicar 0x0C</button>
+            <label style="font-size:0.68rem;color:#64748b;">Publicidad
+              <select id="bleAdvertisingProtocol" style="padding:3px;border:1px solid #cbd5e1;border-radius:4px;">
+                <option value="0">AOOOG</option><option value="1">Universal</option>
+              </select>
+            </label>
+            <button type="button" id="btnBleSetAdvertising" class="btn btn-secondary" style="padding:4px 7px;font-size:0.68rem;">Aplicar 0x22</button>
+          </div>
+
           <!-- Log de estado del sensor -->
           <div id="bleStatusLog" style="font-size: 0.68rem; color: #64748b; margin-top: 5px; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
             Listo. Sensor en espera de instrucciones.
