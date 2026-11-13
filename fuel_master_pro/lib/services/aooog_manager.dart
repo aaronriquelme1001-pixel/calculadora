@@ -426,46 +426,36 @@ class AoooGManager {
   }
 
   /// Requiere autenticación explícita, backup previo y verificación de los 10 bloques.
-  Future<bool> uploadCalibrationTable(
-    List<CalibrationRow> rows, {
-    void Function(int current, int total)? onProgress,
-  }) async {
-    if (connectedDevice == null || !_isAuthenticated ||
-        (negotiatedMtu ?? 0) < 91 || !_validCalibrationRows(rows)) {
-      return false;
-    }
-
+  /// Requiere autenticación explícita, respaldo previo y verificación de los 10 bloques.
+  /// Si falla la escritura o el modo de salida, restaura tabla y modo anteriores.
+  Future<bool> uploadCalibrationTable(List<CalibrationRow> rows, {void Function(int current, int total)? onProgress}) async {
+    if (connectedDevice == null || !_isAuthenticated || (negotiatedMtu ?? 0) < 91 || !_validCalibrationRows(rows)) return false;
+    final originalOutputMode = await readOutputMode();
+    if (originalOutputMode == null) return false;
     final backup = <Uint8List>[];
     for (var start = 0; start <= 90; start += 10) {
       final block = await _readCalibrationBlockBytes(start);
       if (block == null) return false;
       backup.add(block);
     }
-
+    Future<bool> rollback() async {
+      final tableRestored = await _restoreCalibrationBackup(backup);
+      final modeRestored = await setOutputMode(originalOutputMode) && await readOutputMode() == originalOutputMode;
+      return tableRestored && modeRestored;
+    }
     for (var start = 0; start <= 90; start += 10) {
       final payload = <int>[start];
-      for (var i = start; i < start + 10; i++) {
-        payload.addAll(rows[i].toBytes());
-      }
-      final writeResponse = await sendCommand(0x16, payload,
-          timeout: const Duration(seconds: 8));
-      if (!_isSuccessStatus(writeResponse, 0x16)) {
-        await _restoreCalibrationBackup(backup);
-        return false;
-      }
+      for (var i = start; i < start + 10; i++) payload.addAll(rows[i].toBytes());
+      final response = await sendCommand(0x16, payload, timeout: const Duration(seconds: 8));
+      if (!_isSuccessStatus(response, 0x16)) { await rollback(); return false; }
       final readBack = await _readCalibrationBlockBytes(start);
       final expected = Uint8List.fromList(payload.sublist(1));
-      if (readBack == null || !_bytesEqual(readBack, expected)) {
-        await _restoreCalibrationBackup(backup);
-        return false;
-      }
+      if (readBack == null || !_bytesEqual(readBack, expected)) { await rollback(); return false; }
       onProgress?.call(start ~/ 10 + 1, 10);
     }
-
-    if (!await setOutputMode(0x02)) return false;
-    return await readOutputMode() == 0x02;
+    if (!await setOutputMode(0x02) || await readOutputMode() != 0x02) { await rollback(); return false; }
+    return true;
   }
-
   Future<void> disconnect() async {
     await _notifySub?.cancel();
     _notifySub = null;
