@@ -93,7 +93,15 @@ Puntos esenciales:
 - Si el selector muestra el sensor pero no conecta GATT, verificar servicio FFF0 y características FFF1/FFF2.
 - Si el selector no muestra nada incluso con búsqueda abierta, investigar sistema operativo, radio/adaptador BLE, driver, permisos y estado de advertising del sensor. El problema ya no es un filtro de nombre de nuestra app.
 
-## 5. Pruebas añadidas
+## 5. Validación automatizada del cambio BLE
+
+- Commit de código/documentación validado: `c90f48ade2c73e8727cf02271c3eb7c7db952791`.
+- GitHub Actions: https://github.com/aaronriquelme1001-pixel/calculadora/actions/runs/43473038669
+- Job web: PASS (sintaxis `node --check app.js` y pruebas Node de protocolo/descubrimiento).
+- Job Flutter: PASS (dependencias, análisis estático y pruebas unitarias).
+- Esto valida software y regresiones automatizadas; no valida radio BLE ni sensor físico.
+
+## 6. Pruebas añadidas
 
 Nuevo archivo: `tests/ble-protocol.test.cjs`.
 
@@ -112,7 +120,7 @@ node --test tests/*.test.cjs
 
 GitHub Actions ahora ejecuta ambas verificaciones web además de Flutter analyze/test.
 
-## 6. Límites que siguen pendientes
+## 7. Límites que siguen pendientes
 
 - No hay evidencia de que un AG-BFLS físico haya sido detectado o conectado por esta versión web.
 - No se ha validado la conexión GATT real desde el navegador ni el comportamiento de la radio en el equipo del usuario.
@@ -122,7 +130,7 @@ GitHub Actions ahora ejecuta ambas verificaciones web además de Flutter analyze
 - La compatibilidad con Fuel Master oficial debe probarse con importación/exportación real.
 - La aplicación Flutter sigue siendo la ruta prioritaria para la primera prueba física, por su control del MTU.
 
-## 7. Protocolo de prueba física cuando el usuario disponga del sensor
+## 8. Protocolo de prueba física cuando el usuario disponga del sensor
 
 1. Cerrar Fuel Master oficial y otras conexiones.
 2. Registrar navegador/versión, SO, adaptador BLE y firmware del sensor.
@@ -140,7 +148,7 @@ GitHub Actions ahora ejecuta ambas verificaciones web además de Flutter analyze
 14. Comparar la misma tabla en Fuel Master oficial.
 15. Adjuntar solo logs saneados; no subir credenciales.
 
-## 8. Archivos importantes para continuar
+## 9. Archivos importantes para continuar
 
 - `app.js`: consola web, protocolo, conexión y operaciones BLE.
 - `index.html`: interfaz web y controles de BLE.
@@ -151,7 +159,7 @@ GitHub Actions ahora ejecuta ambas verificaciones web además de Flutter analyze
 - `docs/WEB_BLUETOOTH_DIAGNOSTICS.md`: diagnóstico navegador BLE.
 - `README.md`: mapa general del repositorio.
 
-## 9. APK y archivos de referencia
+## 10. APK y archivos de referencia
 
 - No generar nuestra APK/AAB en este repositorio ni en este flujo.
 - El repositorio contiene una APK de Fuel Master de referencia añadida por el usuario; no confundirla con un artefacto generado por este proyecto. Verificar derechos/permiso antes de redistribuirla públicamente.
