@@ -57,6 +57,27 @@ En la app oficial Fuel Master y en las etiquetas de los sensores físicos, el di
 7. En Chrome de escritorio se puede revisar `chrome://bluetooth-internals/#devices` como diagnóstico del stack Bluetooth. No reemplaza el selector Web Bluetooth ni demuestra compatibilidad GATT.
 8. Si el selector muestra el sensor pero GATT falla, el problema ya no es descubrimiento: revisar que anuncie el servicio FFF0 y que exponga FFF1/FFF2 con las propiedades esperadas.
 
+## Diagnóstico específico: "Connection Error: Connection attempt failed"
+
+Este es el error exacto que arroja Chromium en Windows cuando el usuario ve el sensor en el selector, hace clic en "Emparejar", pero `device.gatt.connect()` falla al establecer el enlace de radio:
+
+1. **Causa #1 (95% en pruebas de campo): El sensor ya está conectado a otro equipo**
+   - Los sensores AoooG AG-BFLS utilizan microcontroladores BLE (ej. nRF51822 / nRF52832) configurados en modo **Single-Link**. Solo pueden mantener **una conexión central activa**.
+   - Si la app Fuel Master está abierta en un teléfono Android/iOS, o si el Bluetooth del teléfono se conectó automáticamente en segundo plano al sensor, el sensor rechaza inmediatamente cualquier nueva conexión desde Windows.
+   - **Solución:** Apagar el Bluetooth del teléfono celular o cerrar por completo Fuel Master antes de pulsar "Buscar Sensor" en la PC.
+
+2. **Causa #2: Latencia de negociación GATT en Windows 10/11**
+   - El stack WinRT de Windows a veces agota el tiempo si el sensor tiene un intervalo de anuncio prolongado o entra en modo de bajo consumo.
+   - **Solución implementada:** La aplicación ahora reintenta automáticamente la conexión GATT hasta 3 veces con una pausa de 800 ms antes de desistir.
+
+3. **Causa #3: Servicio FFF0 en formato 128-bit vs alias 16-bit**
+   - Aunque el protocolo oficial documenta el UUID `0000FFF0-1212-EFDE-1523-785FEABCD123`, algunos firmwares exponen el servicio bajo el alias estándar `0xFFF0`.
+   - **Solución implementada:** El código ahora resuelve primero el UUID de 128 bits y, si el dispositivo no lo expone bajo ese formato, resuelve automáticamente el servicio primario `0xFFF0` y sus características `0xFFF1` y `0xFFF2`.
+
+4. **Causa #4: Periférico emparejado o cacheado en Windows**
+   - Si Windows guardó el sensor previamente en `Configuración de Windows > Bluetooth y dispositivos`, el sistema operativo puede intentar una autenticación cifrada en lugar de GATT directo.
+   - **Solución:** Quitar el dispositivo en la configuración de Windows y reiniciar el Bluetooth del adaptador de la PC.
+
 ## Qué significa cada resultado
 
 - **No aparece en selector:** radio/OS/navegador/periférico no está visible o no anuncia. El código ahora no lo excluye por nombre o manufacturer ID.

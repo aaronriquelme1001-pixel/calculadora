@@ -3164,11 +3164,48 @@
       const advertisedIdPromise = waitForAdvertisedSensorId(device, 3500);
 
       stage = 'gatt';
-      const server = await device.gatt.connect();
+      let server = null;
+      let lastGattErr = null;
+      // Reintentos automáticos para mitigar la latencia de negociación BLE en Windows
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          server = await device.gatt.connect();
+          if (server && server.connected) break;
+        } catch (err) {
+          lastGattErr = err;
+          console.warn(`Intento ${attempt}/3 de conexión GATT falló:`, err && err.message ? err.message : err);
+          if (attempt < 3) {
+            await new Promise(r => setTimeout(r, 800));
+          }
+        }
+      }
+      if (!server || !server.connected) {
+        throw lastGattErr || new Error('Connection attempt failed.');
+      }
       bleState.server = server;
-      const service = await server.getPrimaryService(AoooGProtocol.SERVICE_UUID);
-      bleState.charWrite = await service.getCharacteristic(AoooGProtocol.CHAR_WRITE_UUID);
-      bleState.charNotify = await service.getCharacteristic(AoooGProtocol.CHAR_NOTIFY_UUID);
+
+      let service = null;
+      try {
+        service = await server.getPrimaryService(AoooGProtocol.SERVICE_UUID);
+      } catch (err) {
+        console.warn('Servicio primario 128-bit no resuelto, probando 16-bit 0xFFF0:', err.message);
+        try {
+          service = await server.getPrimaryService(0xfff0);
+        } catch (err2) {
+          throw new Error('No se encontró el servicio GATT FFF0 del sensor: ' + err.message);
+        }
+      }
+
+      try {
+        bleState.charWrite = await service.getCharacteristic(AoooGProtocol.CHAR_WRITE_UUID);
+      } catch (e) {
+        bleState.charWrite = await service.getCharacteristic(0xfff1);
+      }
+      try {
+        bleState.charNotify = await service.getCharacteristic(AoooGProtocol.CHAR_NOTIFY_UUID);
+      } catch (e) {
+        bleState.charNotify = await service.getCharacteristic(0xfff2);
+      }
       await bleState.charNotify.startNotifications();
       bleState.charNotify.addEventListener('characteristicvaluechanged', handleBleNotification);
 
@@ -3231,7 +3268,21 @@
       } else if (error.name === 'AbortError') {
         console.info('Selección BLE cancelada por el usuario.');
       } else {
-        alert('No se pudo conectar/identificar el sensor BLE:\n' + error.message);
+        const msg = error && error.message ? error.message : String(error);
+        if (msg.includes('Connection attempt failed') || msg.includes('Connection Error')) {
+          alert(
+            'No se pudo enlazar con el sensor BLE (Fallo en conexión GATT):\n\n' +
+            '• CAUSA PRINCIPAL EN TERRENO:\n' +
+            'El sensor ya está conectado a otro equipo (por ejemplo, a tu teléfono móvil o a la app Fuel Master). ' +
+            'Los sensores AG-BFLS solo admiten UNA conexión Bluetooth activa a la vez.\n\n' +
+            '• PASOS PARA RESOLVER:\n' +
+            '1. Desactiva el Bluetooth de tu teléfono móvil o cierra por completo la app Fuel Master.\n' +
+            '2. Si el sensor aparece en la lista de Bluetooth de Windows, desconéctalo o apaga y enciende el Bluetooth de tu PC.\n' +
+            '3. Acerca el sensor y vuelve a pulsar "Buscar Sensor".'
+          );
+        } else {
+          alert('No se pudo conectar/identificar el sensor BLE:\n' + msg);
+        }
       }
     }
   }
