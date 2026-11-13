@@ -165,7 +165,7 @@ function loadApplicationFunction(name, nextName) {
   assert.notEqual(start, -1, `${name} must exist in app.js`);
   const end = source.indexOf(`  function ${nextName}(`, start);
   assert.notEqual(end, -1, `next function after ${name} must exist`);
-  const declaration = source.slice(start, end).trim();
+  const declaration = source.slice(start, end).replace(/\/\/[^\n]*/g, '').trim();
   return vm.runInNewContext('(' + declaration.replace(/^function /, 'function ') + ')');
 }
 
