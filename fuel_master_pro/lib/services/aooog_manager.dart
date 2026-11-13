@@ -115,6 +115,14 @@ class AoooGManager {
         _onPacketReceived,
         onError: (_) => _failPendingCommands(),
       );
+
+      // Confirmar el ID del anuncio contra una lectura GATT de solo lectura.
+      // La MAC/remoteId nunca sustituye al SN de 24 bits.
+      final confirmedMode = await readOutputMode();
+      if (confirmedMode == null) {
+        await disconnect();
+        return false;
+      }
       return true;
     } catch (_) {
       await disconnect();
@@ -280,6 +288,10 @@ class AoooGManager {
       final curF = data.getFloat32(14, Endian.little);
       final curOut = data.getFloat32(18, Endian.little);
 
+      if (![tempC, fullF, emptyF, curF, curOut].every((value) => value.isFinite) ||
+          tempC < -40 || tempC > 125 || [fullF, emptyF, curF, curOut].any((value) => value < 0)) {
+        return null;
+      }
       final res = SensorRealtimeData(
         frequencyHz: curF,
         temperatureC: tempC,
