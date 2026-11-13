@@ -95,6 +95,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   bool _isUploading = false;
   double _uploadProgress = 0.0;
   List<CalibrationRow> _generatedRows = [];
+  final Map<int, int> _capturedFixValues = {};
 
   // Controllers de texto para Tank
   late TextEditingController _lenCtrl;
@@ -329,6 +330,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   }
 
   List<CalibrationRow> _generate30PointCalibration() {
+    _capturedFixValues.clear();
     double t = _isExternal ? _thickness : 0.0;
     double innerH = _height - 2 * t;
     if (innerH <= 0) innerH = _height;
@@ -370,6 +372,18 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
       ));
     }
     return rows;
+  }
+
+  Future<void> _captureCalibrationCoordinate(int index) async {
+    if (_connectedSensor == null || !_bleManager.isAuthenticated && _isUploading) return;
+    final coordinate = await _bleManager.readCalibrationCoordinate();
+    if (!mounted) return;
+    if (coordinate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('El sensor no respondió al comando de coordenada 0x1B.')));
+      return;
+    }
+    setState(() => _capturedFixValues[index] = coordinate.round());
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Punto ${index + 1}: coordenada ${coordinate.toStringAsFixed(1)} capturada desde el sensor.')));
   }
 
   List<CalibrationRow> _parseCsvText(String text) {
@@ -591,7 +605,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   }
 
   Future<String?> _promptUserForPin({String? errorMsg}) async {
-    final pinCtrl = TextEditingController(text: '12345678');
+    final pinCtrl = TextEditingController();
     return showDialog<String>(
       context: context,
       barrierDismissible: false,
@@ -602,7 +616,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
             const Icon(Icons.lock_outline, color: Color(0xFFE11D48)),
             const SizedBox(width: 8),
             Text(
-              'PIN del Sensor #${_connectedSensor?.id ?? ""}',
+              'Credencial AoooG del sensor #${_connectedSensor?.id ?? ""}',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ],
@@ -626,13 +640,13 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
               ),
             ] else ...[
               const Text(
-                'El sensor requiere autenticación de 8 dígitos para permitir la grabación de la tabla de calibración en memoria.',
+                'Ingresa los 8 bytes de credencial entregados por AoooG, representados como 16 caracteres hexadecimales. No existe un PIN universal.',
                 style: TextStyle(fontSize: 13, color: Color(0xFF475569)),
               ),
               const SizedBox(height: 12),
             ],
             const Text(
-              'Contraseña de 8 dígitos:',
+              'Credencial (16 caracteres hexadecimales):',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
             ),
             const SizedBox(height: 6),
@@ -640,9 +654,10 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
               controller: pinCtrl,
               autofocus: true,
               keyboardType: TextInputType.text,
-              maxLength: 8,
+              maxLength: 16,
+              textCapitalization: TextCapitalization.characters,
               decoration: InputDecoration(
-                hintText: '12345678',
+                hintText: 'Ej. 3132333435363738',
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -712,24 +727,55 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
     }
 
     final rowsToSend = _generatedRows.isNotEmpty ? _generatedRows : _generate30PointCalibration();
+    if (rowsToSend.length < 2 || rowsToSend.length > 100) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('La tabla debe tener entre 2 y 100 puntos medidos.')));
+      return;
+    }
+    if (_capturedFixValues.length != rowsToSend.length) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Antes de grabar, captura la coordenada real 0x1B de cada punto con el sensor conectado.')));
+      return;
+    }
+    final coordinates = List<int>.generate(rowsToSend.length, (i) => _capturedFixValues[i] ?? -1);
+    if (coordinates.any((v) => v < 0 || v > 5000) ||
+        coordinates.asMap().entries.skip(1).any((e) => e.value <= coordinates[e.key - 1])) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Las coordenadas reales deben estar entre 0 y 5000 y ser estrictamente crecientes.')));
+      return;
+    }
+
+    final credentialHex = await _promptUserForPin();
+    if (credentialHex == null) return;
+    if (!RegExp(r'^[0-9A-Fa-f]{16}$').hasMatch(credentialHex)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('La credencial debe contener exactamente 16 caracteres hexadecimales (8 bytes).')));
+      return;
+    }
+    final credentialBytes = List<int>.generate(8,
+        (i) => int.parse(credentialHex.substring(i * 2, i * 2 + 2), radix: 16));
+    final authenticated = await _bleManager.authenticate(credentialBytes);
+    if (!authenticated) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('AoooG rechazó la credencial o no respondió. Confirma los 8 bytes con el fabricante.')));
+      return;
+    }
+
+    final rowsToWrite = <CalibrationRow>[];
+    for (var i = 0; i < rowsToSend.length; i++) {
+      final row = rowsToSend[i];
+      rowsToWrite.add(CalibrationRow(index: i, volumeL: row.volumeL,
+        levelMm: row.levelMm, fixValue: coordinates[i],
+        expectedFreqHz: row.expectedFreqHz));
+    }
+    while (rowsToWrite.length < 100) {
+      final i = rowsToWrite.length;
+      rowsToWrite.add(CalibrationRow(index: i, volumeL: 0, levelMm: 0,
+        fixValue: 0, expectedFreqHz: 0));
+    }
 
     setState(() {
       _isUploading = true;
       _uploadProgress = 0.05;
     });
-
-    // 1. Autenticación silenciosa opcional (sin bloquear al usuario con diálogos de PIN)
-    debugPrint('[CALIBRATION] Intentando autenticación silenciosa...');
-    try {
-      await _bleManager.authenticate();
-    } catch (_) {}
-
-    // 2. Enviar tabla de calibración (Comando 0x16)
-    debugPrint('[CALIBRATION] Enviando ${rowsToSend.length} puntos al sensor...');
-    setState(() => _uploadProgress = 0.2);
-
+    debugPrint('[CALIBRATION] Enviando 100 posiciones, con ${rowsToSend.length} puntos medidos...');
     final ok = await _bleManager.uploadCalibrationTable(
-      rowsToSend,
+      rowsToWrite,
       onProgress: (current, total) {
         debugPrint('[CALIBRATION] Progreso bloques: $current/$total');
         if (mounted) setState(() => _uploadProgress = 0.2 + 0.8 * (current / total));
@@ -757,7 +803,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
             ],
           ),
           content: Text(
-            'Se grabaron exitosamente ${rowsToSend.length} puntos en el sensor #${_connectedSensor!.id}.\n\n'
+            'Se verificaron los 100 espacios de tabla del sensor #${_connectedSensor!.id} (${rowsToSend.length} puntos medidos).\n\n'
             '• Volumen Total: ${rowsToSend.last.volumeL.toStringAsFixed(1)} L\n'
             '• Nivel Máximo: ${rowsToSend.last.levelMm} mm\n'
             '• Modo de salida: Litros (L)',
@@ -1533,7 +1579,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                                 ),
                                 Expanded(
                                   child: Text(
-                                    '${r.fixValue}',
+                                    _capturedFixValues[idx]?.toString() ?? 'Pendiente',
                                     style: const TextStyle(fontSize: 12, color: Color(0xFF2563EB), fontWeight: FontWeight.w600),
                                   ),
                                 ),
@@ -1549,6 +1595,11 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                                     style: const TextStyle(fontSize: 12, color: Color(0xFF059669), fontWeight: FontWeight.bold),
                                     textAlign: TextAlign.right,
                                   ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Capturar coordenada real del sensor',
+                                  onPressed: _connectedSensor != null && !_isUploading ? () => _captureCalibrationCoordinate(idx) : null,
+                                  icon: const Icon(Icons.sensors, size: 18),
                                 ),
                               ],
                             ),
