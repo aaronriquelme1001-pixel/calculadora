@@ -86,7 +86,7 @@ Escritura 16 = índice + 80 bytes (10 entradas); trama completa 88 bytes y ATT M
 ## Diferencias entre Web Bluetooth y Flutter
 
 - Web: el selector abierto `acceptAllDevices` permite elegir periféricos aunque no anuncien manufacturer data. El navegador no entrega de forma consistente SN antes de conectar; si no hay anuncio utilizable, pedir el SN/ID de la etiqueta y confirmarlo mediante lectura 1A. Nunca derivarlo de MAC.
-- Web: no existe una API estándar interoperable para solicitar ATT MTU explícitamente. La app inspecciona `maxWriteValueLength('with-response')` cuando el navegador lo soporta y aborta si no permite 88 bytes. La lectura de bloques 15 también necesita que el stack admita notificaciones de 87 bytes; si el navegador/OS no lo negocia, usar la app Flutter nativa.
+- Web: Web Bluetooth no expone una API estándar para solicitar/consultar el ATT MTU negociado. La app intenta escribir la trama completa de 88 bytes para 16 y maneja el error del stack; no puede garantizar por adelantado que el MTU sea suficiente. La respuesta 15 ocupa 87 bytes y también requiere MTU ≥90. Si el navegador/OS no negocia un MTU suficiente, usar la app Flutter nativa, que solicita 247 y verifica el mínimo.
 - Flutter: solicita MTU 247 y valida el mínimo de 90 para leer bloques y 91 para escribirlos. Tras activar notificaciones confirma el ID con lectura 1A. Los escáneres nativos pueden mostrar SN desde manufacturer data; MAC queda solo como dato de transporte/diagnóstico.
 
 ## Límites y seguridad
