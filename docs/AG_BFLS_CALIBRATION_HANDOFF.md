@@ -52,9 +52,10 @@ El objetivo es que nuestra aplicación importe una tabla oficial de calibración
   1. Barra de cabecera con estado, SN, HEX, porcentaje de batería y botones de acción limpios.
   2. Franja horizontal de telemetría de perfil bajo en gris suave (`#f8fafc`).
   3. Área de control en dos columnas limpias (Calibración base izquierda; Tabla EEPROM y seguridad derecha).
-- Búsqueda dual:
-  - `🔍 Buscar Sensor (Filtro AG-BFLS)`: filtra con `manufacturerData` (`0xFF43` y `0xFFFF`) para aislar los sensores en terreno.
-  - `🌐 Todos`: búsqueda abierta con `acceptAllDevices: true` para compatibilidad total ante adaptadores que no procesen datos de fabricante antes del emparejamiento.
+- Búsqueda abierta unificada:
+  - Tanto `🔍 Buscar Sensor` como `🌐 Todos` usan `acceptAllDevices: true` y `optionalServices: [SERVICE_UUID]`.
+  - No se filtra por `manufacturerData`, nombre o UUID anunciado porque algunos AG-BFLS no exponen esos datos antes de emparejar.
+  - La selección puede mostrar periféricos ajenos; la identidad se valida después por SN/ID y lectura GATT `0x1A`.
 
 ### Importación de calibración
 
@@ -89,7 +90,7 @@ La búsqueda web anterior utilizaba una lista restrictiva de filtros por nombre,
 - Ya no se filtra el periférico por nombre, manufacturer ID o UUID anunciado.
 - La selección la realiza el usuario en el selector nativo del navegador.
 - `watchAdvertisements()` quedó como fuente opcional de ID; si no existe/no funciona, no bloquea descubrimiento ni GATT.
-- Se puede aprender el ID de una trama espontánea válida por FFF2 (longitud y CRC comprobados).
+- Solo se aprende el ID de una trama espontánea `0x14` completa (22 bytes), CRC válido, ID no nulo y campos numéricos coherentes. Una trama de otro comando con CRC válido no establece identidad.
 - Si no se obtiene ID, se solicita el ID real de la etiqueta/documentación sin valor predeterminado.
 - Antes de permitir operaciones, se valida el ID con lectura de solo lectura `0x1A`; se exige respuesta correcta y modo 0, 1 o 2.
 - Si el ID no se confirma, se desconecta. No se autentica ni se escribe.
@@ -182,3 +183,108 @@ El repositorio conserva en `docs/reference/` los tres documentos y aplicaciones 
 - `docs/reference/AG-BFLS_Datasheet.pdf` (733 KB): Ficha técnica, precisión capacitiva, protocolo, señales y especificaciones eléctricas.
 - `docs/reference/Fuel Master V0.1.4.apk` (57.6 MB): APK oficial del fabricante de referencia. No confundir con la APK de nuestra aplicación que se compila externamente.
 - `docs/reference/README.md`: Resumen y hashes de integridad de los archivos de referencia.
+
+
+---
+
+## 11. Handoff — endurecimiento BLE e identificación SN (2026-11-13)
+
+**Rama de trabajo:** `fix/ble-identification-auth-regression-2026-11-13`  
+**Base:** `b77cc8e6672ccccb3aaf10e6dbb6ebc0f4d9f3bd`  
+**Estado:** cambios implementados en rama aislada; no fusionados a `main`. No se hizo prueba física BLE.
+
+### Problemas corregidos
+
+1. **Búsqueda primaria demasiado restrictiva:** el botón Buscar Sensor utilizaba filtros manufacturerData `0xFF43` y `0xFFFF`; algunos AG-BFLS no exponen estos datos antes de conectarse. Ahora Buscar Sensor y Todos utilizan el selector abierto `acceptAllDevices: true`, con `optionalServices` FFF0. Se mantiene la identificación de protocolo después de seleccionar.
+2. **Identidad aprendida desde cualquier trama:** antes bastaba una trama con CRC válido y un ID no nulo. Ahora solo se aprende el ID desde una trama `0x14` de exactamente 22 bytes, ID no nulo, temperatura dentro de rango y campos numéricos finitos/no negativos. Las notificaciones de otros comandos no pueden establecer identidad.
+3. **Credencial:** se extrajo `parseBleCredential`; acepta exactamente 16 caracteres hexadecimales y genera ocho bytes. No guarda la cadena en el estado de sesión ni la registra. La autenticación sigue dependiendo del ACK exitoso `0x12`; ante fallo queda `isAuthenticated=false`.
+
+### Pruebas de regresión añadidas
+
+En `tests/ble-protocol.test.cjs`:
+- parser de credencial: 8 bytes exactos, longitud inválida y caracteres no hex;
+- telemetría: acepta estructura válida y rechaza comando distinto, longitud incorrecta, ID cero, NaN, frecuencia negativa y temperatura fuera de rango;
+- guardas de `handleBleNotification`: no aprende identidad de una trama arbitraria;
+- ambas entradas de búsqueda usan el selector abierto;
+- autenticación valida credencial, envía exactamente ocho bytes y requiere ACK positivo.
+
+Comandos locales de validación:
+```bash
+node --check app.js
+node --test tests/*.test.cjs
+```
+
+### Estado de validación y límites
+
+- No afirmar todavía que los tests pasan: deben ejecutarse en CI sobre el HEAD de esta rama.
+- No afirmar que el navegador detecta el sensor físico: hace falta prueba con sensor real y adaptador BLE del usuario.
+- Las pruebas nuevas son unitarias/estructurales sobre funciones puras y guardas de flujo; no son un E2E de Web Bluetooth ni sustituyen un ensayo GATT físico.
+- No se ha autenticado, leído ni escrito EEPROM en hardware durante esta intervención.
+- No se ha cambiado Flutter ni el protocolo del fabricante.
+- No se han tocado credenciales, APK, producción ni despliegues.
+- No fusionar a `main` hasta revisar CI, el diff y completar al menos una prueba física de descubrimiento + GATT + lectura `0x1A`. No hacer escrituras de EEPROM sin backup y autorización explícita.
+
+### Próximos pasos para la siguiente IA
+
+1. Ejecutar `node --check app.js` y `node --test tests/*.test.cjs`; corregir cualquier regresión.
+2. Confirmar que GitHub Actions valida el HEAD de esta rama.
+3. Revisar el diff completo, especialmente el orden conexión → notificaciones → ID → lectura `0x1A` → autenticación `0x12`.
+4. Probar con un AG-BFLS físico: selector abierto, identificar por SN de etiqueta, conectar GATT, validar modo por `0x1A`, autenticar con credencial del fabricante sin registrarla.
+5. Mantener cualquier prueba de escritura fuera del alcance hasta contar con autorización, backup de 100 slots y procedimiento de rollback.
+
+
+---
+
+## 12. Handoff — implementación contra el perfil público AG-BFLS (2026-11-13)
+
+Este apartado **actualiza y reemplaza cualquier nota anterior** que dijera que no se modificó Flutter o que solo estaban cubiertos descubrimiento/autenticación.
+
+### Cambios añadidos desde la sección 11
+
+- Web `app.js`:
+  - Decodificadores oficiales 0x0D, 0x14, 0x1B, 0x20, 0x21 y 0x26.
+  - Comandos y controles UI para 0x04/05, 0x0A/0B, 0x0C, 0x20/21/22, 0x26 y 0x1B.
+  - Validación central de payload por comando, longitud, rango e índice.
+  - Guardas centrales de autenticación para 01, 02, 04, 0A, 0C, 10, 11 y 16.
+  - Conversión de batería con `floor((code - 500) * 100 / 220)`, porcentaje modo 0 = salida / 100, y validación del byte reservado de 0x14.
+  - Modos mm/L bloqueados hasta tener tabla del sensor validada.
+  - Backup previo, escritura por 10 bloques, readback byte a byte y rollback ya existente preservados.
+- Flutter:
+  - Decodificadores de parámetros, versión, dirección BLE, formato de publicidad y coordenada 1B.
+  - Validación central de payload y comandos protegidos.
+  - Verificación de identidad por lectura 1A tras habilitar notificaciones.
+  - Requisitos de ATT MTU: 90 para respuesta 15 y 91 para escritura 16.
+  - Conversión de batería por floor y rechazo de telemetría 14 con reservado inválido.
+  - Métodos de lectura/escritura con readback para potencia TX, intervalo, continuar tras reinicio y formato de publicidad.
+- Pruebas:
+  - `tests/ble-protocol.test.cjs`: decodificación 0D/14/1B/20/21/26, conversión batería, validación de payload y guards.
+  - `fuel_master_pro/test/aooog_protocol_test.dart`: CRC, batería, estructuras 0D, coordenada, versión, address, advertising protocol y payloads.
+
+### Restricción real de Web Bluetooth
+
+Web Bluetooth no expone una API estándar para solicitar ni consultar el ATT MTU. La app web puede intentar la escritura completa de 88 bytes y manejar el error; no puede garantizar previamente que el MTU cumpla el requisito. Las respuestas 0x15 de 87 bytes requieren ATT MTU ≥90. Para lectura/escritura fiable de tabla, la ruta preferida es Flutter nativo, que solicita MTU 247 y comprueba los mínimos.
+
+### Validación pendiente en hardware — no marcar como terminada
+
+- CI ejecutado correctamente en el código HEAD `2a7d0197cb3919cf4e1b271db9068c2de28409e3`: run `43489968286`. Web: `node --check app.js` y `node --test tests/*.test.cjs` PASS. Flutter: `flutter pub get`, `flutter analyze` y `flutter test` PASS. El commit posterior que actualiza este handoff solo modifica documentación.
+- La prueba física sigue pendiente: anuncio con SN correcto, conexión GATT, lectura 1A, autenticación 12, lectura 0D/14 y respaldo 15. No se ha realizado escritura EEPROM real.
+- El navegador depende del MTU negociado por el sistema; si falla la transferencia 15/16, no reintentar automáticamente desde cero. Usar Flutter nativo o revisar el MTU.
+- El comando 22 cambia el formato de publicidad; puede alterar cómo otras apps encuentran el sensor. Solo usar tras confirmación del técnico.
+- No integrar a main hasta CI verde y prueba física de solo lectura. La prueba de escritura requiere backup y autorización explícita.
+
+### Fuente de protocolo
+
+`docs/AG_BFLS_PUBLIC_PROTOCOL_IMPLEMENTATION.md`  
+`https://www.aooog.com/bluetooth-protocol.html`
+
+
+## 13. Ajustes finales de consistencia de protocolo y UI (2026-11-13)
+
+- Universal advertisement ahora valida el status actual `0x01` además de firma `3F 36 B4` y Type `5B`; el test cubre status inválido.
+- AOOOG manufacturer data decodifica también el nibble de output mode y rechaza modos fuera de 0–2.
+- Flutter conserva temperatura AOOOG con resolución de 1/8 °C (double), no la redondea en el parser.
+- Flutter mantiene una sola suscripción a `scanResults`, la registra antes de iniciar scan y la cancela al terminar/desmontar o al conectar. La lista muestra `SN: id`, no remoteId/MAC.
+- Flutter usa el modo de salida confirmado por GATT 1A/0D para mostrar % (output/100), mm o L; no etiqueta siempre como litros.
+- Modos 1/2 requieren origen 0/0/0 y tabla completa válida con terminador sin huecos; se valida antes de cambiar modo.
+- Web Bluetooth no tiene API estándar para consultar/solicitar MTU: no se usa un método no estándar. Los comandos 15/16 intentan transferencia y manejan error/rollback; Flutter nativo es la ruta fiable cuando el navegador/OS no negocia MTU suficiente.
+

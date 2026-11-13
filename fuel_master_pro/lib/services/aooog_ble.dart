@@ -9,11 +9,13 @@ class AoooGSensor {
   final double frequency;
   final double emptyFreq;
   final double output;
-  final int temperature;
+  final double temperature;
   final int battery;
+  final int? outputMode;
   AoooGSensor({required this.device, required this.id, required this.mac,
     required this.rssi, required this.frequency, required this.emptyFreq,
-    required this.output, required this.temperature, required this.battery});
+    required this.output, required this.temperature, required this.battery,
+    this.outputMode});
 }
 
 class AoooGProtocol {
@@ -51,7 +53,74 @@ class AoooGProtocol {
     return Uint8List.fromList([0x0c, ...body, crc8(body)]);
   }
 
-  static int _batteryPercent(int code) => (((code - 500) * 100) ~/ 220).clamp(0, 100).toInt();
+  static int batteryPercent(int code) => (((code - 500) * 100) ~/ 220).clamp(0, 100).toInt();
+
+  static bool isProtectedCommand(int command) =>
+      const {0x01, 0x02, 0x04, 0x0a, 0x0c, 0x10, 0x11, 0x16}.contains(command);
+
+  static bool isValidCommandPayload(int command, List<int> payload) {
+    if (payload.any((byte) => byte < 0 || byte > 0xff)) return false;
+    bool oneByte(int min, int max) => payload.length == 1 && payload[0] >= min && payload[0] <= max;
+    switch (command) {
+      case 0x01: case 0x02: case 0x05: case 0x0b: case 0x0d:
+      case 0x10: case 0x11: case 0x14: case 0x1a: case 0x1b:
+      case 0x20: case 0x21: case 0x26:
+        return payload.isEmpty;
+      case 0x04:
+        return oneByte(1, 255);
+      case 0x0a:
+        return payload.length == 1 && const {-40,-20,-16,-12,-8,-4,0,3,4}.contains(signedInt8(payload[0]));
+      case 0x0c:
+        return oneByte(0, 1);
+      case 0x12:
+        return payload.length == 8 && payload.every((byte) => byte >= 0 && byte <= 0xff);
+      case 0x15:
+        return payload.length == 1 && payload[0] >= 0 && payload[0] <= 90 && payload[0] % 10 == 0;
+      case 0x16:
+        return payload.length == 81 && payload[0] >= 0 && payload[0] <= 90 && payload[0] % 10 == 0;
+      case 0x19:
+        return oneByte(0, 2);
+      case 0x22:
+        return oneByte(0, 1);
+      default:
+        return false;
+    }
+  }
+
+  static int signedInt8(int value) => value > 127 ? value - 256 : value;
+
+  static Map<String, Object>? parseParameters(List<int> payload) {
+    if (payload.length != 13) return null;
+    final data = ByteData.sublistView(Uint8List.fromList(payload));
+    final empty = data.getFloat32(4, Endian.little);
+    final full = data.getFloat32(8, Endian.little);
+    final mode = payload[12];
+    if (!empty.isFinite || !full.isFinite || empty < 0 || full < 0 || mode > 2) return null;
+    return {
+      'broadcastInterval': payload[0],
+      'continueAfterRestart': payload[2] == 1,
+      'transmitPower': signedInt8(payload[3]),
+      'emptyFreq': empty,
+      'fullFreq': full,
+      'outputMode': mode,
+    };
+  }
+
+  static String? parseFirmwareVersion(List<int> payload) =>
+      payload.length == 2 ? '${payload[0]}.${payload[1]}' : null;
+
+  static String? parseBleAddress(List<int> payload) => payload.length == 6
+      ? payload.reversed.map((b) => b.toRadixString(16).padLeft(2, '0').toUpperCase()).join(':')
+      : null;
+
+  static int? parseAdvertisingProtocol(List<int> payload) =>
+      payload.length == 1 && payload[0] <= 1 ? payload[0] : null;
+
+  static double? parseCalibrationCoordinate(List<int> payload) {
+    if (payload.length != 4) return null;
+    final value = ByteData.sublistView(Uint8List.fromList(payload)).getFloat32(0, Endian.little);
+    return value.isFinite && value >= 0 && value <= 5000 ? value : null;
+  }
 
   static AoooGSensor? parseAdvertisement(ScanResult result) {
     final manufacturer = result.advertisementData.manufacturerData;
@@ -64,25 +133,27 @@ class AoooGProtocol {
       if (id == 0) return null;
       final data = ByteData.sublistView(Uint8List.fromList(aooog));
       final batteryCode = ((aooog[3] & 0x0f) << 8) | aooog[4];
-      final temperature = (data.getInt16(5, Endian.big) / 8).round();
+      final outputMode = aooog[3] >> 4;
+      final temperature = data.getInt16(5, Endian.big) / 8.0;
       final frequency = data.getFloat32(7, Endian.little);
       final output = data.getFloat32(11, Endian.little);
-      if (!frequency.isFinite || !output.isFinite) return null;
+      if (outputMode > 2 || !frequency.isFinite || !output.isFinite || frequency < 0 || output < 0) return null;
       return AoooGSensor(device: result.device, id: id, mac: result.device.remoteId.str,
         rssi: result.rssi, frequency: frequency, emptyFreq: 0, output: output,
-        temperature: temperature, battery: _batteryPercent(batteryCode));
+        temperature: temperature, battery: batteryPercent(batteryCode), outputMode: outputMode);
     }
 
     if (universal == null || universal.length != 24 ||
         universal[0] != 0x3f || universal[1] != 0x36 ||
-        universal[2] != 0xb4 || universal[5] != 0x5b) return null;
+        universal[2] != 0xb4 || universal[5] != 0x5b || universal[13] != 0x01) return null;
     final id = (universal[6] << 16) | (universal[7] << 8) | universal[8];
+    if (id == 0) return null;
     final frequency = ((universal[14] << 8) | universal[15]).toDouble();
     final emptyFrequency = ((universal[18] << 8) | universal[19]).toDouble();
     final output = ((universal[20] << 8) | universal[21]).toDouble();
     return AoooGSensor(device: result.device, id: id, mac: result.device.remoteId.str,
       rssi: result.rssi, frequency: frequency, emptyFreq: emptyFrequency,
-      output: output, temperature: universal[22] - 40,
+      output: output, temperature: (universal[22] - 40).toDouble(),
       battery: universal[23].clamp(0, 100).toInt());
   }
 }

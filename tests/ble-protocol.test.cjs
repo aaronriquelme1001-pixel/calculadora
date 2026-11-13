@@ -133,7 +133,8 @@ test('advertisement parser extracts sensor ID, SN, battery, frequency and temper
   assert.ok(parsedAoooG);
   assert.deepEqual(Array.from(parsedAoooG.id), [0x0c, 0x52, 0x02]);
   assert.equal(parsedAoooG.sn, 807426);
-  assert.equal(parsedAoooG.battery, 98);
+  assert.equal(parsedAoooG.outputMode, 0);
+  assert.equal(parsedAoooG.battery, 97);
   assert.equal(parsedAoooG.temperature, 20);
   assert.ok(Math.abs(parsedAoooG.frequency - 546.2) < 0.01);
   assert.ok(Math.abs(parsedAoooG.output - 249.2) < 0.01);
@@ -142,6 +143,7 @@ test('advertisement parser extracts sensor ID, SN, battery, frequency and temper
   const uniBuf = Buffer.alloc(24);
   uniBuf[0] = 0x3f; uniBuf[1] = 0x36; uniBuf[2] = 0xb4; uniBuf[5] = 0x5b;
   uniBuf[6] = 0x0c; uniBuf[7] = 0x52; uniBuf[8] = 0x02; // ID [0x0C, 0x52, 0x02] -> SN 807426
+  uniBuf[13] = 0x01; // status current format
   uniBuf[14] = (546 >> 8) & 0xff; uniBuf[15] = 546 & 0xff; // freq 546 Hz
   uniBuf[18] = 0; uniBuf[19] = 100; // emptyFreq 100 Hz
   uniBuf[20] = 0; uniBuf[21] = 249; // output
@@ -157,4 +159,181 @@ test('advertisement parser extracts sensor ID, SN, battery, frequency and temper
   assert.equal(parsedUni.battery, 95);
   assert.equal(parsedUni.temperature, 22);
   assert.equal(parsedUni.frequency, 546);
+  const invalidStatus = Uint8Array.from(uniBuf); invalidStatus[13] = 0;
+  assert.equal(protocol.parseAdvertisement(new Map([[0xffff, invalidStatus]])), null);
+});
+
+
+function loadApplicationFunction(name, nextName) {
+  const start = source.indexOf(`  function ${name}(`);
+  assert.notEqual(start, -1, `${name} must exist in app.js`);
+  const end = source.indexOf(`  function ${nextName}(`, start);
+  assert.notEqual(end, -1, `next function after ${name} must exist`);
+  const declaration = source.slice(start, end).replace(/\/\/[^\n]*/g, '').trim();
+  return vm.runInNewContext('(' + declaration.replace(/^function /, 'function ') + ')');
+}
+
+function makeTelemetryPayload({ temp = 20, full = 5000, empty = 100, freq = 546.2, output = 249.2 } = {}) {
+  const payload = new Uint8Array(22);
+  const view = new DataView(payload.buffer);
+  view.setUint16(0, 715, false);
+  view.setInt16(2, temp * 8, false);
+  view.setFloat32(6, full, true);
+  view.setFloat32(10, empty, true);
+  view.setFloat32(14, freq, true);
+  view.setFloat32(18, output, true);
+  return payload;
+}
+
+test('BLE credential parser converts exactly 16 hex characters to eight bytes without retaining text', () => {
+  const parseCredential = loadApplicationFunction('parseBleCredential', 'isValidTelemetryFrame');
+  assert.deepEqual(Array.from(parseCredential('0011223344556677')), [0, 17, 34, 51, 68, 85, 102, 119]);
+  assert.deepEqual(Array.from(parseCredential('  aAbBcCdDeEfF0011  ')), [170, 187, 204, 221, 238, 255, 0, 17]);
+  assert.equal(parseCredential('001122334455667'), null);
+  assert.equal(parseCredential('00112233445566GG'), null);
+  assert.equal(parseCredential(''), null);
+});
+
+test('only a complete, coherent 0x14 telemetry frame can establish an unknown sensor ID', () => {
+  const isValidTelemetryFrame = loadApplicationFunction('isValidTelemetryFrame', 'extractSensorDataFromAdvertisement');
+  const valid = { cmd: 0x14, sensorId: [0x0c, 0x52, 0x02], payload: makeTelemetryPayload() };
+  assert.equal(isValidTelemetryFrame(valid), true);
+  assert.equal(isValidTelemetryFrame({ ...valid, cmd: 0x12 }), false);
+  assert.equal(isValidTelemetryFrame({ ...valid, payload: makeTelemetryPayload().slice(0, 21) }), false);
+  assert.equal(isValidTelemetryFrame({ ...valid, sensorId: [0, 0, 0] }), false);
+  const badReserved = makeTelemetryPayload(); badReserved[5] = 1;
+  assert.equal(isValidTelemetryFrame({ ...valid, payload: badReserved }), false);
+  assert.equal(isValidTelemetryFrame({ ...valid, payload: makeTelemetryPayload({ freq: NaN }) }), false);
+  assert.equal(isValidTelemetryFrame({ ...valid, payload: makeTelemetryPayload({ freq: -1 }) }), false);
+  assert.equal(isValidTelemetryFrame({ ...valid, payload: makeTelemetryPayload({ temp: 200 }) }), false);
+});
+
+test('notification handler cannot learn an ID from an arbitrary CRC-valid frame', () => {
+  const start = source.indexOf('  function handleBleNotification(event) {');
+  const end = source.indexOf('\n  // Búsqueda principal abierta', start);
+  assert.ok(start >= 0 && end > start);
+  const handler = source.slice(start, end);
+  assert.match(handler, /!bleState\.sensorId && isValidTelemetryFrame\(parsed\)/);
+  assert.doesNotMatch(handler, /if \(!bleState\.sensorId && parsed\.sensorId/);
+  assert.match(handler, /if \(!sameSensorId\(parsed\.sensorId, bleState\.sensorId\)\) return/);
+});
+
+test('both visible discovery entry points use the unfiltered chooser as primary path', () => {
+  const targetedStart = source.indexOf('  async function connectBleSensorTargeted() {');
+  const targetedEnd = source.indexOf('\n  async function connectBleSensor() {', targetedStart);
+  const targeted = source.slice(targetedStart, targetedEnd);
+  assert.match(targeted, /return connectBleSensor\(\)/);
+  assert.doesNotMatch(targeted, /manufacturerData|filters\s*:/);
+  const connectStart = source.indexOf('  async function connectBleSensor() {');
+  const connectEnd = source.indexOf('\n  async function disconnectBleSensor()', connectStart);
+  const connect = source.slice(connectStart, connectEnd);
+  assert.match(connect, /acceptAllDevices:\s*true/);
+  assert.match(connect, /optionalServices:\s*\[AoooGProtocol\.SERVICE_UUID\]/);
+});
+
+test('authentication requires a positive 0x12 ACK and never logs the credential', () => {
+  const start = source.indexOf('  async function authenticateBleSensor() {');
+  const end = source.indexOf('\n  async function readBleSensorParameters()', start);
+  const auth = source.slice(start, end);
+  assert.match(auth, /parseBleCredential\(input\?\.value \|\| ''\)/);
+  assert.match(auth, /sendBleCommand\(0x12, bytes, 6000\)/);
+  assert.match(auth, /isSuccessAck\(response, 0x12\)/);
+  assert.match(auth, /bleState\.isAuthenticated = false/);
+  assert.doesNotMatch(auth, /console\.(log|info|debug).*credential/i);
+});
+
+
+test('official AG-BFLS command decoders match the published 8.27 response layouts', () => {
+  const protocol = loadProtocolFromApplication();
+
+  const current = new Uint8Array(22);
+  const currentView = new DataView(current.buffer);
+  currentView.setUint16(0, 700, false);
+  currentView.setInt16(2, 216, false);
+  current[4] = 0x52;
+  currentView.setFloat32(6, 10000, true);
+  currentView.setFloat32(10, 15000, true);
+  currentView.setFloat32(14, 13250, true);
+  currentView.setFloat32(18, 5000, true);
+  const decoded = protocol.parseCurrentData(current);
+  assert.equal(decoded.battery, 90);
+  assert.equal(decoded.temperature, 27);
+  assert.equal(decoded.fullFrequency, 10000);
+  assert.equal(decoded.emptyFrequency, 15000);
+  assert.equal(decoded.frequency, 13250);
+  assert.equal(decoded.output, 5000);
+
+  const params = new Uint8Array(13);
+  const paramsView = new DataView(params.buffer);
+  params[0] = 20; params[2] = 1; params[3] = 0xfc;
+  paramsView.setFloat32(4, 15000, true);
+  paramsView.setFloat32(8, 10000, true);
+  params[12] = 2;
+  const parsedParams = protocol.parseParameters(params);
+  assert.equal(parsedParams.broadcastInterval, 20);
+  assert.equal(parsedParams.continueAfterRestart, true);
+  assert.equal(parsedParams.transmitPower, -4);
+  assert.equal(parsedParams.emptyFrequency, 15000);
+  assert.equal(parsedParams.fullFrequency, 10000);
+  assert.equal(parsedParams.outputMode, 2);
+
+  const coordinate = new Uint8Array(4);
+  new DataView(coordinate.buffer).setFloat32(0, 2500, true);
+  assert.equal(protocol.parseCalibrationCoordinate(coordinate), 2500);
+  assert.equal(protocol.parseFirmwareVersion(Uint8Array.from([8, 27])), '8.27');
+  assert.equal(protocol.parseBleAddress(Uint8Array.from([0x66,0x55,0x44,0x33,0x22,0x11])), '11:22:33:44:55:66');
+  assert.equal(protocol.parseAdvertisingProtocol(Uint8Array.from([0])), 0);
+  assert.equal(protocol.parseAdvertisingProtocol(Uint8Array.from([1])), 1);
+  assert.throws(() => protocol.parseCurrentData(current.slice(0, 21)));
+  assert.throws(() => protocol.parseAdvertisingProtocol(Uint8Array.from([2])));
+});
+
+test('battery percentage uses the manufacturer floor conversion, not rounding', () => {
+  const protocol = loadProtocolFromApplication();
+  const payload = new Uint8Array(15);
+  payload.set([0x0c, 0x52, 0x02]);
+  const code = 715;
+  payload[3] = (code >> 8) & 0x0f;
+  payload[4] = code & 0xff;
+  new DataView(payload.buffer).setInt16(5, 160, false);
+  new DataView(payload.buffer).setFloat32(7, 500, true);
+  new DataView(payload.buffer).setFloat32(11, 50, true);
+  const result = protocol.parseAdvertisement(new Map([[0xff43, payload]]));
+  assert.equal(result.battery, 97);
+});
+
+test('protected public-profile commands are centrally guarded by authentication', () => {
+  const start = source.indexOf('  function sendBleCommand(');
+  const end = source.indexOf('\n  function isSuccessAck', start);
+  const send = source.slice(start, end);
+  assert.match(send, /0x01, 0x02, 0x04, 0x0a, 0x0c, 0x10, 0x11, 0x16/);
+  assert.match(send, /protectedCommands\.has\(command\) && !bleState\.isAuthenticated/);
+  assert.match(send, /AoooGProtocol\.validateCommandPayload\(command, payload\)/);
+});
+
+test('web UI exposes every remaining public AG-BFLS diagnostic and configuration command', () => {
+  for (const id of ['btnBleDiagnostics','btnBleSetInterval','btnBleSetPower','btnBleSetContinue','btnBleSetAdvertising']) {
+    assert.match(source, new RegExp(id));
+  }
+  assert.match(source, /sendBleCommand\(0x0a/);
+  assert.match(source, /sendBleCommand\(0x0c/);
+  assert.match(source, /sendBleCommand\(0x22/);
+  assert.match(source, /readPayload\(0x20/);
+  assert.match(source, /readPayload\(0x21/);
+  assert.match(source, /readPayload\(0x26/);
+  assert.match(source, /readPayload\(0x1b/);
+});
+
+
+test('command payload validator enforces documented lengths, ranges and indices', () => {
+  const protocol = loadProtocolFromApplication();
+  assert.equal(protocol.validateCommandPayload(0x12, [0,1,2,3,4,5,6,7]), true);
+  assert.equal(protocol.validateCommandPayload(0x15, [90]), true);
+  assert.equal(protocol.validateCommandPayload(0x16, [0, ...Array(80).fill(0)]), true);
+  assert.throws(() => protocol.validateCommandPayload(0x12, [1,2,3]));
+  assert.throws(() => protocol.validateCommandPayload(0x15, [91]));
+  assert.throws(() => protocol.validateCommandPayload(0x16, [0, ...Array(79).fill(0)]));
+  assert.throws(() => protocol.validateCommandPayload(0x0a, [1]));
+  assert.throws(() => protocol.validateCommandPayload(0x22, [2]));
+  assert.throws(() => protocol.validateCommandPayload(0x7f, []));
 });

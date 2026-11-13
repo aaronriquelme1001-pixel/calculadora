@@ -2674,8 +2674,10 @@
         const id = [bytes[0], bytes[1], bytes[2]];
         if (id.some(v => v !== 0)) {
           const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+          const outputMode = bytes[3] >> 4;
+          if (outputMode > 2) return null;
           const batteryCode = ((bytes[3] & 0x0f) << 8) | bytes[4];
-          const battery = Math.max(0, Math.min(100, Math.round(((batteryCode - 500) * 100) / 220)));
+          const battery = Math.floor(Math.max(0, Math.min(100, ((batteryCode - 500) * 100) / 220)));
           const temperature = Math.round(view.getInt16(5, false) / 8);
           const frequency = view.getFloat32(7, true);
           const output = view.getFloat32(11, true);
@@ -2685,8 +2687,9 @@
             sn,
             battery,
             temperature,
-            frequency: Number.isFinite(frequency) ? frequency : null,
-            output: Number.isFinite(output) ? output : null
+            outputMode,
+            frequency: Number.isFinite(frequency) && frequency >= 0 ? frequency : null,
+            output: Number.isFinite(output) && output >= 0 ? output : null
           };
         }
       }
@@ -2694,7 +2697,7 @@
       const universal = dataMap.get(0xffff);
       if (universal && (universal.byteLength === 24 || universal.length === 24)) {
         const bytes = new Uint8Array(universal.buffer || universal, universal.byteOffset || 0, universal.byteLength || universal.length);
-        if (bytes[0] === 0x3f && bytes[1] === 0x36 && bytes[2] === 0xb4 && bytes[5] === 0x5b) {
+        if (bytes[0] === 0x3f && bytes[1] === 0x36 && bytes[2] === 0xb4 && bytes[5] === 0x5b && bytes[13] === 0x01) {
           const id = [bytes[6], bytes[7], bytes[8]];
           if (id.some(v => v !== 0)) {
             const frequency = (bytes[14] << 8) | bytes[15];
@@ -2740,6 +2743,108 @@
       };
     },
 
+    validateCommandPayload(command, payload) {
+      if ((!Array.isArray(payload) && !(payload instanceof Uint8Array)) ||
+          Array.from(payload).some(byte => !Number.isInteger(byte) || byte < 0 || byte > 255)) throw new Error('Payload BLE inválido.');
+      const oneByte = (min, max) => payload.length === 1 && payload[0] >= min && payload[0] <= max;
+      switch (command) {
+        case 0x01: case 0x02: case 0x05: case 0x0b: case 0x0d:
+        case 0x10: case 0x11: case 0x14: case 0x1a: case 0x1b:
+        case 0x20: case 0x21: case 0x26:
+          if (payload.length !== 0) throw new Error('El comando 0x' + command.toString(16) + ' no admite payload.');
+          break;
+        case 0x04:
+          if (!oneByte(1, 255)) throw new Error('0x04 requiere intervalo de 1 a 255 segundos.');
+          break;
+        case 0x0a:
+          if (payload.length !== 1 || ![-40,-20,-16,-12,-8,-4,0,3,4].includes(payload[0] > 127 ? payload[0] - 256 : payload[0])) throw new Error('0x0A requiere una potencia TX permitida.');
+          break;
+        case 0x0c:
+          if (!oneByte(0, 1)) throw new Error('0x0C admite solo 00 o 01.');
+          break;
+        case 0x12:
+          if (payload.length !== 8) throw new Error('0x12 requiere exactamente 8 bytes de credencial.');
+          break;
+        case 0x15:
+          if (payload.length !== 1 || payload[0] < 0 || payload[0] > 90 || payload[0] % 10 !== 0) throw new Error('0x15 requiere índice 0,10,...,90.');
+          break;
+        case 0x16:
+          if (payload.length !== 81 || payload[0] < 0 || payload[0] > 90 || payload[0] % 10 !== 0) throw new Error('0x16 requiere índice 0,10,...,90 y exactamente 80 bytes de tabla.');
+          break;
+        case 0x19:
+          if (!oneByte(0, 2)) throw new Error('0x19 admite modo 00, 01 o 02.');
+          break;
+        case 0x22:
+          if (!oneByte(0, 1)) throw new Error('0x22 admite protocolo 00 o 01.');
+          break;
+        default:
+          throw new Error('Comando 0x' + command.toString(16).padStart(2, '0') + ' no documentado en el perfil público.');
+      }
+      return true;
+    },
+
+    parseCurrentData(payload) {
+      if (!payload || payload.length !== 22) throw new Error('La respuesta 0x14 debe contener 22 bytes.');
+      const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+      const batteryCode = view.getUint16(0, false);
+      const temperature = view.getInt16(2, false) / 8;
+      const fullFrequency = view.getFloat32(6, true);
+      const emptyFrequency = view.getFloat32(10, true);
+      const frequency = view.getFloat32(14, true);
+      const output = view.getFloat32(18, true);
+      if (payload[5] !== 0 || ![temperature, fullFrequency, emptyFrequency, frequency, output].every(Number.isFinite) ||
+          temperature < -40 || temperature > 125 ||
+          [fullFrequency, emptyFrequency, frequency, output].some(v => v < 0)) {
+        throw new Error('La respuesta 0x14 contiene valores fuera de rango.');
+      }
+      return {
+        batteryCode,
+        battery: Math.floor(Math.max(0, Math.min(100, ((batteryCode - 500) * 100) / 220))),
+        temperature, fullFrequency, emptyFrequency, frequency, output,
+        legacyVersionCode: payload[4]
+      };
+    },
+
+    parseParameters(payload) {
+      if (!payload || payload.length !== 13) throw new Error('La respuesta 0x0D debe contener 13 bytes.');
+      const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+      const emptyFrequency = view.getFloat32(4, true);
+      const fullFrequency = view.getFloat32(8, true);
+      const outputMode = payload[12];
+      if (![emptyFrequency, fullFrequency].every(Number.isFinite) ||
+          emptyFrequency < 0 || fullFrequency < 0 || ![0, 1, 2].includes(outputMode)) {
+        throw new Error('Los parámetros 0x0D contienen valores inválidos.');
+      }
+      return {
+        broadcastInterval: payload[0],
+        continueAfterRestart: payload[2] === 1,
+        transmitPower: view.getInt8(3),
+        emptyFrequency, fullFrequency, outputMode
+      };
+    },
+
+    parseCalibrationCoordinate(payload) {
+      if (!payload || payload.length !== 4) throw new Error('La respuesta 0x1B debe contener 4 bytes.');
+      const value = new DataView(payload.buffer, payload.byteOffset, payload.byteLength).getFloat32(0, true);
+      if (!Number.isFinite(value) || value < 0 || value > 5000) throw new Error('Coordenada 0x1B fuera de rango.');
+      return value;
+    },
+
+    parseFirmwareVersion(payload) {
+      if (!payload || payload.length !== 2) throw new Error('La respuesta 0x26 debe contener 2 bytes.');
+      return payload[0] + '.' + payload[1];
+    },
+
+    parseBleAddress(payload) {
+      if (!payload || payload.length !== 6) throw new Error('La respuesta 0x20 debe contener 6 bytes.');
+      return Array.from(payload).reverse().map(v => v.toString(16).padStart(2, '0').toUpperCase()).join(':');
+    },
+
+    parseAdvertisingProtocol(payload) {
+      if (!payload || payload.length !== 1 || ![0, 1].includes(payload[0])) throw new Error('Respuesta 0x21 inválida.');
+      return payload[0];
+    },
+
     rowToBytes(volumeL, levelMm, fixVal) {
       const volume = Number(volumeL), level = Number(levelMm), fix = Number(fixVal);
       if (!Number.isFinite(volume) || volume < 0 || volume > 1000000 || !Number.isInteger(level) || level < 0 || level > 65535 ||
@@ -2767,7 +2872,13 @@
 
   function sendBleCommand(command, payload = [], timeoutMs = 5000) {
     if (!bleState.isConnected || !bleState.charWrite || !bleState.sensorId) return Promise.reject(new Error('No hay conexión BLE válida.'));
+    const protectedCommands = new Set([0x01, 0x02, 0x04, 0x0a, 0x0c, 0x10, 0x11, 0x16]);
+    if (protectedCommands.has(command) && !bleState.isAuthenticated) {
+      return Promise.reject(new Error('El protocolo exige autenticar esta conexión antes del comando 0x' + command.toString(16).padStart(2, '0') + '.'));
+    }
     if (bleState.pendingCommand) return Promise.reject(new Error('Hay otro comando BLE esperando respuesta.'));
+    try { AoooGProtocol.validateCommandPayload(command, payload); }
+    catch (error) { return Promise.reject(error); }
     return new Promise(async (resolve, reject) => {
       const pending = { command, resolve, reject, timer: null };
       pending.timer = setTimeout(() => {
@@ -2777,6 +2888,9 @@
       bleState.pendingCommand = pending;
       try {
         const frame = AoooGProtocol.buildFrame(bleState.sensorId, command, payload);
+        // Web Bluetooth no expone de forma estándar el ATT MTU negociado.
+        // El firmware exige MTU >= 91 para 0x16; si el stack no lo soporta,
+        // la escritura GATT fallará y el flujo de backup/rollback lo reportará.
         if (typeof bleState.charWrite.writeValueWithResponse === 'function') await bleState.charWrite.writeValueWithResponse(frame);
         else await bleState.charWrite.writeValue(frame);
       } catch (error) {
@@ -2789,6 +2903,31 @@
 
   function isSuccessAck(response, command) {
     return !!response && response.cmd === command && response.payload.length === 1 && response.payload[0] === 0x00;
+  }
+
+  // La credencial se convierte en ocho bytes solo al autenticar; nunca se
+  // conserva en estado ni se registra.
+  function parseBleCredential(value) {
+    const credential = String(value || '').trim();
+    if (!/^[0-9a-fA-F]{16}$/.test(credential)) return null;
+    return Array.from({ length: 8 }, (_, i) => parseInt(credential.slice(i * 2, i * 2 + 2), 16));
+  }
+
+  // Un CRC válido por sí solo no identifica un AG-BFLS. Solo se acepta una
+  // trama 0x14 completa y coherente como fuente espontánea de identidad.
+  function isValidTelemetryFrame(parsed) {
+    if (!parsed || parsed.cmd !== 0x14 || !Array.isArray(parsed.sensorId) ||
+        parsed.sensorId.length !== 3 || parsed.sensorId.every(v => v === 0) ||
+        !parsed.payload || parsed.payload.length !== 22 || parsed.payload[5] !== 0) return false;
+    const view = new DataView(parsed.payload.buffer, parsed.payload.byteOffset, parsed.payload.byteLength);
+    const temp = view.getInt16(2, false) / 8;
+    const fullFreq = view.getFloat32(6, true);
+    const emptyFreq = view.getFloat32(10, true);
+    const freq = view.getFloat32(14, true);
+    const output = view.getFloat32(18, true);
+    return [temp, fullFreq, emptyFreq, freq, output].every(Number.isFinite) &&
+      temp >= -40 && temp <= 125 &&
+      fullFreq >= 0 && emptyFreq >= 0 && freq >= 0 && output >= 0;
   }
 
   function extractSensorDataFromAdvertisement(event) {
@@ -2831,6 +2970,7 @@
           if (data.battery !== null) bleState.battery = data.battery;
           if (data.temperature !== null) bleState.temperature = data.temperature;
           if (data.frequency !== null) bleState.currentFreq = data.frequency;
+          if (data.outputMode !== undefined && data.outputMode !== null) bleState.outputMode = data.outputMode;
           updateBleUI();
           finish(data.id);
         }
@@ -2953,10 +3093,10 @@
     const parsed = AoooGProtocol.parseFrame(bytes);
     if (!parsed) return;
 
-    // Aprender ID directamente de la telemetría periódica del hardware
-    if (!bleState.sensorId && parsed.sensorId && parsed.sensorId.some(v => v !== 0)) {
-      bleState.sensorId = parsed.sensorId;
-      console.log('ID aprendido desde telemetría física:', bleState.sensorId, 'SN:', AoooGProtocol.sensorIdToSN(bleState.sensorId));
+    // No aprender identidad desde cualquier trama con CRC válido. Un periférico
+    // ajeno o una respuesta incompleta no puede fijar el ID de sesión.
+    if (!bleState.sensorId && isValidTelemetryFrame(parsed)) {
+      bleState.sensorId = parsed.sensorId.slice();
       updateBleUI();
     }
 
@@ -2969,15 +3109,9 @@
       pending.resolve(parsed);
     }
 
-    if (parsed.cmd === 0x14 && parsed.payload.length >= 22) {
-      const view = new DataView(parsed.payload.buffer, parsed.payload.byteOffset, parsed.payload.byteLength);
-      const batteryCode = view.getUint16(0, false);
-      const battery = Math.max(0, Math.min(100, Math.round(((batteryCode - 500) * 100) / 220)));
-      const temp = view.getInt16(2, false) / 8;
-      const fullFreq = view.getFloat32(6, true);
-      const emptyFreq = view.getFloat32(10, true);
-      const freq = view.getFloat32(14, true);
-      const output = view.getFloat32(18, true);
+    if (isValidTelemetryFrame(parsed)) {
+      const current = AoooGProtocol.parseCurrentData(parsed.payload);
+      const { battery, temperature: temp, fullFrequency: fullFreq, emptyFrequency: emptyFreq, frequency: freq, output } = current;
       if ([temp, fullFreq, emptyFreq, freq, output].every(Number.isFinite)) {
         bleState.battery = battery;
         bleState.temperature = temp;
@@ -2985,7 +3119,7 @@
         bleState.emptyFreq = emptyFreq;
         bleState.fullFreq = fullFreq;
         setText('bleLiveLevel', bleState.outputMode === 1 ? output.toFixed(0) + ' mm' : '-- mm');
-        const outputLabel = bleState.outputMode === 0 ? output.toFixed(1) + ' %' :
+        const outputLabel = bleState.outputMode === 0 ? (output / 100).toFixed(2) + ' %' :
           (bleState.outputMode === 1 ? '-- (salida en mm)' :
             (bleState.outputMode === 2 ? output.toFixed(1) + ' L' : output.toFixed(1) + ' (modo no leído)'));
         setText('bleLiveVolume', outputLabel);
@@ -2996,40 +3130,10 @@
     }
   }
 
-  // Búsqueda orientada: filtra por anunciantes AoooG (0xFF43) o Universal (0xFFFF).
-  // Evita que el técnico en terreno vea dispositivos Bluetooth ajenos.
+  // Búsqueda principal abierta: algunos AG-BFLS no exponen manufacturerData
+  // antes del emparejamiento. La identidad se confirma después por GATT/SN y 0x1A.
   async function connectBleSensorTargeted() {
-    if (!window.isSecureContext) {
-      alert('Bluetooth web requiere un contexto seguro HTTPS. Abre la calculadora desde GitHub Pages o http://localhost.');
-      return;
-    }
-    if (!navigator.bluetooth || typeof navigator.bluetooth.requestDevice !== 'function') {
-      alert('Este navegador no ofrece Web Bluetooth. Usa Google Chrome o Microsoft Edge actualizado en Windows/macOS/Linux, o Chrome en Android.');
-      return;
-    }
-    try {
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { manufacturerData: [{ companyIdentifier: 0xff43 }] },
-          { manufacturerData: [{ companyIdentifier: 0xffff }] }
-        ],
-        optionalServices: [AoooGProtocol.SERVICE_UUID]
-      });
-      bleState.targetDevice = device;
-      return await connectBleSensor();
-    } catch (error) {
-      if (error.name === 'NotFoundError') {
-        const tryOpen = confirm(
-          'No se seleccionó ningún sensor con filtro AoooG/Universal.\n\n' +
-          '¿Deseas buscar entre TODOS los dispositivos Bluetooth cercanos sin filtro?'
-        );
-        if (tryOpen) {
-          return connectBleSensor();
-        }
-      } else if (error.name !== 'AbortError') {
-        alert('Error al buscar sensor BLE:\n' + error.message);
-      }
-    }
+    return connectBleSensor();
   }
 
   async function connectBleSensor() {
@@ -3074,8 +3178,8 @@
       bleState.sensorId = null;
       updateBleUI();
 
-      // Algunos firmwares envían una trama espontánea al activar notifications.
-      // Si ocurre, handleBleNotification aprende el ID desde esa trama con CRC válido.
+      // Algunos firmwares envían telemetría espontánea al activar notifications.
+      // Solo una trama 0x14 completa y coherente puede establecer el ID de sesión.
       const advertisedId = await advertisedIdPromise;
       if (!bleState.sensorId && advertisedId) bleState.sensorId = advertisedId;
 
@@ -3182,8 +3286,8 @@
 
   async function authenticateBleSensor() {
     const input = document.getElementById('bleCredentialInput');
-    const credential = (input?.value || '').trim();
-    if (!/^[0-9a-fA-F]{16}$/.test(credential)) {
+    const bytes = parseBleCredential(input?.value || '');
+    if (!bytes) {
       alert('Introduce exactamente 16 caracteres hexadecimales (8 bytes) entregados por el fabricante.');
       return;
     }
@@ -3193,7 +3297,6 @@
     }
     if (!bleState.isConnected) { alert('Conecta el sensor primero.'); return; }
     try {
-      const bytes = Array.from({ length: 8 }, (_, i) => parseInt(credential.slice(i * 2, i * 2 + 2), 16));
       const response = await sendBleCommand(0x12, bytes, 6000);
       bleState.isAuthenticated = isSuccessAck(response, 0x12);
       updateBleUI();
@@ -3204,6 +3307,99 @@
       bleState.isAuthenticated = false; updateBleUI();
       alert('Autenticación no confirmada: ' + error.message);
     }
+  }
+
+  async function readBleAdvancedDiagnostics() {
+    if (!bleState.isConnected || bleState.isSimulated) {
+      alert('Conecta un sensor físico para leer sus datos de diagnóstico.');
+      return;
+    }
+    const readPayload = async (command, timeout = 3500) => {
+      try {
+        const response = await sendBleCommand(command, [], timeout);
+        return response ? response.payload : null;
+      } catch (_) { return null; }
+    };
+    try {
+      // El protocolo permite una sola solicitud pendiente: leer en serie, nunca en paralelo.
+      const versionPayload = await readPayload(0x26, 2500);
+      const addressPayload = await readPayload(0x20);
+      const advertisingPayload = await readPayload(0x21);
+      const intervalPayload = await readPayload(0x05);
+      const powerPayload = await readPayload(0x0b);
+      const coordinatePayload = await readPayload(0x1b);
+      const details = [];
+      if (versionPayload) details.push('FW ' + AoooGProtocol.parseFirmwareVersion(versionPayload));
+      if (addressPayload) details.push('BLE ' + AoooGProtocol.parseBleAddress(addressPayload) + ' (no es el SN)');
+      if (advertisingPayload) details.push('ADV ' + (AoooGProtocol.parseAdvertisingProtocol(advertisingPayload) === 0 ? 'AOOOG' : 'Universal'));
+      if (intervalPayload?.length === 1) details.push('Intervalo ' + intervalPayload[0] + ' s');
+      if (powerPayload?.length === 1) details.push('TX ' + (powerPayload[0] > 127 ? powerPayload[0] - 256 : powerPayload[0]) + ' dBm');
+      if (coordinatePayload) details.push('Coordenada 1B ' + AoooGProtocol.parseCalibrationCoordinate(coordinatePayload).toFixed(0));
+      if (!details.length) throw new Error('El sensor no respondió a los comandos de diagnóstico.');
+      const log = document.getElementById('bleStatusLog');
+      if (log) log.innerText = details.join(' • ');
+      showToast('Diagnóstico BLE leído desde el sensor.');
+    } catch (error) {
+      alert('No se pudo completar el diagnóstico: ' + error.message);
+    }
+  }
+
+  async function setBleBroadcastInterval() {
+    const input = document.getElementById('bleBroadcastInterval');
+    const seconds = Number(input?.value);
+    if (!Number.isInteger(seconds) || seconds < 1 || seconds > 255) {
+      alert('El intervalo debe estar entre 1 y 255 segundos.');
+      return;
+    }
+    try {
+      const ack = await sendBleCommand(0x04, [seconds], 6000);
+      if (!isSuccessAck(ack, 0x04)) throw new Error('El sensor no confirmó el intervalo.');
+      const readback = await sendBleCommand(0x05, [], 6000);
+      if (!readback || readback.payload.length !== 1 || readback.payload[0] !== seconds) throw new Error('La lectura 0x05 no coincide con el intervalo solicitado.');
+      showToast('Intervalo de publicidad confirmado: ' + seconds + ' s.');
+    } catch (error) { alert('No se pudo cambiar el intervalo: ' + error.message); }
+  }
+
+  async function setBleTransmitPower() {
+    const select = document.getElementById('bleTransmitPower');
+    const power = Number(select?.value);
+    const allowed = [-40, -20, -16, -12, -8, -4, 0, 3, 4];
+    if (!allowed.includes(power)) { alert('Potencia TX no admitida por el protocolo.'); return; }
+    try {
+      const ack = await sendBleCommand(0x0a, [power & 0xff], 6000);
+      if (!isSuccessAck(ack, 0x0a)) throw new Error('El sensor no confirmó la potencia TX.');
+      const readback = await sendBleCommand(0x0b, [], 6000);
+      const actual = readback?.payload?.length === 1 ? (readback.payload[0] > 127 ? readback.payload[0] - 256 : readback.payload[0]) : null;
+      if (actual !== power) throw new Error('La potencia leída de vuelta no coincide.');
+      showToast('Potencia TX confirmada: ' + actual + ' dBm.');
+    } catch (error) { alert('No se pudo cambiar la potencia: ' + error.message); }
+  }
+
+  async function setBleContinueAfterRestart() {
+    const select = document.getElementById('bleContinueAfterRestart');
+    const enabled = select?.value === '1';
+    try {
+      const ack = await sendBleCommand(0x0c, [enabled ? 1 : 0], 6000);
+      if (!isSuccessAck(ack, 0x0c)) throw new Error('El sensor no confirmó el ajuste.');
+      const params = await sendBleCommand(0x0d, [], 6000);
+      const parsed = AoooGProtocol.parseParameters(params?.payload);
+      if (parsed.continueAfterRestart !== enabled) throw new Error('La lectura 0x0D no coincide con el ajuste solicitado.');
+      showToast('Continuar después de reinicio: ' + (enabled ? 'activado' : 'desactivado') + '.');
+    } catch (error) { alert('No se pudo cambiar el ajuste: ' + error.message); }
+  }
+
+  async function setBleAdvertisingProtocol() {
+    const select = document.getElementById('bleAdvertisingProtocol');
+    const protocol = Number(select?.value);
+    if (![0, 1].includes(protocol)) return;
+    if (!confirm('Cambiar el formato de publicidad BLE puede modificar cómo otras aplicaciones detectan el sensor. ¿Continuar?')) return;
+    try {
+      const ack = await sendBleCommand(0x22, [protocol], 6000);
+      if (!isSuccessAck(ack, 0x22)) throw new Error('El sensor no confirmó el formato de publicidad.');
+      const readback = await sendBleCommand(0x21, [], 6000);
+      if (AoooGProtocol.parseAdvertisingProtocol(readback?.payload) !== protocol) throw new Error('La lectura 0x21 no coincide con el formato solicitado.');
+      showToast('Formato de publicidad confirmado. El sensor puede requerir un nuevo escaneo.');
+    } catch (error) { alert('No se pudo cambiar el formato de publicidad: ' + error.message); }
   }
 
   async function readBleSensorParameters() {
@@ -3217,13 +3413,16 @@
     try {
       const response = await sendBleCommand(0x0d, [], 6000);
       if (!response || response.payload.length !== 13) throw new Error('Respuesta 0x0D inválida.');
-      const view = new DataView(response.payload.buffer, response.payload.byteOffset, response.payload.byteLength);
-      const empty = view.getFloat32(4, true), full = view.getFloat32(8, true);
-      if (!Number.isFinite(empty) || !Number.isFinite(full) || empty <= 0 || full <= 0) throw new Error('Frecuencias devueltas fuera de rango.');
+      const params = AoooGProtocol.parseParameters(response.payload);
+      const empty = params.emptyFrequency, full = params.fullFrequency;
       bleState.emptyFreq = empty; bleState.fullFreq = full;
+      bleState.outputMode = params.outputMode;
       setText('bleFreqEmpty', empty.toLocaleString() + ' Hz');
       setText('bleFreqFull', full.toLocaleString() + ' Hz');
       setText('bleDeltaFreq', 'Delta: ' + Math.abs(empty - full).toLocaleString() + ' Hz');
+      const calibrationState = (empty === 0 || full === 0) ? ' • Calibración vacío/lleno pendiente' : '';
+      setText('bleStatusLog', '0x0D OK • Modo ' + params.outputMode + ' • Intervalo ' + params.broadcastInterval + ' s • Potencia ' + params.transmitPower + ' dBm' + calibrationState);
+      updateBleUI();
       showToast('Parámetros leídos y validados desde el sensor.');
     } catch (error) { alert('No se pudieron leer los parámetros: ' + error.message); }
   }
@@ -3385,6 +3584,7 @@
         const restored = await restoreCalibration(backup, originalMode);
         throw new Error(writeError.message + (restored ? ' Se restauraron y verificaron tabla y modo anteriores.' : ' ATENCIÓN: no se pudo confirmar la restauración completa; no desconectes el sensor y revisa la memoria.'));
       }
+      bleState.calibrationTable = rows.map(row => ({ volume: row.volume, level: row.level, data: row.data }));
       if (label) label.innerText = '100 slots escritos y leídos de retorno; modo litros verificado.';
       if (log) log.innerText = '[' + new Date().toLocaleTimeString() + '] PASS: 10 bloques escritos, 10 lecturas byte a byte y modo 0x02 leído de vuelta.';
       showToast('Calibración transferida y verificada por lectura de retorno.');
@@ -3418,13 +3618,34 @@
     } catch (error) { alert('No se fijó el punto lleno: ' + error.message); }
   }
 
+  function isValidSensorCalibrationTable(rows) {
+    if (!Array.isArray(rows) || rows.length !== 100) return false;
+    if (rows[0].volume !== 0 || rows[0].level !== 0 || rows[0].data !== 0) return false;
+    let ended = false, active = 0;
+    let previous = { volume: -1, level: -1, data: -1 };
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const terminator = row.volume === 0 && row.level === 0 && row.data === 0;
+      if (i > 0 && terminator) { ended = true; continue; }
+      if (ended || !Number.isFinite(row.volume) || row.volume < 0 ||
+          !Number.isInteger(row.level) || row.level < 0 ||
+          !Number.isInteger(row.data) || row.data < 0 || row.data > 5000 ||
+          row.volume < previous.volume || row.level <= previous.level || row.data <= previous.data) return false;
+      previous = row;
+      active++;
+    }
+    return active >= 2;
+  }
+
   async function setBleOutputModeFromSelect() {
     const select = document.getElementById('selBleOutputMode');
     const mode = Number.parseInt(select?.value || '2', 10);
     if (![0, 1, 2].includes(mode)) { alert('Modo de salida inválido.'); return; }
     try {
       if (bleState.isSimulated) throw new Error('DEMO: no se modifica ningún sensor físico.');
-      if (!bleState.isAuthenticated) throw new Error('Autentica el sensor primero.');
+      if ((mode === 1 || mode === 2) && !isValidSensorCalibrationTable(bleState.calibrationTable)) {
+        throw new Error('Los modos mm/L requieren una tabla de calibración válida. Lee la tabla del sensor o transfiere una tabla y verifica los 100 slots antes de cambiar el modo.');
+      }
       await writeOutputMode(mode);
       showToast('Modo de salida confirmado: ' + ({ 0: 'Porcentaje', 1: 'Milímetros', 2: 'Litros' })[mode] + '.');
     } catch (error) { alert('No se pudo aplicar el modo: ' + error.message); }
@@ -3875,6 +4096,21 @@
 
     const btnBleSleep = document.getElementById('btnBleSleep');
     if (btnBleSleep) btnBleSleep.addEventListener('click', sleepBleSensor);
+
+    const btnBleDiagnostics = document.getElementById('btnBleDiagnostics');
+    if (btnBleDiagnostics) btnBleDiagnostics.addEventListener('click', readBleAdvancedDiagnostics);
+
+    const btnBleSetInterval = document.getElementById('btnBleSetInterval');
+    if (btnBleSetInterval) btnBleSetInterval.addEventListener('click', setBleBroadcastInterval);
+
+    const btnBleSetPower = document.getElementById('btnBleSetPower');
+    if (btnBleSetPower) btnBleSetPower.addEventListener('click', setBleTransmitPower);
+
+    const btnBleSetContinue = document.getElementById('btnBleSetContinue');
+    if (btnBleSetContinue) btnBleSetContinue.addEventListener('click', setBleContinueAfterRestart);
+
+    const btnBleSetAdvertising = document.getElementById('btnBleSetAdvertising');
+    if (btnBleSetAdvertising) btnBleSetAdvertising.addEventListener('click', setBleAdvertisingProtocol);
 
     const btnToggle100 = document.getElementById('btnToggleTable100');
     if (btnToggle100) {
