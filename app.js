@@ -3264,6 +3264,96 @@
     }
   }
 
+  async function readBleAdvancedDiagnostics() {
+    if (!bleState.isConnected || bleState.isSimulated) {
+      alert('Conecta un sensor físico para leer sus datos de diagnóstico.');
+      return;
+    }
+    const readPayload = async (command, timeout = 3500) => {
+      try {
+        const response = await sendBleCommand(command, [], timeout);
+        return response ? response.payload : null;
+      } catch (_) { return null; }
+    };
+    try {
+      const [versionPayload, addressPayload, advertisingPayload, intervalPayload, powerPayload, coordinatePayload] = await Promise.all([
+        readPayload(0x26, 2500), readPayload(0x20), readPayload(0x21),
+        readPayload(0x05), readPayload(0x0b), readPayload(0x1b)
+      ]);
+      const details = [];
+      if (versionPayload) details.push('FW ' + AoooGProtocol.parseFirmwareVersion(versionPayload));
+      if (addressPayload) details.push('BLE ' + AoooGProtocol.parseBleAddress(addressPayload) + ' (no es el SN)');
+      if (advertisingPayload) details.push('ADV ' + (AoooGProtocol.parseAdvertisingProtocol(advertisingPayload) === 0 ? 'AOOOG' : 'Universal'));
+      if (intervalPayload?.length === 1) details.push('Intervalo ' + intervalPayload[0] + ' s');
+      if (powerPayload?.length === 1) details.push('TX ' + (powerPayload[0] > 127 ? powerPayload[0] - 256 : powerPayload[0]) + ' dBm');
+      if (coordinatePayload) details.push('Coordenada 1B ' + AoooGProtocol.parseCalibrationCoordinate(coordinatePayload).toFixed(0));
+      if (!details.length) throw new Error('El sensor no respondió a los comandos de diagnóstico.');
+      const log = document.getElementById('bleStatusLog');
+      if (log) log.innerText = details.join(' • ');
+      showToast('Diagnóstico BLE leído desde el sensor.');
+    } catch (error) {
+      alert('No se pudo completar el diagnóstico: ' + error.message);
+    }
+  }
+
+  async function setBleBroadcastInterval() {
+    const input = document.getElementById('bleBroadcastInterval');
+    const seconds = Number(input?.value);
+    if (!Number.isInteger(seconds) || seconds < 1 || seconds > 255) {
+      alert('El intervalo debe estar entre 1 y 255 segundos.');
+      return;
+    }
+    try {
+      const ack = await sendBleCommand(0x04, [seconds], 6000);
+      if (!isSuccessAck(ack, 0x04)) throw new Error('El sensor no confirmó el intervalo.');
+      const readback = await sendBleCommand(0x05, [], 6000);
+      if (!readback || readback.payload.length !== 1 || readback.payload[0] !== seconds) throw new Error('La lectura 0x05 no coincide con el intervalo solicitado.');
+      showToast('Intervalo de publicidad confirmado: ' + seconds + ' s.');
+    } catch (error) { alert('No se pudo cambiar el intervalo: ' + error.message); }
+  }
+
+  async function setBleTransmitPower() {
+    const select = document.getElementById('bleTransmitPower');
+    const power = Number(select?.value);
+    const allowed = [-40, -20, -16, -12, -8, -4, 0, 3, 4];
+    if (!allowed.includes(power)) { alert('Potencia TX no admitida por el protocolo.'); return; }
+    try {
+      const ack = await sendBleCommand(0x0a, [power & 0xff], 6000);
+      if (!isSuccessAck(ack, 0x0a)) throw new Error('El sensor no confirmó la potencia TX.');
+      const readback = await sendBleCommand(0x0b, [], 6000);
+      const actual = readback?.payload?.length === 1 ? (readback.payload[0] > 127 ? readback.payload[0] - 256 : readback.payload[0]) : null;
+      if (actual !== power) throw new Error('La potencia leída de vuelta no coincide.');
+      showToast('Potencia TX confirmada: ' + actual + ' dBm.');
+    } catch (error) { alert('No se pudo cambiar la potencia: ' + error.message); }
+  }
+
+  async function setBleContinueAfterRestart() {
+    const select = document.getElementById('bleContinueAfterRestart');
+    const enabled = select?.value === '1';
+    try {
+      const ack = await sendBleCommand(0x0c, [enabled ? 1 : 0], 6000);
+      if (!isSuccessAck(ack, 0x0c)) throw new Error('El sensor no confirmó el ajuste.');
+      const params = await sendBleCommand(0x0d, [], 6000);
+      const parsed = AoooGProtocol.parseParameters(params?.payload);
+      if (parsed.continueAfterRestart !== enabled) throw new Error('La lectura 0x0D no coincide con el ajuste solicitado.');
+      showToast('Continuar después de reinicio: ' + (enabled ? 'activado' : 'desactivado') + '.');
+    } catch (error) { alert('No se pudo cambiar el ajuste: ' + error.message); }
+  }
+
+  async function setBleAdvertisingProtocol() {
+    const select = document.getElementById('bleAdvertisingProtocol');
+    const protocol = Number(select?.value);
+    if (![0, 1].includes(protocol)) return;
+    if (!confirm('Cambiar el formato de publicidad BLE puede modificar cómo otras aplicaciones detectan el sensor. ¿Continuar?')) return;
+    try {
+      const ack = await sendBleCommand(0x22, [protocol], 6000);
+      if (!isSuccessAck(ack, 0x22)) throw new Error('El sensor no confirmó el formato de publicidad.');
+      const readback = await sendBleCommand(0x21, [], 6000);
+      if (AoooGProtocol.parseAdvertisingProtocol(readback?.payload) !== protocol) throw new Error('La lectura 0x21 no coincide con el formato solicitado.');
+      showToast('Formato de publicidad confirmado. El sensor puede requerir un nuevo escaneo.');
+    } catch (error) { alert('No se pudo cambiar el formato de publicidad: ' + error.message); }
+  }
+
   async function readBleSensorParameters() {
     if (bleState.isSimulated) {
       setText('bleFreqEmpty', bleState.emptyFreq.toLocaleString() + ' Hz');
