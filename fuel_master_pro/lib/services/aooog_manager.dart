@@ -175,6 +175,10 @@ class AoooGManager {
   }) async {
     final characteristic = writeChar;
     final sensorId = currentSensorId;
+    if (!AoooGProtocol.isValidCommandPayload(command, payload)) {
+      debugPrint('[BLE TX] Payload inválido para comando 0x${command.toRadixString(16)}.');
+      return null;
+    }
     if (AoooGProtocol.isProtectedCommand(command) && !_isAuthenticated) {
       debugPrint('[BLE TX] Comando protegido 0x${command.toRadixString(16)} bloqueado: falta autenticación.');
       return null;
