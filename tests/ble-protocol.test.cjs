@@ -302,7 +302,7 @@ test('protected public-profile commands are centrally guarded by authentication'
   const send = source.slice(start, end);
   assert.match(send, /0x01, 0x02, 0x04, 0x0a, 0x0c, 0x10, 0x11, 0x16/);
   assert.match(send, /protectedCommands\.has\(command\) && !bleState\.isAuthenticated/);
-  assert.match(send, /maxWriteValueLength\('with-response'\)/);
+  assert.match(send, /AoooGProtocol\.validateCommandPayload\(command, payload\)/);
 });
 
 test('web UI exposes every remaining public AG-BFLS diagnostic and configuration command', () => {
