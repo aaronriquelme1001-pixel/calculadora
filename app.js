@@ -2675,7 +2675,7 @@
         if (id.some(v => v !== 0)) {
           const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
           const batteryCode = ((bytes[3] & 0x0f) << 8) | bytes[4];
-          const battery = Math.max(0, Math.min(100, Math.round(((batteryCode - 500) * 100) / 220)));
+          const battery = Math.floor(Math.max(0, Math.min(100, ((batteryCode - 500) * 100) / 220)));
           const temperature = Math.round(view.getInt16(5, false) / 8);
           const frequency = view.getFloat32(7, true);
           const output = view.getFloat32(11, true);
@@ -2740,6 +2740,68 @@
       };
     },
 
+    parseCurrentData(payload) {
+      if (!payload || payload.length !== 22) throw new Error('La respuesta 0x14 debe contener 22 bytes.');
+      const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+      const batteryCode = view.getUint16(0, false);
+      const temperature = view.getInt16(2, false) / 8;
+      const fullFrequency = view.getFloat32(6, true);
+      const emptyFrequency = view.getFloat32(10, true);
+      const frequency = view.getFloat32(14, true);
+      const output = view.getFloat32(18, true);
+      if (![temperature, fullFrequency, emptyFrequency, frequency, output].every(Number.isFinite) ||
+          temperature < -40 || temperature > 125 ||
+          [fullFrequency, emptyFrequency, frequency, output].some(v => v < 0)) {
+        throw new Error('La respuesta 0x14 contiene valores fuera de rango.');
+      }
+      return {
+        batteryCode,
+        battery: Math.floor(Math.max(0, Math.min(100, ((batteryCode - 500) * 100) / 220))),
+        temperature, fullFrequency, emptyFrequency, frequency, output,
+        legacyVersionCode: payload[4]
+      };
+    },
+
+    parseParameters(payload) {
+      if (!payload || payload.length !== 13) throw new Error('La respuesta 0x0D debe contener 13 bytes.');
+      const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+      const emptyFrequency = view.getFloat32(4, true);
+      const fullFrequency = view.getFloat32(8, true);
+      const outputMode = payload[12];
+      if (![emptyFrequency, fullFrequency].every(Number.isFinite) ||
+          emptyFrequency < 0 || fullFrequency < 0 || ![0, 1, 2].includes(outputMode)) {
+        throw new Error('Los parámetros 0x0D contienen valores inválidos.');
+      }
+      return {
+        broadcastInterval: payload[0],
+        continueAfterRestart: payload[2] === 1,
+        transmitPower: view.getInt8(3),
+        emptyFrequency, fullFrequency, outputMode
+      };
+    },
+
+    parseCalibrationCoordinate(payload) {
+      if (!payload || payload.length !== 4) throw new Error('La respuesta 0x1B debe contener 4 bytes.');
+      const value = new DataView(payload.buffer, payload.byteOffset, payload.byteLength).getFloat32(0, true);
+      if (!Number.isFinite(value) || value < 0 || value > 5000) throw new Error('Coordenada 0x1B fuera de rango.');
+      return value;
+    },
+
+    parseFirmwareVersion(payload) {
+      if (!payload || payload.length !== 2) throw new Error('La respuesta 0x26 debe contener 2 bytes.');
+      return payload[0] + '.' + payload[1];
+    },
+
+    parseBleAddress(payload) {
+      if (!payload || payload.length !== 6) throw new Error('La respuesta 0x20 debe contener 6 bytes.');
+      return Array.from(payload).reverse().map(v => v.toString(16).padStart(2, '0').toUpperCase()).join(':');
+    },
+
+    parseAdvertisingProtocol(payload) {
+      if (!payload || payload.length !== 1 || ![0, 1].includes(payload[0])) throw new Error('Respuesta 0x21 inválida.');
+      return payload[0];
+    },
+
     rowToBytes(volumeL, levelMm, fixVal) {
       const volume = Number(volumeL), level = Number(levelMm), fix = Number(fixVal);
       if (!Number.isFinite(volume) || volume < 0 || volume > 1000000 || !Number.isInteger(level) || level < 0 || level > 65535 ||
@@ -2767,6 +2829,10 @@
 
   function sendBleCommand(command, payload = [], timeoutMs = 5000) {
     if (!bleState.isConnected || !bleState.charWrite || !bleState.sensorId) return Promise.reject(new Error('No hay conexión BLE válida.'));
+    const protectedCommands = new Set([0x01, 0x02, 0x04, 0x0a, 0x0c, 0x10, 0x11, 0x16]);
+    if (protectedCommands.has(command) && !bleState.isAuthenticated) {
+      return Promise.reject(new Error('El protocolo exige autenticar esta conexión antes del comando 0x' + command.toString(16).padStart(2, '0') + '.'));
+    }
     if (bleState.pendingCommand) return Promise.reject(new Error('Hay otro comando BLE esperando respuesta.'));
     return new Promise(async (resolve, reject) => {
       const pending = { command, resolve, reject, timer: null };
@@ -2777,6 +2843,10 @@
       bleState.pendingCommand = pending;
       try {
         const frame = AoooGProtocol.buildFrame(bleState.sensorId, command, payload);
+        if (typeof bleState.charWrite.maxWriteValueLength === 'function') {
+          const maxBytes = bleState.charWrite.maxWriteValueLength('with-response');
+          if (frame.length > maxBytes) throw new Error('El MTU BLE negociado no permite enviar ' + frame.length + ' bytes (máximo ' + maxBytes + '). Para calibración 0x16 se requieren 88 bytes de escritura y ATT MTU ≥ 91.');
+        }
         if (typeof bleState.charWrite.writeValueWithResponse === 'function') await bleState.charWrite.writeValueWithResponse(frame);
         else await bleState.charWrite.writeValue(frame);
       } catch (error) {
@@ -2995,14 +3065,8 @@
     }
 
     if (isValidTelemetryFrame(parsed)) {
-      const view = new DataView(parsed.payload.buffer, parsed.payload.byteOffset, parsed.payload.byteLength);
-      const batteryCode = view.getUint16(0, false);
-      const battery = Math.max(0, Math.min(100, Math.round(((batteryCode - 500) * 100) / 220)));
-      const temp = view.getInt16(2, false) / 8;
-      const fullFreq = view.getFloat32(6, true);
-      const emptyFreq = view.getFloat32(10, true);
-      const freq = view.getFloat32(14, true);
-      const output = view.getFloat32(18, true);
+      const current = AoooGProtocol.parseCurrentData(parsed.payload);
+      const { battery, temperature: temp, fullFrequency: fullFreq, emptyFrequency: emptyFreq, frequency: freq, output } = current;
       if ([temp, fullFreq, emptyFreq, freq, output].every(Number.isFinite)) {
         bleState.battery = battery;
         bleState.temperature = temp;
@@ -3010,7 +3074,7 @@
         bleState.emptyFreq = emptyFreq;
         bleState.fullFreq = fullFreq;
         setText('bleLiveLevel', bleState.outputMode === 1 ? output.toFixed(0) + ' mm' : '-- mm');
-        const outputLabel = bleState.outputMode === 0 ? output.toFixed(1) + ' %' :
+        const outputLabel = bleState.outputMode === 0 ? (output / 100).toFixed(2) + ' %' :
           (bleState.outputMode === 1 ? '-- (salida en mm)' :
             (bleState.outputMode === 2 ? output.toFixed(1) + ' L' : output.toFixed(1) + ' (modo no leído)'));
         setText('bleLiveVolume', outputLabel);
@@ -3211,13 +3275,16 @@
     try {
       const response = await sendBleCommand(0x0d, [], 6000);
       if (!response || response.payload.length !== 13) throw new Error('Respuesta 0x0D inválida.');
-      const view = new DataView(response.payload.buffer, response.payload.byteOffset, response.payload.byteLength);
-      const empty = view.getFloat32(4, true), full = view.getFloat32(8, true);
-      if (!Number.isFinite(empty) || !Number.isFinite(full) || empty <= 0 || full <= 0) throw new Error('Frecuencias devueltas fuera de rango.');
+      const params = AoooGProtocol.parseParameters(response.payload);
+      const empty = params.emptyFrequency, full = params.fullFrequency;
       bleState.emptyFreq = empty; bleState.fullFreq = full;
+      bleState.outputMode = params.outputMode;
       setText('bleFreqEmpty', empty.toLocaleString() + ' Hz');
       setText('bleFreqFull', full.toLocaleString() + ' Hz');
       setText('bleDeltaFreq', 'Delta: ' + Math.abs(empty - full).toLocaleString() + ' Hz');
+      const calibrationState = (empty === 0 || full === 0) ? ' • Calibración vacío/lleno pendiente' : '';
+      setText('bleStatusLog', '0x0D OK • Modo ' + params.outputMode + ' • Intervalo ' + params.broadcastInterval + ' s • Potencia ' + params.transmitPower + ' dBm' + calibrationState);
+      updateBleUI();
       showToast('Parámetros leídos y validados desde el sensor.');
     } catch (error) { alert('No se pudieron leer los parámetros: ' + error.message); }
   }
