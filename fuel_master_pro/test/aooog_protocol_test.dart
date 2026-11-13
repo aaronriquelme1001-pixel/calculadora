@@ -51,6 +51,18 @@ void main() {
       expect(AoooGProtocol.parseCalibrationCoordinate([0, 0, 0]), isNull);
     });
 
+    test('validates every command payload length and allowed range', () {
+      expect(AoooGProtocol.isValidCommandPayload(0x12, [0,1,2,3,4,5,6,7]), isTrue);
+      expect(AoooGProtocol.isValidCommandPayload(0x15, [90]), isTrue);
+      expect(AoooGProtocol.isValidCommandPayload(0x16, [0, ...List<int>.filled(80, 0)]), isTrue);
+      expect(AoooGProtocol.isValidCommandPayload(0x12, [1,2,3]), isFalse);
+      expect(AoooGProtocol.isValidCommandPayload(0x15, [91]), isFalse);
+      expect(AoooGProtocol.isValidCommandPayload(0x16, [0, ...List<int>.filled(79, 0)]), isFalse);
+      expect(AoooGProtocol.isValidCommandPayload(0x0a, [1]), isFalse);
+      expect(AoooGProtocol.isValidCommandPayload(0x22, [2]), isFalse);
+      expect(AoooGProtocol.isValidCommandPayload(0x7f, []), isFalse);
+    });
+
     test('marks only documented protected commands as requiring authentication', () {
       for (final command in [0x01, 0x02, 0x04, 0x0a, 0x0c, 0x10, 0x11, 0x16]) {
         expect(AoooGProtocol.isProtectedCommand(command), isTrue);
