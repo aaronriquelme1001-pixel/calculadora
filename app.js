@@ -2741,7 +2741,8 @@
     },
 
     validateCommandPayload(command, payload) {
-      if (!Array.isArray(payload) && !(payload instanceof Uint8Array)) throw new Error('Payload BLE inválido.');
+      if ((!Array.isArray(payload) && !(payload instanceof Uint8Array)) ||
+          Array.from(payload).some(byte => !Number.isInteger(byte) || byte < 0 || byte > 255)) throw new Error('Payload BLE inválido.');
       const oneByte = (min, max) => payload.length === 1 && payload[0] >= min && payload[0] <= max;
       switch (command) {
         case 0x01: case 0x02: case 0x05: case 0x0b: case 0x0d:
@@ -2762,10 +2763,10 @@
           if (payload.length !== 8) throw new Error('0x12 requiere exactamente 8 bytes de credencial.');
           break;
         case 0x15:
-          if (payload.length !== 1 || payload[0] > 90 || payload[0] % 10 !== 0) throw new Error('0x15 requiere índice 0,10,...,90.');
+          if (payload.length !== 1 || payload[0] < 0 || payload[0] > 90 || payload[0] % 10 !== 0) throw new Error('0x15 requiere índice 0,10,...,90.');
           break;
         case 0x16:
-          if (payload.length !== 81 || payload[0] > 90 || payload[0] % 10 !== 0) throw new Error('0x16 requiere índice 0,10,...,90 y exactamente 80 bytes de tabla.');
+          if (payload.length !== 81 || payload[0] < 0 || payload[0] > 90 || payload[0] % 10 !== 0) throw new Error('0x16 requiere índice 0,10,...,90 y exactamente 80 bytes de tabla.');
           break;
         case 0x19:
           if (!oneByte(0, 2)) throw new Error('0x19 admite modo 00, 01 o 02.');
@@ -2788,7 +2789,7 @@
       const emptyFrequency = view.getFloat32(10, true);
       const frequency = view.getFloat32(14, true);
       const output = view.getFloat32(18, true);
-      if (![temperature, fullFrequency, emptyFrequency, frequency, output].every(Number.isFinite) ||
+      if (payload[5] !== 0 || ![temperature, fullFrequency, emptyFrequency, frequency, output].every(Number.isFinite) ||
           temperature < -40 || temperature > 125 ||
           [fullFrequency, emptyFrequency, frequency, output].some(v => v < 0)) {
         throw new Error('La respuesta 0x14 contiene valores fuera de rango.');
