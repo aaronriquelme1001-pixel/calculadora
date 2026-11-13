@@ -197,6 +197,8 @@ test('only a complete, coherent 0x14 telemetry frame can establish an unknown se
   assert.equal(isValidTelemetryFrame({ ...valid, cmd: 0x12 }), false);
   assert.equal(isValidTelemetryFrame({ ...valid, payload: makeTelemetryPayload().slice(0, 21) }), false);
   assert.equal(isValidTelemetryFrame({ ...valid, sensorId: [0, 0, 0] }), false);
+  const badReserved = makeTelemetryPayload(); badReserved[5] = 1;
+  assert.equal(isValidTelemetryFrame({ ...valid, payload: badReserved }), false);
   assert.equal(isValidTelemetryFrame({ ...valid, payload: makeTelemetryPayload({ freq: NaN }) }), false);
   assert.equal(isValidTelemetryFrame({ ...valid, payload: makeTelemetryPayload({ freq: -1 }) }), false);
   assert.equal(isValidTelemetryFrame({ ...valid, payload: makeTelemetryPayload({ temp: 200 }) }), false);
