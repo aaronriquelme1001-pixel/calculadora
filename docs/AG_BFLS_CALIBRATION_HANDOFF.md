@@ -30,6 +30,16 @@ Workbook: `CALIBRACION SHVS36 782-415.xlsx`; sheet: `calibration`; headers: `Dat
 - A failed write/read-back/output-mode check triggers best-effort restoration of the previous table and output mode.
 - Never use default PINs or persist/log credentials.
 
+
+## Last automated validation
+- Code head at this validation: `582a3665a79fb0c462d681e5648563e746dc457a`.
+- GitHub Actions run: https://github.com/aaronriquelme1001-pixel/calculadora/actions/runs/43442576737 — completed successfully.
+- Web JavaScript syntax check: PASS.
+- Flutter dependency resolution: PASS.
+- Flutter static analysis command: `flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings` — exit 0. It still reports 36 non-fatal info/warning notices, including pre-existing unused fields/elements in `main.dart`.
+- Flutter unit tests: PASS, 21 tests.
+- These results are software-only; they do not replace a physical BFLS test.
+
 ## Physical validation still required
 Software tests do not prove hardware compatibility. On a bench AG-BFLS unit: connect, authenticate, read all ten blocks, import the official 29-row table, write all ten blocks, read back all 100 slots byte-for-byte, verify output mode 0x02 and liter telemetry, and safely test rollback. Also test the same workbook in official Fuel Master before claiming interchangeability. Record model/firmware, MTU, date, and sanitized logs. Never include credentials.
 
