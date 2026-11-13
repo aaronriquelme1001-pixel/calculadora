@@ -2708,71 +2708,64 @@
     return null;
   }
 
-  async function resolveSensorId(device) {
-    // 1. Extraer del nombre BLE si contiene dígitos hexadecimales (ej: "AOOG_782415", "BFLS-1A2B3C", "FM782415")
-    if (device.name) {
-      const match = device.name.match(/([0-9a-fA-F]{2})[-_:]?([0-9a-fA-F]{2})[-_:]?([0-9a-fA-F]{2})/);
-      if (match) {
-        const id = [parseInt(match[1], 16), parseInt(match[2], 16), parseInt(match[3], 16)];
-        if (id.some(v => v !== 0)) return id;
+  // Web Bluetooth no expone los anuncios en todos los navegadores.
+  // Esta escucha es opcional: la conexión GATT no depende de watchAdvertisements().
+  function waitForAdvertisedSensorId(device, timeoutMs = 3500) {
+    return new Promise(resolve => {
+      if (!device || typeof device.watchAdvertisements !== 'function') {
+        resolve(null);
+        return;
       }
-    }
-
-    // 2. Intentar anuncios BLE si el navegador lo soporta (sin bloquear si no está disponible)
-    if (typeof device.watchAdvertisements === 'function') {
-      try {
-        const id = await Promise.race([
-          waitForAdvertisedSensorId(device, 2500),
-          new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 2500))
-        ]);
-        if (id) return id;
-      } catch (_) {}
-    }
-
-    return null;
-  }
-
-  async function waitForAdvertisedSensorId(device, timeoutMs = 3000) {
-    return new Promise(async (resolve, reject) => {
       let settled = false;
-      const finish = (error, id) => {
+      let timer = null;
+      const finish = id => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
         try { device.removeEventListener('advertisementreceived', onAdvertisement); } catch (_) {}
-        if (error) reject(error); else resolve(id);
+        try {
+          if (typeof device.unwatchAdvertisements === 'function') device.unwatchAdvertisements().catch(() => {});
+        } catch (_) {}
+        resolve(id || null);
       };
       const onAdvertisement = event => {
         const id = extractSensorIdFromAdvertisement(event);
-        if (id) finish(null, id);
+        if (id) finish(id);
       };
-      const timer = setTimeout(() => finish(new Error('timeout'), null), timeoutMs);
       device.addEventListener('advertisementreceived', onAdvertisement);
+      timer = setTimeout(() => finish(null), timeoutMs);
       try {
-        if (typeof device.watchAdvertisements !== 'function') throw new Error('watchAdvertisements no soportado.');
-        await device.watchAdvertisements();
-      } catch (error) {
-        finish(error, null);
+        Promise.resolve(device.watchAdvertisements()).catch(() => finish(null));
+      } catch (_) {
+        finish(null);
       }
     });
   }
 
-  function editBleSensorId() {
-    const current = (bleState.sensorId || []).map(v => v.toString(16).padStart(2, '0')).join('');
-    const input = prompt('Introduce el ID de 3 bytes del sensor (6 caracteres hex, ej. 782415):', current || '782415');
-    if (!input) return;
-    const clean = input.trim().replace(/[-_:]/g, '');
-    if (!/^[0-9a-fA-F]{6}$/.test(clean)) {
-      alert('El ID debe tener exactamente 6 caracteres hexadecimales (ej. 782415).');
+  async function editBleSensorId() {
+    if (!bleState.isConnected || !bleState.charWrite) {
+      alert('Primero conecta el dispositivo por GATT.');
       return;
     }
-    bleState.sensorId = [
-      parseInt(clean.slice(0, 2), 16),
-      parseInt(clean.slice(2, 4), 16),
-      parseInt(clean.slice(4, 6), 16)
-    ];
-    updateBleUI();
-    showToast('ID fijado a: ' + bleState.sensorId.map(v => v.toString(16).padStart(2, '0').toUpperCase()).join(':'));
+    const current = (bleState.sensorId || []).map(v => v.toString(16).padStart(2, '0')).join('');
+    const input = prompt('ID real de 3 bytes (6 caracteres hexadecimales), leído de la etiqueta o confirmado por el fabricante. No uses un valor supuesto:', current);
+    if (input === null) return;
+    const clean = input.trim().replace(/[-_:]/g, '');
+    if (!/^[0-9a-fA-F]{6}$/.test(clean) || /^0{6}$/.test(clean)) {
+      alert('ID inválido. Introduce exactamente 6 caracteres hexadecimales distintos de 000000.');
+      return;
+    }
+    const previous = bleState.sensorId;
+    bleState.sensorId = [parseInt(clean.slice(0, 2), 16), parseInt(clean.slice(2, 4), 16), parseInt(clean.slice(4, 6), 16)];
+    try {
+      bleState.outputMode = await readOutputMode();
+      updateBleUI();
+      showToast('ID confirmado mediante lectura 0x1A del sensor.');
+    } catch (error) {
+      bleState.sensorId = previous;
+      updateBleUI();
+      alert('El ID no fue confirmado por el sensor. No se enviaron escrituras. Detalle: ' + error.message);
+    }
   }
 
   function updateBleUI() {
@@ -2854,98 +2847,97 @@
     }
   }
 
-  async function connectBleSensor(scanAll = false) {
-    if (!navigator.bluetooth) {
-      alert('Web Bluetooth no está disponible en este navegador o contexto.\n\nRequisitos:\n1. Usa Google Chrome o Microsoft Edge.\n2. Conéctate vía HTTPS (ej. GitHub Pages) o http://localhost.\n3. En teléfonos Android, activa el Bluetooth y la Ubicación (GPS).');
+  async function connectBleSensor() {
+    if (!window.isSecureContext) {
+      alert('Bluetooth web requiere un contexto seguro HTTPS. Abre la calculadora desde GitHub Pages o http://localhost.');
       return;
     }
-    try {
-      let requestOptions;
-      if (scanAll) {
-        requestOptions = {
-          acceptAllDevices: true,
-          optionalServices: [AoooGProtocol.SERVICE_UUID]
-        };
-      } else {
-        requestOptions = {
-          filters: [
-            { services: [AoooGProtocol.SERVICE_UUID] },
-            { namePrefix: 'AOOG' }, { namePrefix: 'Aoog' }, { namePrefix: 'aoog' },
-            { namePrefix: 'BFLS' }, { namePrefix: 'Bfls' }, { namePrefix: 'bfls' },
-            { namePrefix: 'FM' }, { namePrefix: 'Fuel' }, { namePrefix: 'AG' },
-            { namePrefix: 'TK' }, { namePrefix: 'BLE' }, { namePrefix: 'Sensor' },
-            { manufacturerData: [{ companyIdentifier: 0xff43 }] },
-            { manufacturerData: [{ companyIdentifier: 0xffff }] }
-          ],
-          optionalServices: [AoooGProtocol.SERVICE_UUID]
-        };
-      }
+    if (!navigator.bluetooth || typeof navigator.bluetooth.requestDevice !== 'function') {
+      alert('Este navegador no ofrece Web Bluetooth. Usa Google Chrome o Microsoft Edge actualizado en Windows/macOS/Linux, o Chrome en Android. Safari/iOS y Firefox no ofrecen esta conexión web.');
+      return;
+    }
 
-      const device = await navigator.bluetooth.requestDevice(requestOptions);
+    let stage = 'chooser';
+    try {
+      // No filtrar por nombre, UUID anunciado ni manufacturerData: el AG-BFLS
+      // puede no publicar esos campos en el anuncio. El usuario elige el equipo.
+      // optionalServices autoriza después la consulta del servicio GATT propietario.
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [AoooGProtocol.SERVICE_UUID]
+      });
       bleState.device = device;
       device.addEventListener('gattserverdisconnected', disconnectBleSensor);
 
-      // 1. Intentar resolver el ID por nombre o anuncio
-      bleState.sensorId = await resolveSensorId(device);
-      if (typeof device.unwatchAdvertisements === 'function') {
-        try { await device.unwatchAdvertisements(); } catch (_) {}
-      }
+      // Escuchar anuncios en paralelo con GATT. Es una fuente opcional del ID,
+      // nunca un requisito de descubrimiento ni de conexión.
+      const advertisedIdPromise = waitForAdvertisedSensorId(device, 3500);
 
-      // 2. Conectar al GATT Server
+      stage = 'gatt';
       const server = await device.gatt.connect();
       bleState.server = server;
       const service = await server.getPrimaryService(AoooGProtocol.SERVICE_UUID);
       bleState.charWrite = await service.getCharacteristic(AoooGProtocol.CHAR_WRITE_UUID);
       bleState.charNotify = await service.getCharacteristic(AoooGProtocol.CHAR_NOTIFY_UUID);
-
-      // 3. Iniciar notificaciones para telemetría
       await bleState.charNotify.startNotifications();
       bleState.charNotify.addEventListener('characteristicvaluechanged', handleBleNotification);
+
       bleState.isConnected = true;
       bleState.isSimulated = false;
       bleState.isAuthenticated = false;
+      bleState.sensorId = null;
       updateBleUI();
 
-      // 4. Si aún no tenemos el ID, esperar 2.4s a que llegue el frame periódico del sensor
+      // Algunos firmwares envían una trama espontánea al activar notifications.
+      // Si ocurre, handleBleNotification aprende el ID desde esa trama con CRC válido.
+      const advertisedId = await advertisedIdPromise;
+      if (!bleState.sensorId && advertisedId) bleState.sensorId = advertisedId;
+
+      // No inferir el ID del nombre Bluetooth y no usar IDs de ejemplo.
       if (!bleState.sensorId) {
-        let attempts = 0;
-        while (!bleState.sensorId && attempts < 12 && bleState.isConnected) {
-          await new Promise(r => setTimeout(r, 200));
-          attempts++;
+        const manual = prompt(
+          'GATT conectado, pero el navegador no expuso el ID del anuncio.\n\n' +
+          'Introduce el ID REAL de 3 bytes (6 caracteres hexadecimales) indicado en la etiqueta/documentación del sensor.\n' +
+          'No uses un ID de ejemplo. La aplicación lo comprobará con una lectura segura 0x1A.',
+          ''
+        );
+        if (manual === null) throw new Error('Identificación cancelada por el usuario.');
+        const clean = manual.trim().replace(/[-_:]/g, '');
+        if (!/^[0-9a-fA-F]{6}$/.test(clean) || /^0{6}$/.test(clean)) {
+          throw new Error('No se proporcionó un ID real válido de seis caracteres hexadecimales.');
         }
+        bleState.sensorId = [parseInt(clean.slice(0, 2), 16), parseInt(clean.slice(2, 4), 16), parseInt(clean.slice(4, 6), 16)];
       }
 
-      // 5. Si el sensor no emitió telemetría espontánea, solicitar confirmación del ID
-      if (!bleState.sensorId) {
-        const manual = prompt('Sensor conectado. Confirma el ID de 3 bytes (ej: 782415 como en la etiqueta):', '782415');
-        if (manual && /^[0-9a-fA-F]{6}$/.test(manual.trim())) {
-          const clean = manual.trim();
-          bleState.sensorId = [parseInt(clean.slice(0, 2), 16), parseInt(clean.slice(2, 4), 16), parseInt(clean.slice(4, 6), 16)];
-          updateBleUI();
-        }
+      // Prueba de identidad de solo lectura: el sensor debe responder al ID elegido
+      // con un modo de salida válido. Sin confirmación, desconectar y no operar.
+      bleState.outputMode = await readOutputMode();
+      if (![0, 1, 2].includes(bleState.outputMode)) {
+        throw new Error('El dispositivo GATT no confirmó el ID como sensor AG-BFLS (lectura 0x1A inválida).');
       }
 
-      try { bleState.outputMode = await readOutputMode(); }
-      catch (modeError) { console.warn('No se pudo leer el modo de salida inicial:', modeError.message); }
-
+      updateBleUI();
       if (bleState.pollTimer) clearInterval(bleState.pollTimer);
       bleState.pollTimer = setInterval(async () => {
         if (!bleState.isConnected || bleState.pendingCommand || !bleState.sensorId) return;
-        try { await sendBleCommand(0x14, [], 4000); } catch (error) { console.warn('Telemetría BLE:', error.message); }
+        try { await sendBleCommand(0x14, [], 4000); }
+        catch (error) { console.warn('Telemetría BLE:', error.message); }
       }, 2500);
 
-      showToast('Conectado: ' + (device.name || 'Sensor AOOG/BFLS'));
+      showToast('Sensor identificado y conectado: ' + (device.name || 'dispositivo BLE'));
     } catch (error) {
-      if (error.name === 'NotFoundError') {
-        if (!scanAll) {
-          if (confirm('No se seleccionó ningún dispositivo con el filtro de nombres.\n\n¿Deseas intentar con ESCANEO ABIERTO (todos los dispositivos BLE cercanos)?')) {
-            connectBleSensor(true);
-            return;
-          }
-        }
+      await disconnectBleSensor();
+      if (error.name === 'NotFoundError' && stage === 'chooser') {
+        alert(
+          'El selector Bluetooth no devolvió dispositivos.\n\n' +
+          'Comprueba que el sensor esté encendido y anunciando BLE, que no esté conectado simultáneamente a Fuel Master en otro teléfono, ' +
+          'que Windows tenga Bluetooth LE activo y que el navegador tenga permiso para usarlo. ' +
+          'Prueba Chrome/Edge actualizado y vuelve a buscar.'
+        );
+      } else if (error.name === 'AbortError') {
+        console.info('Selección BLE cancelada por el usuario.');
       } else {
-        await disconnectBleSensor();
-        alert('No se pudo conectar al sensor BLE:\n' + error.message);
+        alert('No se pudo conectar/identificar el sensor BLE:\n' + error.message);
       }
     }
   }
@@ -3627,16 +3619,16 @@
           panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
         if (!bleState.isConnected && !bleState.isSimulated) {
-          connectBleSensor(false);
+          connectBleSensor();
         }
       });
     }
 
     const btnBleScan = document.getElementById('btnBleScan');
-    if (btnBleScan) btnBleScan.addEventListener('click', () => connectBleSensor(false));
+    if (btnBleScan) btnBleScan.addEventListener('click', () => connectBleSensor());
 
     const btnBleScanAll = document.getElementById('btnBleScanAll');
-    if (btnBleScanAll) btnBleScanAll.addEventListener('click', () => connectBleSensor(true));
+    if (btnBleScanAll) btnBleScanAll.addEventListener('click', () => connectBleSensor());
 
     const btnBleEditId = document.getElementById('btnBleEditId');
     if (btnBleEditId) btnBleEditId.addEventListener('click', editBleSensorId);
