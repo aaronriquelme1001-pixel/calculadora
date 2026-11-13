@@ -68,7 +68,7 @@ class AoooGProtocol {
       if (id == 0) return null;
       final bd = ByteData.sublistView(Uint8List.fromList(bytes));
       final batteryCode = ((bytes[3] & 0x0f) << 8) | bytes[4];
-      final temperature = bd.getInt16(5, Endian.big) ~/ 8;
+      final temperature = (bd.getInt16(5, Endian.big) / 8).round();
       final frequency = bd.getFloat32(7, Endian.little);
       final output = bd.getFloat32(11, Endian.little);
       if (!frequency.isFinite || !output.isFinite) return null;
