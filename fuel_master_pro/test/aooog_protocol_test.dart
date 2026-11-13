@@ -9,7 +9,8 @@ void main() {
       final frame = AoooGProtocol.buildFrame(999999, 0x14, const []);
       expect(frame, [0x0c, 0x05, 0x0f, 0x42, 0x3f, 0x14, 0xff]);
       expect(AoooGProtocol.isValidFrame(frame, expectedSensorId: 999999, expectedCommand: 0x14), isTrue);
-      final corrupted = Uint8List.fromList(frame)..[6] ^= 0xff;
+      final corrupted = Uint8List.fromList(frame);
+      corrupted[6] ^= 0xff;
       expect(AoooGProtocol.isValidFrame(corrupted), isFalse);
     });
 
