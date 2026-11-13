@@ -814,7 +814,10 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Tabla: ${_capturedFixValues.length}/${rows.length} coordenadas reales', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Tabla: ${_capturedFixValues.length}/${rows.length} coordenadas reales', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                const Text('Ajusta físicamente el nivel indicado y captura cada punto con el icono del sensor.', style: TextStyle(fontSize: 11, color: Colors.black54)),
+              ])),
               ElevatedButton.icon(
                 onPressed: _isUploading ? null : _uploadCalibrationToSensor,
                 style: ElevatedButton.styleFrom(
