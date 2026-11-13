@@ -398,7 +398,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       if (!mounted) return;
       setState(() => _isUploading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error de Autenticación. Verifica el PIN del sensor.')),
+        const SnackBar(content: Text('Autenticación rechazada o sin respuesta. Verifica los 8 bytes hex entregados por AoooG y vuelve a conectar.')),
       );
       return;
     }
@@ -842,7 +842,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                   child: Text('${idx + 1}', style: const TextStyle(fontSize: 10, color: Colors.white)),
                 ),
                 title: Text('${r.volumeL.toStringAsFixed(1)} Litros  (${r.levelMm} mm)', style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Coord Fix: ${r.fixValue}  •  Frecuencia Esperada: ${r.expectedFreqHz.toStringAsFixed(0)} Hz'),
+                subtitle: Text('Coordenada real: ${_capturedFixValues[idx] ?? 'pendiente'}  •  Nivel: ${r.levelMm} mm'),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                 Text(_capturedFixValues.containsKey(idx) ? 'Fix ${_capturedFixValues[idx]}' : 'Sin captura', style: const TextStyle(color: Color(0xFFD97706), fontWeight: FontWeight.bold)),
                 IconButton(tooltip: 'Capturar coordenada real 0x1B', onPressed: _isConnected && !_isUploading ? () => _captureCalibrationPoint(idx) : null, icon: const Icon(Icons.sensors)),
