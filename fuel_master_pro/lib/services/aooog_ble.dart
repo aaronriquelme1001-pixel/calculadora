@@ -51,7 +51,7 @@ class AoooGProtocol {
     return Uint8List.fromList([0x0c, ...body, crc8(body)]);
   }
 
-  static int _batteryPercent(int code) => (((code - 500) * 100) ~/ 220).clamp(0, 100);
+  static int _batteryPercent(int code) => (((code - 500) * 100) ~/ 220).clamp(0, 100).toInt();
 
   static AoooGSensor? parseAdvertisement(ScanResult result) {
     final manufacturer = result.advertisementData.manufacturerData;
@@ -83,6 +83,6 @@ class AoooGProtocol {
     return AoooGSensor(device: result.device, id: id, mac: result.device.remoteId.str,
       rssi: result.rssi, frequency: frequency, emptyFreq: emptyFrequency,
       output: output, temperature: universal[22] - 40,
-      battery: universal[23].clamp(0, 100));
+      battery: universal[23].clamp(0, 100).toInt());
   }
 }
