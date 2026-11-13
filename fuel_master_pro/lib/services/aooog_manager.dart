@@ -468,13 +468,6 @@ class AoooGManager {
     return value;
   }
 
-  Future<double?> readCalibrationCoordinate() async {
-    final response = await sendCommand(0x1B, []);
-    if (response == null ||
-        !AoooGProtocol.isValidFrame(response, expectedSensorId: currentSensorId, expectedCommand: 0x1B)) return null;
-    return AoooGProtocol.parseCalibrationCoordinate(response.sublist(6, response.length - 1));
-  }
-
   bool _validCalibrationRows(List<CalibrationRow> rows) {
     if (rows.length != 100 || rows.first.volumeL != 0 ||
         rows.first.levelMm != 0 || rows.first.fixValue != 0) return false;
