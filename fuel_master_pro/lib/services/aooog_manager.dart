@@ -283,6 +283,7 @@ class AoooGManager {
 
     try {
       final data = ByteData.sublistView(Uint8List.fromList(response), 6);
+      if (data.getUint8(5) != 0) return null; // byte reservado del perfil público
       final battCode = data.getUint16(0, Endian.big);
       final battPct = AoooGProtocol.batteryPercent(battCode).toDouble();
       final tempRaw = data.getInt16(2, Endian.big);
