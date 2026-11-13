@@ -78,3 +78,83 @@ test('web connection treats advertisement monitoring as optional and verifies ID
   assert.match(connect, /ID real válido/);
   assert.match(connect, /\n\s*''\s*\n\s*\);/);
 });
+
+test('serial number conversion calculates 24-bit integer SN and parses decimal or hex sensor ID', () => {
+  const protocol = loadProtocolFromApplication();
+
+  // Conversion [0x0C, 0x52, 0x02] -> 807426
+  assert.equal(protocol.sensorIdToSN([0x0c, 0x52, 0x02]), 807426);
+  assert.equal(protocol.sensorIdToSN([0, 0, 0]), 0);
+  assert.equal(protocol.sensorIdToSN([0xff, 0xff, 0xff]), 16777215);
+
+  // Parse decimal Serial Number
+  assert.deepEqual(Array.from(protocol.snToSensorId('807426')), [0x0c, 0x52, 0x02]);
+  assert.deepEqual(Array.from(protocol.snToSensorId('SN: 807426')), [0x0c, 0x52, 0x02]);
+  assert.deepEqual(Array.from(protocol.snToSensorId('ID: 807426')), [0x0c, 0x52, 0x02]);
+
+  // Parse hex with colons/dashes
+  assert.deepEqual(Array.from(protocol.snToSensorId('0C:52:02')), [0x0c, 0x52, 0x02]);
+  assert.deepEqual(Array.from(protocol.snToSensorId('0c-52-02')), [0x0c, 0x52, 0x02]);
+  assert.deepEqual(Array.from(protocol.snToSensorId('78:24:15')), [0x78, 0x24, 0x15]);
+
+  // Parse hex with letters without separator
+  assert.deepEqual(Array.from(protocol.snToSensorId('0c5202')), [0x0c, 0x52, 0x02]);
+  assert.deepEqual(Array.from(protocol.snToSensorId('0BF04F')), [0x0b, 0xf0, 0x4f]);
+
+  // Rejects invalid formats and zero
+  assert.equal(protocol.snToSensorId('0'), null);
+  assert.equal(protocol.snToSensorId('000000'), null);
+  assert.equal(protocol.snToSensorId('00:00:00'), null);
+  assert.equal(protocol.snToSensorId('invalid_id'), null);
+  assert.equal(protocol.snToSensorId(''), null);
+});
+
+test('advertisement parser extracts sensor ID, SN, battery, frequency and temperature from AoooG and Universal manufacturer data', () => {
+  const protocol = loadProtocolFromApplication();
+
+  // Test AoooG format 0xFF43 (15 bytes)
+  const aooogBuf = Buffer.alloc(15);
+  aooogBuf[0] = 0x0c;
+  aooogBuf[1] = 0x52;
+  aooogBuf[2] = 0x02; // ID [0x0C, 0x52, 0x02] -> SN 807426
+  // batteryCode: 715 -> ((715-500)*100)/220 = 98%
+  aooogBuf[3] = (715 >> 8) & 0x0f;
+  aooogBuf[4] = 715 & 0xff;
+  // temperature: 20°C * 8 = 160
+  aooogBuf.writeInt16BE(160, 5);
+  // frequency: 546.2 Hz float32 LE
+  aooogBuf.writeFloatLE(546.2, 7);
+  // output: 249.2 L float32 LE
+  aooogBuf.writeFloatLE(249.2, 11);
+
+  const mockMapAoooG = new Map();
+  mockMapAoooG.set(0xff43, aooogBuf);
+  const parsedAoooG = protocol.parseAdvertisement(mockMapAoooG);
+  assert.ok(parsedAoooG);
+  assert.deepEqual(Array.from(parsedAoooG.id), [0x0c, 0x52, 0x02]);
+  assert.equal(parsedAoooG.sn, 807426);
+  assert.equal(parsedAoooG.battery, 98);
+  assert.equal(parsedAoooG.temperature, 20);
+  assert.ok(Math.abs(parsedAoooG.frequency - 546.2) < 0.01);
+  assert.ok(Math.abs(parsedAoooG.output - 249.2) < 0.01);
+
+  // Test Universal format 0xFFFF (24 bytes)
+  const uniBuf = Buffer.alloc(24);
+  uniBuf[0] = 0x3f; uniBuf[1] = 0x36; uniBuf[2] = 0xb4; uniBuf[5] = 0x5b;
+  uniBuf[6] = 0x0c; uniBuf[7] = 0x52; uniBuf[8] = 0x02; // ID [0x0C, 0x52, 0x02] -> SN 807426
+  uniBuf[14] = (546 >> 8) & 0xff; uniBuf[15] = 546 & 0xff; // freq 546 Hz
+  uniBuf[18] = 0; uniBuf[19] = 100; // emptyFreq 100 Hz
+  uniBuf[20] = 0; uniBuf[21] = 249; // output
+  uniBuf[22] = 62; // temp: 62 - 40 = 22°C
+  uniBuf[23] = 95; // battery 95%
+
+  const mockMapUni = new Map();
+  mockMapUni.set(0xffff, uniBuf);
+  const parsedUni = protocol.parseAdvertisement(mockMapUni);
+  assert.ok(parsedUni);
+  assert.deepEqual(Array.from(parsedUni.id), [0x0c, 0x52, 0x02]);
+  assert.equal(parsedUni.sn, 807426);
+  assert.equal(parsedUni.battery, 95);
+  assert.equal(parsedUni.temperature, 22);
+  assert.equal(parsedUni.frequency, 546);
+});

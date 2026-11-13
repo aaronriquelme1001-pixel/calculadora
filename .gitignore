@@ -23,6 +23,13 @@ fuel_master_pro/.flutter-plugins-dependencies
 .gradle/
 local.properties
 
+# Diagnostic & RE scratch artifacts
+*.png
+*.xml
+*.py
+fuel_master_apk_extracted/
+fuel_master_unzipped/
+
 # Archivos de referencia oficiales del fabricante AoooG
 !docs/reference/*
 !docs/reference/*.apk

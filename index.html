@@ -88,25 +88,25 @@
           </div>
           <div>
             <div style="font-size: 0.95rem; font-weight: 800; display: flex; align-items: center; gap: 8px;">
-              <span id="bleDeviceName" style="color: #ffffff;">AOOG_BL_SENSOR</span>
+              <span id="bleDeviceName" style="color: #ffffff;">Sensor AG-BFLS</span>
               <span id="badgeBleLive" style="font-size: 0.65rem; background: #065f46; color: #a7f3d0; padding: 2px 8px; border-radius: 4px; font-weight: 700; border: 1px solid #047857;">EN VIVO</span>
               <span id="badgeBleAuth" style="font-size: 0.65rem; background: #1e293b; color: #cbd5e1; padding: 2px 8px; border-radius: 4px; font-weight: 700; border: 1px solid #475569;">BLOQUEADO</span>
             </div>
             <div style="font-size: 0.72rem; color: #94a3b8; display: flex; align-items: center; gap: 8px; margin-top: 2px;">
-              <span id="bleDeviceInfo">ID: -- • GATT Desconectado</span>
+              <span id="bleDeviceInfo">SN: -- • GATT Desconectado</span>
               <button type="button" id="btnBleEditId" style="display: none; background: #334155; color: #93c5fd; border: 1px solid #475569; border-radius: 4px; font-size: 0.65rem; padding: 1px 6px; cursor: pointer; font-weight: 700;">
-                ✏️ Cambiar ID
+                ✏️ Cambiar SN / ID
               </button>
             </div>
           </div>
         </div>
 
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-          <button type="button" id="btnBleScan" class="btn" style="background: #1e40af; color: #ffffff; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: 1px solid #1d4ed8; cursor: pointer;">
-            🔍 Buscar Sensor
+          <button type="button" id="btnBleScan" class="btn" style="background: #1e40af; color: #ffffff; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: 1px solid #1d4ed8; cursor: pointer;" title="Filtra y muestra exclusivamente sensores de nivel AoooG/Universal para no saturar con otros dispositivos">
+            🔍 Buscar Sensor (Filtro AG-BFLS)
           </button>
-          <button type="button" id="btnBleScanAll" class="btn" style="background: #0284c7; color: #ffffff; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: 1px solid #0369a1; cursor: pointer;" title="Buscar todos los dispositivos BLE cercanos sin restricción de nombre">
-            🌐 Buscar Todos
+          <button type="button" id="btnBleScanAll" class="btn" style="background: #0284c7; color: #ffffff; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: 1px solid #0369a1; cursor: pointer;" title="Muestra todos los dispositivos Bluetooth LE cercanos si tu sensor no anuncia el fabricante">
+            🌐 Buscar Todos (Sin Filtro)
           </button>
           <button type="button" id="btnBleSimulate" class="btn" style="background: #334155; color: #f1f5f9; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: 1px solid #475569; cursor: pointer;">
             ⚡ Probar Demo

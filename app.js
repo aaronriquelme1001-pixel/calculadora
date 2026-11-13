@@ -2616,6 +2616,108 @@
       return crc & 0xff;
     },
 
+    sensorIdToSN(sensorId) {
+      if (!Array.isArray(sensorId) || sensorId.length !== 3 || sensorId.some(v => !Number.isInteger(v) || v < 0 || v > 255)) {
+        return null;
+      }
+      return ((sensorId[0] & 0xff) << 16) | ((sensorId[1] & 0xff) << 8) | (sensorId[2] & 0xff);
+    },
+
+    snToSensorId(input) {
+      if (input === null || input === undefined) return null;
+      const str = String(input).trim().replace(/^(SN:?|ID:?|S\/N:?)\s*/i, '');
+      if (!str) return null;
+
+      // 1. Formato con separadores explícitos (ej. "0C:52:02", "0C-52-02", "78:24:15")
+      if (/^([0-9a-fA-F]{1,2}[-:_\\s]){2}[0-9a-fA-F]{1,2}$/.test(str)) {
+        const parts = str.split(/[-:_\\s]+/).map(p => parseInt(p, 16));
+        if (parts.length === 3 && parts.every(p => Number.isInteger(p) && p >= 0 && p <= 255)) {
+          if (parts[0] === 0 && parts[1] === 0 && parts[2] === 0) return null;
+          return parts;
+        }
+      }
+
+      // 2. Hexadecimal con letras A-F (ej. "0c5202", "0bf04f")
+      if (/^[0-9a-fA-F]{6}$/i.test(str) && /[a-fA-F]/.test(str)) {
+        const b0 = parseInt(str.slice(0, 2), 16);
+        const b1 = parseInt(str.slice(2, 4), 16);
+        const b2 = parseInt(str.slice(4, 6), 16);
+        if (b0 === 0 && b1 === 0 && b2 === 0) return null;
+        return [b0, b1, b2];
+      }
+
+      // 3. Número decimal (Serial Number oficial, ej. 807426)
+      if (/^\d+$/.test(str)) {
+        const num = parseInt(str, 10);
+        if (num > 0 && num <= 0xffffff) {
+          return [(num >> 16) & 0xff, (num >> 8) & 0xff, num & 0xff];
+        }
+      }
+
+      // 4. Cadena de 6 dígitos numéricos (ej. si se introducen como hex o dec)
+      if (/^[0-9a-fA-F]{6}$/i.test(str)) {
+        const num = parseInt(str, 10);
+        if (num > 0 && num <= 0xffffff) {
+          return [(num >> 16) & 0xff, (num >> 8) & 0xff, num & 0xff];
+        }
+      }
+
+      return null;
+    },
+
+    parseAdvertisement(dataMap) {
+      if (!dataMap || typeof dataMap.get !== 'function') return null;
+      // Formato AoooG (0xFF43, 15 bytes)
+      const aooog = dataMap.get(0xff43);
+      if (aooog && (aooog.byteLength === 15 || aooog.length === 15)) {
+        const bytes = new Uint8Array(aooog.buffer || aooog, aooog.byteOffset || 0, aooog.byteLength || aooog.length);
+        const id = [bytes[0], bytes[1], bytes[2]];
+        if (id.some(v => v !== 0)) {
+          const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+          const batteryCode = ((bytes[3] & 0x0f) << 8) | bytes[4];
+          const battery = Math.max(0, Math.min(100, Math.round(((batteryCode - 500) * 100) / 220)));
+          const temperature = Math.round(view.getInt16(5, false) / 8);
+          const frequency = view.getFloat32(7, true);
+          const output = view.getFloat32(11, true);
+          const sn = ((bytes[0] & 0xff) << 16) | ((bytes[1] & 0xff) << 8) | (bytes[2] & 0xff);
+          return {
+            id,
+            sn,
+            battery,
+            temperature,
+            frequency: Number.isFinite(frequency) ? frequency : null,
+            output: Number.isFinite(output) ? output : null
+          };
+        }
+      }
+      // Formato Universal (0xFFFF, 24 bytes)
+      const universal = dataMap.get(0xffff);
+      if (universal && (universal.byteLength === 24 || universal.length === 24)) {
+        const bytes = new Uint8Array(universal.buffer || universal, universal.byteOffset || 0, universal.byteLength || universal.length);
+        if (bytes[0] === 0x3f && bytes[1] === 0x36 && bytes[2] === 0xb4 && bytes[5] === 0x5b) {
+          const id = [bytes[6], bytes[7], bytes[8]];
+          if (id.some(v => v !== 0)) {
+            const frequency = (bytes[14] << 8) | bytes[15];
+            const emptyFrequency = (bytes[18] << 8) | bytes[19];
+            const output = (bytes[20] << 8) | bytes[21];
+            const temperature = bytes[22] - 40;
+            const battery = Math.max(0, Math.min(100, bytes[23]));
+            const sn = ((bytes[6] & 0xff) << 16) | ((bytes[7] & 0xff) << 8) | (bytes[8] & 0xff);
+            return {
+              id,
+              sn,
+              battery,
+              temperature,
+              frequency,
+              emptyFrequency,
+              output
+            };
+          }
+        }
+      }
+      return null;
+    },
+
     buildFrame(sensorId, cmd, payload = []) {
       if (!Array.isArray(sensorId) || sensorId.length !== 3 || sensorId.some(v => !Number.isInteger(v) || v < 0 || v > 255)) {
         throw new Error('ID BLE del sensor inválido; se requieren 3 bytes de anuncio.');
@@ -2655,7 +2757,8 @@
     device: null, server: null, charWrite: null, charNotify: null,
     sensorId: null, isAuthenticated: false, isConnected: false, isSimulated: false,
     pollTimer: null, pendingCommand: null, emptyFreq: null, fullFreq: null,
-    outputMode: null, calibrationTable: null
+    outputMode: null, calibrationTable: null,
+    battery: null, temperature: null, currentFreq: null, rssi: null
   };
 
   function sameSensorId(a, b) {
@@ -2688,24 +2791,18 @@
     return !!response && response.cmd === command && response.payload.length === 1 && response.payload[0] === 0x00;
   }
 
+  function extractSensorDataFromAdvertisement(event) {
+    if (!event || !event.manufacturerData) return null;
+    const res = AoooGProtocol.parseAdvertisement(event.manufacturerData);
+    if (res && typeof event.rssi === 'number') {
+      res.rssi = event.rssi;
+    }
+    return res;
+  }
+
   function extractSensorIdFromAdvertisement(event) {
-    const dataMap = event && event.manufacturerData;
-    if (!dataMap || typeof dataMap.get !== 'function') return null;
-    const aooog = dataMap.get(0xff43);
-    if (aooog && aooog.byteLength === 15) {
-      const bytes = new Uint8Array(aooog.buffer, aooog.byteOffset, aooog.byteLength);
-      const id = Array.from(bytes.subarray(0, 3));
-      return id.some(v => v !== 0) ? id : null;
-    }
-    const universal = dataMap.get(0xffff);
-    if (universal && universal.byteLength === 24) {
-      const bytes = new Uint8Array(universal.buffer, universal.byteOffset, universal.byteLength);
-      if (bytes[0] === 0x3f && bytes[1] === 0x36 && bytes[2] === 0xb4 && bytes[5] === 0x5b) {
-        const id = Array.from(bytes.subarray(6, 9));
-        return id.some(v => v !== 0) ? id : null;
-      }
-    }
-    return null;
+    const data = extractSensorDataFromAdvertisement(event);
+    return data ? data.id : null;
   }
 
   // Web Bluetooth no expone los anuncios en todos los navegadores.
@@ -2729,8 +2826,14 @@
         resolve(id || null);
       };
       const onAdvertisement = event => {
-        const id = extractSensorIdFromAdvertisement(event);
-        if (id) finish(id);
+        const data = extractSensorDataFromAdvertisement(event);
+        if (data && data.id) {
+          if (data.battery !== null) bleState.battery = data.battery;
+          if (data.temperature !== null) bleState.temperature = data.temperature;
+          if (data.frequency !== null) bleState.currentFreq = data.frequency;
+          updateBleUI();
+          finish(data.id);
+        }
       };
       device.addEventListener('advertisementreceived', onAdvertisement);
       timer = setTimeout(() => finish(null), timeoutMs);
@@ -2747,20 +2850,27 @@
       alert('Primero conecta el dispositivo por GATT.');
       return;
     }
-    const current = (bleState.sensorId || []).map(v => v.toString(16).padStart(2, '0')).join('');
-    const input = prompt('ID real de 3 bytes (6 caracteres hexadecimales), leído de la etiqueta o confirmado por el fabricante. No uses un valor supuesto:', current);
+    const currentSN = bleState.sensorId ? AoooGProtocol.sensorIdToSN(bleState.sensorId) : '';
+    const currentHex = (bleState.sensorId || []).map(v => v.toString(16).padStart(2, '0').toUpperCase()).join(':');
+    const input = prompt(
+      'Introduce el Número de Serie (SN) o ID real de 3 bytes del sensor:\n\n' +
+      '• Número de Serie decimal (de la etiqueta): ej. 807426\n' +
+      '• Hexadecimal con separadores: ej. 0C:52:02 o 78:24:15\n\n' +
+      'La aplicación lo comprobará inmediatamente con una lectura segura 0x1A:',
+      currentSN ? String(currentSN) : currentHex
+    );
     if (input === null) return;
-    const clean = input.trim().replace(/[-_:]/g, '');
-    if (!/^[0-9a-fA-F]{6}$/.test(clean) || /^0{6}$/.test(clean)) {
-      alert('ID inválido. Introduce exactamente 6 caracteres hexadecimales distintos de 000000.');
+    const parsed = AoooGProtocol.snToSensorId(input);
+    if (!parsed) {
+      alert('ID o Número de Serie inválido. Introduce un número de serie decimal (ej. 807426) o 3 bytes en hex (ej. 0C:52:02).');
       return;
     }
     const previous = bleState.sensorId;
-    bleState.sensorId = [parseInt(clean.slice(0, 2), 16), parseInt(clean.slice(2, 4), 16), parseInt(clean.slice(4, 6), 16)];
+    bleState.sensorId = parsed;
     try {
       bleState.outputMode = await readOutputMode();
       updateBleUI();
-      showToast('ID confirmado mediante lectura 0x1A del sensor.');
+      showToast('ID confirmado (SN: ' + AoooGProtocol.sensorIdToSN(parsed) + ') mediante lectura 0x1A del sensor.');
     } catch (error) {
       bleState.sensorId = previous;
       updateBleUI();
@@ -2784,9 +2894,29 @@
     if (btnEditId) btnEditId.style.display = active ? 'inline-block' : 'none';
 
     if (active) {
-      if (devName) devName.innerText = bleState.isSimulated ? 'AOOG_BFLS_DEMO (SIMULADOR)' : (bleState.device?.name || 'Sensor AOOG/BFLS');
-      const idStr = bleState.sensorId ? bleState.sensorId.map(v => v.toString(16).padStart(2, '0').toUpperCase()).join(':') : 'Buscando...';
-      if (devInfo) devInfo.innerText = 'ID: ' + idStr + ' • GATT Conectado';
+      const sn = bleState.sensorId ? AoooGProtocol.sensorIdToSN(bleState.sensorId) : null;
+      const hexId = bleState.sensorId ? bleState.sensorId.map(v => v.toString(16).padStart(2, '0').toUpperCase()).join(':') : null;
+
+      if (devName) {
+        if (bleState.isSimulated) {
+          devName.innerText = 'AOOG_BFLS • SN: 807426 (SIMULADOR)';
+        } else if (sn) {
+          devName.innerText = 'AG-BFLS • SN: ' + sn;
+        } else {
+          devName.innerText = bleState.device?.name || 'Sensor AG-BFLS';
+        }
+      }
+
+      if (devInfo) {
+        const parts = [];
+        if (sn) parts.push('SN: ' + sn);
+        if (hexId) parts.push('HEX: ' + hexId);
+        if (bleState.battery !== null && Number.isFinite(bleState.battery)) parts.push('🔋 ' + bleState.battery + '%');
+        if (bleState.currentFreq !== null && Number.isFinite(bleState.currentFreq)) parts.push('⚡ ' + bleState.currentFreq.toFixed(1) + ' Hz');
+        parts.push(bleState.isSimulated ? 'Demo Activo' : 'GATT Conectado');
+        devInfo.innerText = parts.join(' • ');
+      }
+
       if (badgeAuth) {
         badgeAuth.innerText = bleState.isSimulated ? 'DEMO' : (bleState.isAuthenticated ? 'AUTENTICADO' : 'BLOQUEADO');
         badgeAuth.style.background = bleState.isSimulated ? '#475569' : (bleState.isAuthenticated ? '#16a34a' : '#eab308');
@@ -2797,6 +2927,8 @@
         badgeLive.style.background = bleState.isSimulated ? '#475569' : '#16a34a';
       }
     } else {
+      if (devName) devName.innerText = 'Sensor AG-BFLS';
+      if (devInfo) devInfo.innerText = 'SN: -- • GATT Desconectado';
       if (badgeAuth) { badgeAuth.innerText = 'BLOQUEADO'; badgeAuth.style.background = '#1e293b'; }
       if (badgeLive) { badgeLive.innerText = 'DESCONECTADO'; badgeLive.style.background = '#475569'; }
     }
@@ -2811,7 +2943,7 @@
     // Aprender ID directamente de la telemetría periódica del hardware
     if (!bleState.sensorId && parsed.sensorId && parsed.sensorId.some(v => v !== 0)) {
       bleState.sensorId = parsed.sensorId;
-      console.log('ID aprendido desde telemetría física:', bleState.sensorId);
+      console.log('ID aprendido desde telemetría física:', bleState.sensorId, 'SN:', AoooGProtocol.sensorIdToSN(bleState.sensorId));
       updateBleUI();
     }
 
@@ -2827,13 +2959,16 @@
     if (parsed.cmd === 0x14 && parsed.payload.length >= 22) {
       const view = new DataView(parsed.payload.buffer, parsed.payload.byteOffset, parsed.payload.byteLength);
       const batteryCode = view.getUint16(0, false);
-      const battery = Math.max(0, Math.min(100, (batteryCode - 500) * 100 / 220));
+      const battery = Math.max(0, Math.min(100, Math.round(((batteryCode - 500) * 100) / 220)));
       const temp = view.getInt16(2, false) / 8;
       const fullFreq = view.getFloat32(6, true);
       const emptyFreq = view.getFloat32(10, true);
       const freq = view.getFloat32(14, true);
       const output = view.getFloat32(18, true);
       if ([temp, fullFreq, emptyFreq, freq, output].every(Number.isFinite)) {
+        bleState.battery = battery;
+        bleState.temperature = temp;
+        bleState.currentFreq = freq;
         bleState.emptyFreq = emptyFreq;
         bleState.fullFreq = fullFreq;
         setText('bleLiveLevel', bleState.outputMode === 1 ? output.toFixed(0) + ' mm' : '-- mm');
@@ -2843,6 +2978,43 @@
         setText('bleLiveVolume', outputLabel);
         setText('bleLiveFreq', freq.toFixed(1) + ' Hz');
         setText('bleLiveBatteryTemp', battery.toFixed(0) + '% • ' + temp.toFixed(1) + '°C');
+        updateBleUI();
+      }
+    }
+  }
+
+  // Búsqueda orientada: filtra por anunciantes AoooG (0xFF43) o Universal (0xFFFF).
+  // Evita que el técnico en terreno vea dispositivos Bluetooth ajenos.
+  async function connectBleSensorTargeted() {
+    if (!window.isSecureContext) {
+      alert('Bluetooth web requiere un contexto seguro HTTPS. Abre la calculadora desde GitHub Pages o http://localhost.');
+      return;
+    }
+    if (!navigator.bluetooth || typeof navigator.bluetooth.requestDevice !== 'function') {
+      alert('Este navegador no ofrece Web Bluetooth. Usa Google Chrome o Microsoft Edge actualizado en Windows/macOS/Linux, o Chrome en Android.');
+      return;
+    }
+    try {
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [
+          { manufacturerData: [{ companyIdentifier: 0xff43 }] },
+          { manufacturerData: [{ companyIdentifier: 0xffff }] }
+        ],
+        optionalServices: [AoooGProtocol.SERVICE_UUID]
+      });
+      bleState.targetDevice = device;
+      return await connectBleSensor();
+    } catch (error) {
+      if (error.name === 'NotFoundError') {
+        const tryOpen = confirm(
+          'No se seleccionó ningún sensor con filtro AoooG/Universal.\n\n' +
+          '¿Deseas buscar entre TODOS los dispositivos Bluetooth cercanos sin filtro?'
+        );
+        if (tryOpen) {
+          return connectBleSensor();
+        }
+      } else if (error.name !== 'AbortError') {
+        alert('Error al buscar sensor BLE:\n' + error.message);
       }
     }
   }
@@ -2862,10 +3034,11 @@
       // No filtrar por nombre, UUID anunciado ni manufacturerData: el AG-BFLS
       // puede no publicar esos campos en el anuncio. El usuario elige el equipo.
       // optionalServices autoriza después la consulta del servicio GATT propietario.
-      const device = await navigator.bluetooth.requestDevice({
+      const device = bleState.targetDevice || await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: [AoooGProtocol.SERVICE_UUID]
       });
+      bleState.targetDevice = null;
       bleState.device = device;
       device.addEventListener('gattserverdisconnected', disconnectBleSensor);
 
@@ -2897,16 +3070,19 @@
       if (!bleState.sensorId) {
         const manual = prompt(
           'GATT conectado, pero el navegador no expuso el ID del anuncio.\n\n' +
-          'Introduce el ID REAL de 3 bytes (6 caracteres hexadecimales) indicado en la etiqueta/documentación del sensor.\n' +
+          'Introduce el Número de Serie (SN) o ID real válido de 3 bytes indicado en la etiqueta del sensor.\n' +
+          'Formatos admitidos:\n' +
+          '• Número de Serie decimal (SN): ej. 807426\n' +
+          '• Hexadecimal con separador: ej. 0C:52:02 o 78:24:15\n\n' +
           'No uses un ID de ejemplo. La aplicación lo comprobará con una lectura segura 0x1A.',
           ''
         );
         if (manual === null) throw new Error('Identificación cancelada por el usuario.');
-        const clean = manual.trim().replace(/[-_:]/g, '');
-        if (!/^[0-9a-fA-F]{6}$/.test(clean) || /^0{6}$/.test(clean)) {
+        const parsed = AoooGProtocol.snToSensorId(manual);
+        if (!parsed) {
           throw new Error('No se proporcionó un ID real válido de seis caracteres hexadecimales.');
         }
-        bleState.sensorId = [parseInt(clean.slice(0, 2), 16), parseInt(clean.slice(2, 4), 16), parseInt(clean.slice(4, 6), 16)];
+        bleState.sensorId = parsed;
       }
 
       // Prueba de identidad de solo lectura: el sensor debe responder al ID elegido
@@ -2924,7 +3100,8 @@
         catch (error) { console.warn('Telemetría BLE:', error.message); }
       }, 2500);
 
-      showToast('Sensor identificado y conectado: ' + (device.name || 'dispositivo BLE'));
+      const snDisp = AoooGProtocol.sensorIdToSN(bleState.sensorId);
+      showToast('Sensor identificado y conectado: SN ' + snDisp + ' (' + (device.name || 'AG-BFLS') + ')');
     } catch (error) {
       await disconnectBleSensor();
       if (error.name === 'NotFoundError' && stage === 'chooser') {
@@ -2957,6 +3134,7 @@
     bleState.device = null; bleState.server = null; bleState.charWrite = null; bleState.charNotify = null;
     bleState.sensorId = null; bleState.isConnected = false; bleState.isSimulated = false;
     bleState.isAuthenticated = false; bleState.emptyFreq = null; bleState.fullFreq = null; bleState.outputMode = null;
+    bleState.battery = null; bleState.temperature = null; bleState.currentFreq = null; bleState.rssi = null;
     updateBleUI();
     if (device?.gatt?.connected) {
       try { device.gatt.disconnect(); } catch (_) {}
@@ -2966,11 +3144,16 @@
   function simulateBleSensor() {
     if (bleState.pollTimer) clearInterval(bleState.pollTimer);
     bleState.device = null; bleState.server = null; bleState.charWrite = null; bleState.charNotify = null;
-    bleState.sensorId = [0x53, 0x49, 0x4d];
-    bleState.isConnected = false; bleState.isSimulated = true; bleState.isAuthenticated = false;
-    bleState.emptyFreq = 15200; bleState.fullFreq = 10400; bleState.outputMode = 2;
+    bleState.sensorId = [0x0C, 0x52, 0x02]; // SN: 807426
+    bleState.isConnected = false; bleState.isSimulated = true; bleState.isAuthenticated = true;
+    bleState.battery = 98; bleState.temperature = 22.5; bleState.currentFreq = 546.2;
+    bleState.emptyFreq = 100.0; bleState.fullFreq = 5000.0; bleState.outputMode = 2;
     bleState.calibrationTable = Array.from({ length: 100 }, () => ({ volume: 0, level: 0, data: 0 }));
     updateBleUI();
+    setText('bleLiveLevel', '340 mm');
+    setText('bleLiveVolume', '249.2 L');
+    setText('bleLiveFreq', '546.2 Hz');
+    setText('bleLiveBatteryTemp', '98% • 22.5°C');
     let angle = 0;
     bleState.pollTimer = setInterval(() => {
       if (!bleState.isSimulated) return;
@@ -3619,13 +3802,13 @@
           panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
         if (!bleState.isConnected && !bleState.isSimulated) {
-          connectBleSensor();
+          connectBleSensorTargeted();
         }
       });
     }
 
     const btnBleScan = document.getElementById('btnBleScan');
-    if (btnBleScan) btnBleScan.addEventListener('click', () => connectBleSensor());
+    if (btnBleScan) btnBleScan.addEventListener('click', () => connectBleSensorTargeted());
 
     const btnBleScanAll = document.getElementById('btnBleScanAll');
     if (btnBleScanAll) btnBleScanAll.addEventListener('click', () => connectBleSensor());

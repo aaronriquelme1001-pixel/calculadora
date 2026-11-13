@@ -2,20 +2,37 @@
 
 Actualizado: 2026-11-13. Fuente de verdad: `main`.
 
-## Cambio aplicado en la búsqueda
+## Modos de búsqueda y filtros disponibles
 
-La versión web ahora llama a:
+La versión web ahora ofrece dos modalidades de búsqueda para adaptarse al trabajo de campo y a la compatibilidad universal:
 
-```js
-navigator.bluetooth.requestDevice({
-  acceptAllDevices: true,
-  optionalServices: [AoooGProtocol.SERVICE_UUID]
-});
-```
+1. **Búsqueda orientada con filtro de fabricante (Recomendada en terreno):**
+   ```js
+   navigator.bluetooth.requestDevice({
+     filters: [
+       { manufacturerData: [{ companyIdentifier: 0xff43 }] },
+       { manufacturerData: [{ companyIdentifier: 0xffff }] }
+     ],
+     optionalServices: [AoooGProtocol.SERVICE_UUID]
+   });
+   ```
+   Oculta televisores, teléfonos, pulseras y periféricos Bluetooth ajenos, permitiendo al técnico ubicar de inmediato su sensor AG-BFLS por los datos de fabricante AoooG (`0xFF43`) o Universal (`0xFFFF`).
 
-Esto elimina los filtros anteriores por nombre, servicio anunciado y manufacturer data. El selector nativo de Chrome/Edge puede mostrar cualquier periférico BLE visible; el usuario debe elegir el dispositivo. No se intenta escanear en segundo plano ni enumerar dispositivos sin el selector del navegador.
+2. **Búsqueda abierta universal (Sin Filtro):**
+   ```js
+   navigator.bluetooth.requestDevice({
+     acceptAllDevices: true,
+     optionalServices: [AoooGProtocol.SERVICE_UUID]
+   });
+   ```
+   Muestra cualquier periférico BLE en rango si el adaptador del sistema operativo no expone los datos de fabricante durante el escaneo previo.
 
-**Importante:** `acceptAllDevices` amplía los dispositivos elegibles, pero no puede hacer visible un sensor que no esté anunciando BLE, que esté apagado, fuera de alcance, no conectable o bloqueado por una conexión exclusiva con otro central.
+## Identificación por Número de Serie (SN) vs Dirección MAC
+
+En la app oficial Fuel Master y en las etiquetas de los sensores físicos, el dispositivo se identifica mediante su **Número de Serie (SN)**, un entero decimal de 24 bits:
+- **Cálculo exacto oficial:** `SN = (byte0 << 16) | (byte1 << 8) | byte2` (ej. bytes `[0x0C, 0x52, 0x02]` corresponden a `SN: 807426`).
+- **Visualización en la interfaz:** La cabecera muestra prioritariamente **`AG-BFLS • SN: [número]`**, acompañado de su representación hexadecimal, nivel de batería (%) y frecuencia (Hz). No se presenta la dirección MAC como identidad primaria.
+- **Ingreso y edición manual:** El diálogo admite indistintamente el SN decimal de la etiqueta (ej. `807426`) o el ID de 3 bytes en hexadecimal (ej. `0C:52:02` o `78:24:15`), verificándolo inmediatamente mediante lectura segura 0x1A antes de cualquier operación.
 
 ## Flujo de conexión
 
