@@ -193,7 +193,7 @@
             📤 Subir Tabla de Calibración al Sensor (100 Pts)
           </button>
           <button type="button" id="btnBleReadTable" class="btn" style="background: #334155; color: #e2e8f0; padding: 8px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: 1px solid #475569; cursor: pointer; flex: 1; min-width: 140px;">
-            📥 Verificar Tabla (0x15)
+            📥 Leer tabla (0x15)
           </button>
         </div>
 
@@ -237,7 +237,7 @@
         </div>
 
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-          <input type="text" id="bleCredentialInput" placeholder="Credencial 8 bytes Hex (ej. 0000000000000000)" value="0000000000000000" style="flex: 1; min-width: 220px; padding: 6px 10px; background: #0f172a; border: 1px solid #475569; border-radius: 4px; color: #ffffff; font-size: 0.75rem; font-family: monospace;">
+          <input type="text" id="bleCredentialInput" placeholder="16 caracteres hexadecimales (8 bytes)" maxlength="16" autocomplete="off" autocapitalize="characters" style="flex: 1; min-width: 220px; padding: 6px 10px; background: #0f172a; border: 1px solid #475569; border-radius: 4px; color: #ffffff; font-size: 0.75rem; font-family: monospace;">
           <button type="button" id="btnBleAuth" class="btn" style="background: #334155; color: #ffffff; padding: 6px 14px; font-size: 0.75rem; font-weight: 700; border-radius: 4px; border: 1px solid #475569; cursor: pointer;">
             🔑 Autenticar
           </button>
