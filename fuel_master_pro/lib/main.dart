@@ -375,7 +375,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   }
 
   Future<void> _captureCalibrationCoordinate(int index) async {
-    if (_connectedSensor == null || !_bleManager.isAuthenticated && _isUploading) return;
+    if (_connectedSensor == null || _isUploading) return;
     final coordinate = await _bleManager.readCalibrationCoordinate();
     if (!mounted) return;
     if (coordinate == null) {
@@ -509,6 +509,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
       }
 
       setState(() {
+        _capturedFixValues.clear();
         _generatedRows = parsedRows;
       });
       setModalState?.call(() {});
@@ -591,6 +592,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
           );
         }
         setState(() {
+          _capturedFixValues.clear();
           _generatedRows = parsed;
         });
         setModalState?.call(() {});
