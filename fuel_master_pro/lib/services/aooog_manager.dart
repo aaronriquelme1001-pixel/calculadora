@@ -348,8 +348,19 @@ class AoooGManager {
   }
 
   /// Configura el modo de salida (comando 0x19): 00=normalizado (%), 01=mm, 02=litros
-  Future<bool> setOutputMode(int mode) async {
+  Future<bool> _hasValidStoredCalibrationTable() async {
+    final rows = <CalibrationRow>[];
+    for (var start = 0; start <= 90; start += 10) {
+      final block = await readCalibrationBlock(start);
+      if (block == null) return false;
+      rows.addAll(block);
+    }
+    return _validCalibrationRows(rows);
+  }
+
+  Future<bool> setOutputMode(int mode, {bool verifyTable = true}) async {
     if (mode < 0 || mode > 2) return false;
+    if ((mode == 1 || mode == 2) && verifyTable && !await _hasValidStoredCalibrationTable()) return false;
     final resp = await sendCommand(0x19, [mode]);
     if (!_isSuccessStatus(resp, 0x19)) return false;
     return await readOutputMode() == mode;
@@ -534,7 +545,7 @@ class AoooGManager {
       if (readBack == null || !_bytesEqual(readBack, expected)) { await rollback(); return false; }
       onProgress?.call(start ~/ 10 + 1, 10);
     }
-    if (!await setOutputMode(0x02) || await readOutputMode() != 0x02) { await rollback(); return false; }
+    if (!await setOutputMode(0x02, verifyTable: false) || await readOutputMode() != 0x02) { await rollback(); return false; }
     return true;
   }
   Future<void> disconnect() async {
