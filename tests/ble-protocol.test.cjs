@@ -318,10 +318,10 @@ test('web UI exposes every remaining public AG-BFLS diagnostic and configuration
   assert.match(source, /sendBleCommand\(0x0a/);
   assert.match(source, /sendBleCommand\(0x0c/);
   assert.match(source, /sendBleCommand\(0x22/);
-  assert.match(source, /sendBleCommand\(0x20/);
-  assert.match(source, /sendBleCommand\(0x21/);
-  assert.match(source, /sendBleCommand\(0x26/);
-  assert.match(source, /sendBleCommand\(0x1b/);
+  assert.match(source, /readPayload\(0x20/);
+  assert.match(source, /readPayload\(0x21/);
+  assert.match(source, /readPayload\(0x26/);
+  assert.match(source, /readPayload\(0x1b/);
 });
 
 
