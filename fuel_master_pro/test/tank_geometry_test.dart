@@ -71,6 +71,25 @@ void main() {
       );
     });
   });
+  group('AG-BFLS command payload sizing', () {
+    test('calibration write frame fits the documented 88-byte frame', () {
+      final frame = AoooGProtocol.buildFrame(0x123456, 0x16, [
+        0, ...List<int>.filled(80, 0),
+      ]);
+      expect(frame.length, 88);
+      expect(frame[1], 86);
+      expect(AoooGProtocol.isValidFrame(frame, expectedCommand: 0x16), isTrue);
+    });
+
+    test('calibration read request carries only the block start index', () {
+      final frame = AoooGProtocol.buildFrame(0x123456, 0x15, [90]);
+      expect(frame.length, 8);
+      expect(frame[5], 0x15);
+      expect(frame[6], 90);
+      expect(AoooGProtocol.isValidFrame(frame, expectedCommand: 0x15), isTrue);
+    });
+  });
+
   group('TankGeometryEngine', () {
     test('rectangular tank returns zero, half and full volume correctly', () {
       const length = 850.0;
