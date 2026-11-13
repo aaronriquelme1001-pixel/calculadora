@@ -2,30 +2,18 @@
 
 Actualizado: 2026-11-13. Fuente de verdad: `main`.
 
-## Modos de búsqueda y filtros disponibles
+## Modo de búsqueda disponible
 
-La versión web ahora ofrece dos modalidades de búsqueda para adaptarse al trabajo de campo y a la compatibilidad universal:
+Las dos acciones visibles de búsqueda utilizan el selector nativo abierto de Web Bluetooth:
 
-1. **Búsqueda orientada con filtro de fabricante (Recomendada en terreno):**
-   ```js
-   navigator.bluetooth.requestDevice({
-     filters: [
-       { manufacturerData: [{ companyIdentifier: 0xff43 }] },
-       { manufacturerData: [{ companyIdentifier: 0xffff }] }
-     ],
-     optionalServices: [AoooGProtocol.SERVICE_UUID]
-   });
-   ```
-   Oculta televisores, teléfonos, pulseras y periféricos Bluetooth ajenos, permitiendo al técnico ubicar de inmediato su sensor AG-BFLS por los datos de fabricante AoooG (`0xFF43`) o Universal (`0xFFFF`).
+```js
+navigator.bluetooth.requestDevice({
+  acceptAllDevices: true,
+  optionalServices: [AoooGProtocol.SERVICE_UUID]
+});
+```
 
-2. **Búsqueda abierta universal (Sin Filtro):**
-   ```js
-   navigator.bluetooth.requestDevice({
-     acceptAllDevices: true,
-     optionalServices: [AoooGProtocol.SERVICE_UUID]
-   });
-   ```
-   Muestra cualquier periférico BLE en rango si el adaptador del sistema operativo no expone los datos de fabricante durante el escaneo previo.
+No se aplica filtro por nombre, UUID anunciado ni `manufacturerData`. Esto es intencional: ciertos AG-BFLS pueden no exponer los datos de fabricante antes del emparejamiento. El selector puede mostrar periféricos ajenos; el usuario debe elegir el sensor correcto y la aplicación valida después su identidad a nivel de protocolo. Los datos AoooG `0xFF43` y Universal `0xFFFF` siguen siendo fuentes opcionales de identificación cuando el navegador los entrega.
 
 ## Identificación por Número de Serie (SN) vs Dirección MAC
 
@@ -42,7 +30,7 @@ En la app oficial Fuel Master y en las etiquetas de los sensores físicos, el di
 4. Conectar a GATT y descubrir servicio `FFF0-1212-EFDE-1523-785FEABCD123`.
 5. Resolver características FFF1 (write) y FFF2 (notify), activar notificaciones.
 6. Intentar leer el ID de manufacturer data con `watchAdvertisements()` si el navegador lo soporta. Esta función es opcional y nunca condiciona la aparición del periférico ni la conexión GATT.
-7. Si llega una trama espontánea válida por FFF2, aprender el ID de tres bytes desde la propia trama, validando longitud y CRC.
+7. Si llega una trama espontánea por FFF2, solo se aprende el ID desde una telemetría `0x14` de exactamente 22 bytes, con ID no nulo, CRC válido y campos numéricos finitos/coherentes. Una trama de otro comando, incompleta o con valores inválidos no puede establecer identidad.
 8. Si no se obtuvo ID, solicitar al técnico el ID real impreso/documentado para ese sensor. No se ofrece ID por defecto ni se deduce desde el nombre Bluetooth.
 9. Validar el ID mediante el comando de solo lectura 0x1A. Solo se considera identificado si la respuesta tiene el ID/comando/CRC correctos y devuelve un modo 0, 1 o 2.
 10. Ante ID no confirmado, cancelar y desconectar. No se habilita autenticación, lectura de memoria ni escritura.
@@ -84,6 +72,19 @@ En la app oficial Fuel Master y en las etiquetas de los sensores físicos, el di
 - `watchAdvertisements()` tiene soporte desigual y permisos específicos; solo se usa como fuente adicional del ID.
 - La API Web Bluetooth no entrega un MTU negociado fiable para dimensionar de forma preventiva el bloque de 81 bytes de escritura (índice + 80 bytes). La ruta web puede fallar por límites del navegador/OS. La aplicación Flutter sigue siendo la ruta prioritaria para las pruebas físicas de lectura/escritura.
 - No se ha confirmado hardware real en este cambio. La validación automatizada prueba protocolo y reglas de selección, no la radio ni el sensor físico.
+
+## Regresión de identificación y autenticación
+
+Las pruebas automatizadas cubren conversión SN/ID, anuncios, CRC, descubrimiento abierto, validación estricta de telemetría y conversión de credencial de 16 hex a ocho bytes. También comprueban que la interfaz no aprenda identidad desde una trama arbitraria y que la autenticación dependa del ACK positivo `0x12`.
+
+Ejecutar:
+
+```bash
+node --check app.js
+node --test tests/*.test.cjs
+```
+
+Estas pruebas ejercitan las funciones puras y guardas de código; no simulan el stack BLE del sistema operativo ni sustituyen una prueba de conexión física con AG-BFLS.
 
 ## Próxima prueba física necesaria
 
