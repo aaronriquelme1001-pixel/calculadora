@@ -50,10 +50,11 @@
       // Recovecos y Muescas Estructurales (Estanques Plásticos)
       hasRecovecos: false,
       texturaLevel: 50, // 10 (Menos) a 90 (Más), 50 = Normal
+      recovecoEnabled: true,
       recovecoWidth: 190,
       recovecoHeight: 175,
       recovecoLength: 0,
-      recovecoSide: 'bottom_right',
+      recovecoSide: 'bottom_left', // Izq. Chasis (fiel al CAD y foto camión)
       cinchasCount: 2,
       cinchasWidth: 70,
       cinchasDepth: 25,
@@ -83,6 +84,8 @@
     },
 
     currentLevelMm: 580,
+    tableMode: 30, // 30 o 100
+    isImported: false,
 
     calcCache: {
       effH: 650,
@@ -241,7 +244,7 @@
         const cornerLostVert = (1 - Math.PI / 4) * (rv_fi * rv_fi + rv_fd * rv_fd + rv_pi * rv_pi + rv_pd * rv_pd);
         area = Math.max(0, area - cornerLostVert);
 
-        // Descuento de Texturas y Canales Estructurales (Estanques Plásticos)
+        // Descuento de Texturas, Canales y Chaflán de Chasis (Estanques Plásticos)
         if (state.tank.hasRecovecos) {
           const depthScale = (Number(state.tank.texturaLevel) || 50) / 50;
 
@@ -261,6 +264,18 @@
           if (Math.abs(z - H / 2) < 45) {
             const ribAreaLoss = 2 * (9 * depthScale) * L;
             area = Math.max(0, area - ribAreaLoss);
+          }
+
+          // 4. Chaflán / Bisel Inferior de Chasis (Corte en diagonal para despeje de larguero de camión)
+          if (state.tank.recovecoEnabled !== false) {
+            const recW = Math.min(W * 0.75, Math.max(0, Number(state.tank.recovecoWidth) || 0));
+            const recH = Math.min(H * 0.85, Math.max(0, Number(state.tank.recovecoHeight) || 0));
+            if (recW > 0 && recH > 0 && z < recH) {
+              const u = z / recH;
+              const stepW = Math.round(recW * 0.22);
+              const cutW = recW * (1 - u) + stepW * u;
+              area = Math.max(0, area - cutW * L);
+            }
           }
         }
 
@@ -390,70 +405,107 @@
     return cum[low] + frac * (cum[high] - cum[low]);
   }
 
-  function computeCalibrationRows() {
+  function computeCalibrationRows(targetCount = state.tableMode || 30) {
+    if (state.isImported && state.importedRows && state.importedRows.length > 0) {
+      const H = state.calcCache.effH;
+      const V_total = state.importedRows[state.importedRows.length - 1].volume || state.calcCache.totalVolume;
+      const rows = state.importedRows.map((r, idx) => ({
+        rowNum: idx + 2,
+        dataVal: r.data,
+        dataFormula: `${r.data}`,
+        levelVal: r.level,
+        levelFormula: `${r.level}`,
+        volumeVal: r.volume,
+        pct: V_total > 0 ? Number(((r.volume / V_total) * 100).toFixed(1)) : 0
+      }));
+      state.calcCache.calibrationRows = rows;
+      return rows;
+    }
+
     const H = state.calcCache.effH;
-    const maxRow = 30; // EXACTAMENTE 30 FILAS EN TOTAL (Fila 1 Header + Filas 2 a 30)
+    const count = targetCount === 100 ? 100 : 30;
     const dataMin = Number(state.sensor.dataMin) || 100;
     const dataMax = Number(state.sensor.dataMax) || 4660;
     const V_total = state.calcCache.totalVolume;
-
     const rows = [];
 
-    // Fila 2: Vacío (0, 0, 0)
-    rows.push({
-      rowNum: 2,
-      dataVal: 0,
-      dataFormula: '0',
-      levelVal: 0,
-      levelFormula: '0',
-      volumeVal: 0.0,
-      pct: 0.0
-    });
+    if (count === 30) {
+      // EXACTAMENTE 30 FILAS EN TOTAL (Fila 1 Header + Filas 2 a 30)
+      rows.push({
+        rowNum: 2,
+        dataVal: 0,
+        dataFormula: '0',
+        levelVal: 0,
+        levelFormula: '0',
+        volumeVal: 0.0,
+        pct: 0.0
+      });
 
-    // Fila 3: Punto de inicio con sensorDataMin
-    const levelStep1 = Math.round(1 * H / 28);
-    const volStep1 = Number(getVolumeAtHeight(levelStep1).toFixed(1));
-    rows.push({
-      rowNum: 3,
-      dataVal: dataMin,
-      dataFormula: `${dataMin}`,
-      levelVal: levelStep1,
-      levelFormula: `ROUND((3-2)*$B$${maxRow}/28, 0)`,
-      volumeVal: volStep1,
-      pct: V_total > 0 ? Number(((volStep1 / V_total) * 100).toFixed(1)) : 0
-    });
+      const levelStep1 = Math.round(1 * H / 28);
+      const volStep1 = Number(getVolumeAtHeight(levelStep1).toFixed(1));
+      rows.push({
+        rowNum: 3,
+        dataVal: dataMin,
+        dataFormula: `${dataMin}`,
+        levelVal: levelStep1,
+        levelFormula: `ROUND((3-2)*$B$30/28, 0)`,
+        volumeVal: volStep1,
+        pct: V_total > 0 ? Number(((volStep1 / V_total) * 100).toFixed(1)) : 0
+      });
 
-    // Filas 4 a 29
-    for (let r = 4; r < maxRow; r++) {
-      const dataFormula = `ROUND($A$3 + (${r}-3)*($A$${maxRow}-$A$3)/27, 0)`;
-      const levelFormula = `ROUND((${r}-2)*$B$${maxRow}/28, 0)`;
-      const estData = Math.round(dataMin + (r - 3) * (dataMax - dataMin) / 27);
-      const estLevel = Math.round((r - 2) * H / 28);
-      const estVol = Number(getVolumeAtHeight(estLevel).toFixed(1));
+      for (let r = 4; r < 30; r++) {
+        const dataFormula = `ROUND($A$3 + (${r}-3)*($A$30-$A$3)/27, 0)`;
+        const levelFormula = `ROUND((${r}-2)*$B$30/28, 0)`;
+        const estData = Math.round(dataMin + (r - 3) * (dataMax - dataMin) / 27);
+        const estLevel = Math.round((r - 2) * H / 28);
+        const estVol = Number(getVolumeAtHeight(estLevel).toFixed(1));
+
+        rows.push({
+          rowNum: r,
+          dataVal: estData,
+          dataFormula: dataFormula,
+          levelVal: estLevel,
+          levelFormula: levelFormula,
+          volumeVal: estVol,
+          pct: V_total > 0 ? Number(((estVol / V_total) * 100).toFixed(1)) : 0
+        });
+      }
 
       rows.push({
-        rowNum: r,
-        dataVal: estData,
-        dataFormula: dataFormula,
-        levelVal: estLevel,
-        levelFormula: levelFormula,
-        volumeVal: estVol,
-        pct: V_total > 0 ? Number(((estVol / V_total) * 100).toFixed(1)) : 0
+        rowNum: 30,
+        dataVal: dataMax,
+        dataFormula: `${dataMax}`,
+        levelVal: H,
+        levelFormula: `${H}`,
+        volumeVal: V_total,
+        pct: 100.0
       });
+    } else {
+      // 100 POSICIONES EXACTAS PARA MEMORIA DE SENSOR BLE (Slots 0 a 99)
+      for (let i = 0; i < 100; i++) {
+        const frac = i / 99;
+        const estLevel = Math.round(frac * H);
+        const estVol = Number(getVolumeAtHeight(estLevel).toFixed(1));
+        const estData = i === 0 ? 0 : Math.round(dataMin + frac * (dataMax - dataMin));
+
+        rows.push({
+          rowNum: i + 1,
+          slot: i,
+          dataVal: estData,
+          dataFormula: `${estData}`,
+          levelVal: estLevel,
+          levelFormula: `${estLevel}`,
+          volumeVal: estVol,
+          pct: V_total > 0 ? Number(((estVol / V_total) * 100).toFixed(1)) : 0,
+          data: estData,
+          level: estLevel,
+          volume: estVol
+        });
+      }
     }
 
-    // Fila 30: 100% LLENO
-    rows.push({
-      rowNum: maxRow,
-      dataVal: dataMax,
-      dataFormula: `${dataMax}`,
-      levelVal: H,
-      levelFormula: `${H}`,
-      volumeVal: V_total,
-      pct: 100.0
-    });
-
     state.calcCache.calibrationRows = rows;
+    return rows;
   }
 
   // ==========================================================================
@@ -831,28 +883,67 @@
         const r_sli = corners[2].val * scale;
         const r_sld = corners[3].val * scale;
 
-        ctx.moveTo(ox + r_li, oy);
-        ctx.lineTo(ox + dw - r_ld, oy);
-        ctx.arcTo(ox + dw, oy, ox + dw, oy - r_ld, r_ld);
+        if (state.tank.hasRecovecos && isTransverse && (state.tank.recovecoEnabled !== false)) {
+          // Chaflán de Chasis en el corte transversal (fiel a la Imagen 2)
+          const recW = Math.min(dw * 0.75, (Number(state.tank.recovecoWidth) || 190) * scale);
+          const recH = Math.min(dh * 0.85, (Number(state.tank.recovecoHeight) || 175) * scale);
+          const stepW = Math.round(recW * 0.22);
+          const isLeft = state.tank.recovecoSide !== 'bottom_right';
 
-        if (state.tank.hasRecovecos && isTransverse) {
-          // Nicho de boca de carga en esquina superior derecha
-          const neckDepth = 20 * scale;
-          const neckH = 32 * scale;
-          ctx.lineTo(ox + dw, oy - dh + neckH);
-          ctx.lineTo(ox + dw - neckDepth, oy - dh + neckH);
-          ctx.lineTo(ox + dw - neckDepth, oy - dh);
-          ctx.lineTo(ox + r_sli, oy - dh);
+          if (isLeft) {
+            // Suelo plano desde el chaflán hasta la pared derecha
+            ctx.moveTo(ox + recW, oy);
+            ctx.lineTo(ox + dw - r_ld, oy);
+            ctx.arcTo(ox + dw, oy, ox + dw, oy - r_ld, r_ld);
+            // Pared derecha hasta techo
+            ctx.lineTo(ox + dw, oy - dh + r_sld);
+            ctx.arcTo(ox + dw, oy - dh, ox + dw - r_sld, oy - dh, r_sld);
+            ctx.lineTo(ox + r_sli, oy - dh);
+            ctx.arcTo(ox, oy - dh, ox, oy - dh + r_sli, r_sli);
+            // Pared izquierda hasta inicio del chaflán
+            ctx.lineTo(ox, oy - recH);
+            ctx.lineTo(ox + stepW, oy - recH);
+            // Diagonal hacia el piso
+            ctx.lineTo(ox + recW, oy);
+            ctx.closePath();
+          } else {
+            // Chaflán en lado derecho
+            ctx.moveTo(ox + r_li, oy);
+            ctx.lineTo(ox + dw - recW, oy);
+            ctx.lineTo(ox + dw - stepW, oy - recH);
+            ctx.lineTo(ox + dw, oy - recH);
+            ctx.lineTo(ox + dw, oy - dh + r_sld);
+            ctx.arcTo(ox + dw, oy - dh, ox + dw - r_sld, oy - dh, r_sld);
+            ctx.lineTo(ox + r_sli, oy - dh);
+            ctx.arcTo(ox, oy - dh, ox, oy - dh + r_sli, r_sli);
+            ctx.lineTo(ox, oy - r_li);
+            ctx.arcTo(ox, oy, ox + r_li, oy, r_li);
+            ctx.closePath();
+          }
         } else {
-          ctx.lineTo(ox + dw, oy - dh + r_sld);
-          ctx.arcTo(ox + dw, oy - dh, ox + dw - r_sld, oy - dh, r_sld);
-          ctx.lineTo(ox + r_sli, oy - dh);
-        }
+          ctx.moveTo(ox + r_li, oy);
+          ctx.lineTo(ox + dw - r_ld, oy);
+          ctx.arcTo(ox + dw, oy, ox + dw, oy - r_ld, r_ld);
 
-        ctx.arcTo(ox, oy - dh, ox, oy - dh + r_sli, r_sli);
-        ctx.lineTo(ox, oy - r_li);
-        ctx.arcTo(ox, oy, ox + r_li, oy, r_li);
-        ctx.closePath();
+          if (state.tank.hasRecovecos && isTransverse) {
+            // Nicho de boca de carga en esquina superior derecha
+            const neckDepth = 20 * scale;
+            const neckH = 32 * scale;
+            ctx.lineTo(ox + dw, oy - dh + neckH);
+            ctx.lineTo(ox + dw - neckDepth, oy - dh + neckH);
+            ctx.lineTo(ox + dw - neckDepth, oy - dh);
+            ctx.lineTo(ox + r_sli, oy - dh);
+          } else {
+            ctx.lineTo(ox + dw, oy - dh + r_sld);
+            ctx.arcTo(ox + dw, oy - dh, ox + dw - r_sld, oy - dh, r_sld);
+            ctx.lineTo(ox + r_sli, oy - dh);
+          }
+
+          ctx.arcTo(ox, oy - dh, ox, oy - dh + r_sli, r_sli);
+          ctx.lineTo(ox, oy - r_li);
+          ctx.arcTo(ox, oy, ox + r_li, oy, r_li);
+          ctx.closePath();
+        }
       } else {
         ctx.rect(ox, oy - dh, dw, dh);
       }
@@ -1796,6 +1887,27 @@
     const rows = state.calcCache.calibrationRows;
     const curLevel = state.currentLevelMm;
 
+    const lblTitle = document.getElementById('lblTableTitle');
+    if (lblTitle) {
+      if (state.isImported) {
+        lblTitle.innerText = `Tabla de Calibración Importada (${rows.length} Puntos Oficiales)`;
+      } else if (state.tableMode === 100) {
+        lblTitle.innerText = 'Tabla de Calibración AoooG (100 Posiciones BLE - Slots 0 a 99)';
+      } else {
+        lblTitle.innerText = 'Tabla de Calibración AoooG (30 Puntos Proporcionales)';
+      }
+    }
+
+    const btnToggle = document.getElementById('btnToggleTable100');
+    if (btnToggle) {
+      btnToggle.innerText = state.tableMode === 100 ? 'Ver 30 Puntos' : 'Ver 100 Posiciones (BLE)';
+    }
+
+    const btnUpload = document.getElementById('btnTableUploadBle');
+    if (btnUpload) {
+      btnUpload.style.display = (bleState.isConnected || bleState.isSimulated) ? 'inline-flex' : 'none';
+    }
+
     let html = '';
     rows.forEach(r => {
       const isActive = Math.abs(r.levelVal - curLevel) <= 12;
@@ -2124,6 +2236,34 @@
               else v.x += ribIndent;
             }
           }
+
+          // 4. Chaflán / Bisel Inferior de Chasis (Corte diagonal para despeje de larguero de camión, idéntico a Imagen 2)
+          if (state.tank.recovecoEnabled !== false) {
+            const recW = Math.min(w * 0.75, Math.max(0, Number(state.tank.recovecoWidth) || 0));
+            const recH = Math.min(H * 0.85, Math.max(0, Number(state.tank.recovecoHeight) || 0));
+            const stepW = Math.round(recW * 0.22);
+            const isLeft = state.tank.recovecoSide !== 'bottom_right';
+
+            // Altura real acumulada desde la base del estanque [0, H]
+            const curY = isLiquid ? (v.y + liqH / 2) : (v.y + h / 2);
+
+            if (recW > 0 && recH > 0 && curY < recH) {
+              const u = Math.max(0, Math.min(1, curY / recH));
+              const cutOffset = recW * (1 - u) + stepW * u;
+
+              if (isLeft && v.x < 0) {
+                const tx = (v.x - (-w / 2)) / (w / 2);
+                if (tx >= 0 && tx <= 1) {
+                  v.x += cutOffset * Math.pow(1 - tx, 1.25);
+                }
+              } else if (!isLeft && v.x > 0) {
+                const tx = (w / 2 - v.x) / (w / 2);
+                if (tx >= 0 && tx <= 1) {
+                  v.x -= cutOffset * Math.pow(1 - tx, 1.25);
+                }
+              }
+            }
+          }
         }
 
         pos.setXYZ(i, v.x, v.y, v.z);
@@ -2256,6 +2396,40 @@
 
       strapsGroup.add(capGroup);
 
+      // Soportes / Patas de Chasis y Punto Luminoso (idénticos a Imagen 2)
+      if (state.tank.recovecoEnabled !== false) {
+        const recW = Math.min(W * 0.75, Math.max(0, Number(state.tank.recovecoWidth) || 0));
+        const recH = Math.min(H * 0.85, Math.max(0, Number(state.tank.recovecoHeight) || 0));
+        const stepW = Math.round(recW * 0.22);
+        const isLeft = state.tank.recovecoSide !== 'bottom_right';
+
+        const bracketMat = new THREE.MeshStandardMaterial({
+          color: 0x0f172a, // Acero negro chasis
+          metalness: 0.85,
+          roughness: 0.25
+        });
+
+        const bW = 16;
+        const bD = 32;
+        const bH = recH;
+        const bGeom = new THREE.BoxGeometry(bW, bH, bD);
+        const posX = isLeft ? (-W / 2 + stepW / 2 + 8) : (W / 2 - stepW / 2 - 8);
+
+        [-L * 0.25, L * 0.25].forEach(zPos => {
+          const mesh = new THREE.Mesh(bGeom, bracketMat);
+          mesh.position.set(posX, bH / 2, zPos);
+          strapsGroup.add(mesh);
+        });
+
+        // Punto luminoso de referencia en esquina inferior (como en Imagen 2)
+        const markerGeom = new THREE.SphereGeometry(6, 16, 16);
+        const markerMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+        const markerMesh = new THREE.Mesh(markerGeom, markerMat);
+        const markerX = isLeft ? (W / 2 - 20) : (-W / 2 + 20);
+        markerMesh.position.set(markerX, 10, L / 2 - 20);
+        strapsGroup.add(markerMesh);
+      }
+
       threeStrapsMesh = strapsGroup;
       threeScene.add(threeStrapsMesh);
     }
@@ -2271,6 +2445,419 @@
       const camDist = maxDim * 2.1;
       threeCamera.position.set(camDist * 0.85, H + camDist * 0.45, camDist * 0.85);
       threeControls.update();
+    }
+  }
+
+  // ==========================================================================
+  // PROTOCOLO Y CONTROLADOR WEB BLUETOOTH (BLE) PARA SENSORES AOOG / AG-BFLS
+  // ==========================================================================
+
+  const AoooGProtocol = {
+    SERVICE_UUID: '0000fff0-1212-efde-1523-785feabcd123',
+    CHAR_WRITE_UUID: '0000fff1-1212-efde-1523-785feabcd123',
+    CHAR_NOTIFY_UUID: '0000fff2-1212-efde-1523-785feabcd123',
+
+    crc8(data) {
+      let crc = 0x00;
+      for (let i = 0; i < data.length; i++) {
+        crc ^= data[i];
+        for (let j = 0; j < 8; j++) {
+          if ((crc & 0x01) !== 0) {
+            crc = (crc >>> 1) ^ 0x8C;
+          } else {
+            crc >>>= 1;
+          }
+        }
+      }
+      return crc & 0xFF;
+    },
+
+    buildFrame(sensorId, cmd, payload = []) {
+      const len = 4 + 1 + payload.length + 1;
+      const frame = new Uint8Array(2 + len);
+      frame[0] = 0x0C;
+      frame[1] = len;
+      frame[2] = sensorId[0] || 0;
+      frame[3] = sensorId[1] || 0;
+      frame[4] = sensorId[2] || 0;
+      frame[5] = sensorId[3] || 0;
+      frame[6] = cmd & 0xFF;
+      for (let i = 0; i < payload.length; i++) {
+        frame[7 + i] = payload[i];
+      }
+      const crc = this.crc8(frame.subarray(2, frame.length - 1));
+      frame[frame.length - 1] = crc;
+      return frame;
+    },
+
+    parseFrame(data) {
+      if (!data || data.length < 8) return null;
+      if (data[0] !== 0x0C) return null;
+      const len = data[1];
+      if (data.length !== 2 + len) return null;
+      const expectedCrc = this.crc8(data.subarray(2, data.length - 1));
+      if (data[data.length - 1] !== expectedCrc) return null;
+
+      const sensorId = [data[2], data[3], data[4], data[5]];
+      const cmd = data[6];
+      const payload = data.subarray(7, data.length - 1);
+      return { sensorId, cmd, payload };
+    },
+
+    rowToBytes(volumeL, levelMm, fixVal) {
+      const buf = new Uint8Array(8);
+      const view = new DataView(buf.buffer);
+      view.setFloat32(0, Number(volumeL) || 0, true);
+      view.setUint16(4, Math.round(Number(levelMm) || 0), true);
+      view.setUint16(6, Math.round(Number(fixVal) || 0), true);
+      return buf;
+    }
+  };
+
+  const bleState = {
+    device: null,
+    server: null,
+    charWrite: null,
+    charNotify: null,
+    sensorId: [0, 0, 0, 0],
+    isAuthenticated: false,
+    isConnected: false,
+    isSimulated: false,
+    pollTimer: null
+  };
+
+  function updateBleUI() {
+    const panel = document.getElementById('panelBleSensor');
+    const badgeLive = document.getElementById('badgeBleLive');
+    const badgeAuth = document.getElementById('badgeBleAuth');
+    const devName = document.getElementById('bleDeviceName');
+    const devInfo = document.getElementById('bleDeviceInfo');
+    const lblBtn = document.getElementById('lblBleBtn');
+    const btnUpload = document.getElementById('btnTableUploadBle');
+
+    const active = bleState.isConnected || bleState.isSimulated;
+    if (panel) panel.style.display = active ? 'block' : 'none';
+    if (btnUpload) btnUpload.style.display = active ? 'inline-flex' : 'none';
+
+    if (lblBtn) {
+      lblBtn.innerText = active ? 'Sensor Conectado' : 'Conectar Sensor BLE';
+    }
+
+    if (active) {
+      if (devName) {
+        devName.innerText = bleState.isSimulated ? 'AOOG_BL_DEMO (Simulador)' : (bleState.device ? bleState.device.name || 'AOOG_SENSOR' : 'AOOG_SENSOR');
+      }
+      if (devInfo) {
+        const idHex = bleState.sensorId.map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(':');
+        devInfo.innerText = `ID: ${idHex} • GATT Conectado`;
+      }
+      if (badgeAuth) {
+        badgeAuth.innerText = bleState.isAuthenticated ? 'AUTENTICADO' : 'BLOQUEADO';
+        badgeAuth.style.background = bleState.isAuthenticated ? '#16a34a' : '#eab308';
+        badgeAuth.style.color = bleState.isAuthenticated ? '#ffffff' : '#000000';
+      }
+      if (badgeLive) {
+        badgeLive.innerText = 'EN VIVO';
+        badgeLive.style.background = '#16a34a';
+      }
+    }
+  }
+
+  function handleBleNotification(event) {
+    const value = new Uint8Array(event.target.value.buffer);
+    const parsed = AoooGProtocol.parseFrame(value);
+    if (!parsed) return;
+
+    if (parsed.cmd === 0x14 && parsed.payload.length >= 20) {
+      const view = new DataView(parsed.payload.buffer, parsed.payload.byteOffset, parsed.payload.byteLength);
+      const battery = view.getUint8(0);
+      const temp = view.getInt8(1);
+      const freq = view.getUint32(2, true);
+      const level = view.getUint16(6, true);
+      const fuel = view.getFloat32(8, true);
+
+      setText('bleLiveLevel', `${level} mm`);
+      setText('bleLiveVolume', `${fuel.toFixed(1)} L`);
+      setText('bleLiveFreq', `${freq} Hz`);
+      setText('bleLiveBatteryTemp', `${battery}% • ${temp}°C`);
+    } else if (parsed.cmd === 0x12) {
+      const status = parsed.payload[0];
+      if (status === 0x00 || status === 0x01) {
+        bleState.isAuthenticated = true;
+        updateBleUI();
+        showToast('Sensor autenticado correctamente.');
+      }
+    }
+  }
+
+  async function connectBleSensor() {
+    if (!navigator.bluetooth) {
+      alert('Web Bluetooth API no está soportada o habilitada en este navegador. Utilice Google Chrome o Microsoft Edge en PC/Android o pulse "Probar Demo" para simular.');
+      return;
+    }
+
+    try {
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [
+          { namePrefix: 'AOOG' },
+          { namePrefix: 'BFLS' },
+          { namePrefix: 'FM' },
+          { namePrefix: 'Fuel' }
+        ],
+        optionalServices: [AoooGProtocol.SERVICE_UUID]
+      });
+
+      bleState.device = device;
+      device.addEventListener('gattserverdisconnected', disconnectBleSensor);
+
+      const server = await device.gatt.connect();
+      bleState.server = server;
+
+      const service = await server.getPrimaryService(AoooGProtocol.SERVICE_UUID);
+      bleState.charWrite = await service.getCharacteristic(AoooGProtocol.CHAR_WRITE_UUID);
+      bleState.charNotify = await service.getCharacteristic(AoooGProtocol.CHAR_NOTIFY_UUID);
+
+      await bleState.charNotify.startNotifications();
+      bleState.charNotify.addEventListener('characteristicvaluechanged', handleBleNotification);
+
+      bleState.isConnected = true;
+      bleState.isSimulated = false;
+      bleState.sensorId = [0x41, 0x4F, 0x4F, 0x47]; // 'AOOG'
+      updateBleUI();
+
+      if (bleState.pollTimer) clearInterval(bleState.pollTimer);
+      bleState.pollTimer = setInterval(async () => {
+        if (bleState.isConnected && bleState.charWrite) {
+          try {
+            const req = AoooGProtocol.buildFrame(bleState.sensorId, 0x14, []);
+            await bleState.charWrite.writeValue(req);
+          } catch (e) {
+            console.warn('Error solicitando telemetría BLE:', e);
+          }
+        }
+      }, 2000);
+
+      showToast(`Conectado a ${device.name || 'Sensor AOOG'}`);
+    } catch (err) {
+      if (err.name !== 'NotFoundError') {
+        alert('Error al conectar por Bluetooth: ' + err.message);
+      }
+    }
+  }
+
+  function disconnectBleSensor() {
+    if (bleState.pollTimer) {
+      clearInterval(bleState.pollTimer);
+      bleState.pollTimer = null;
+    }
+    if (bleState.device && bleState.device.gatt && bleState.device.gatt.connected) {
+      bleState.device.gatt.disconnect();
+    }
+    bleState.device = null;
+    bleState.server = null;
+    bleState.charWrite = null;
+    bleState.charNotify = null;
+    bleState.isConnected = false;
+    bleState.isSimulated = false;
+    bleState.isAuthenticated = false;
+    updateBleUI();
+    showToast('Sensor desconectado.');
+  }
+
+  function simulateBleSensor() {
+    bleState.isConnected = false;
+    bleState.isSimulated = true;
+    bleState.isAuthenticated = true;
+    bleState.sensorId = [0x53, 0x49, 0x4D, 0x31]; // 'SIM1'
+    updateBleUI();
+
+    if (bleState.pollTimer) clearInterval(bleState.pollTimer);
+    let simAngle = 0;
+    bleState.pollTimer = setInterval(() => {
+      if (!bleState.isSimulated) return;
+      simAngle += 0.08;
+      const H = state.calcCache.effH || 370;
+      const simLevel = Math.round((H * 0.6) + Math.sin(simAngle) * (H * 0.15));
+      const simVol = getVolumeAtHeight(simLevel);
+      const simFreq = Math.round(1520 + Math.sin(simAngle) * 38);
+
+      setText('bleLiveLevel', `${simLevel} mm`);
+      setText('bleLiveVolume', `${simVol.toFixed(1)} L`);
+      setText('bleLiveFreq', `${simFreq} Hz`);
+      setText('bleLiveBatteryTemp', `98% • 24.5°C`);
+    }, 1500);
+
+    showToast('Simulador de sensor AOOG BLE iniciado con telemetría en vivo.');
+  }
+
+  async function authenticateBleSensor() {
+    const credInput = document.getElementById('bleCredentialInput');
+    const credStr = (credInput ? credInput.value : '0000000000000000').trim();
+
+    if (bleState.isSimulated) {
+      bleState.isAuthenticated = true;
+      updateBleUI();
+      showToast('Sensor (Demo) autenticado con éxito.');
+      return;
+    }
+
+    if (!bleState.isConnected || !bleState.charWrite) {
+      alert('No hay sensor conectado.');
+      return;
+    }
+
+    const credBytes = new Uint8Array(8);
+    for (let i = 0; i < 8; i++) {
+      const byteHex = credStr.substr(i * 2, 2);
+      credBytes[i] = parseInt(byteHex, 16) || 0;
+    }
+
+    try {
+      const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x12, credBytes);
+      await bleState.charWrite.writeValue(frame);
+      bleState.isAuthenticated = true;
+      updateBleUI();
+      showToast('Credencial enviada al sensor.');
+    } catch (err) {
+      alert('Error al autenticar: ' + err.message);
+    }
+  }
+
+  async function uploadCalibrationTableToBle() {
+    if (!bleState.isConnected && !bleState.isSimulated) {
+      alert('Conecte el sensor Bluetooth antes de transferir la calibración.');
+      return;
+    }
+
+    const rows = computeCalibrationRows(100);
+    const progressCont = document.getElementById('bleProgressContainer');
+    const progressBar = document.getElementById('bleProgressBar');
+    const progressLbl = document.getElementById('bleProgressLabel');
+    const progressPct = document.getElementById('bleProgressPct');
+    const statusLog = document.getElementById('bleStatusLog');
+
+    if (progressCont) progressCont.style.display = 'block';
+
+    const totalBlocks = 10;
+    for (let b = 0; b < totalBlocks; b++) {
+      const startSlot = b * 10;
+      const blockRows = rows.slice(startSlot, startSlot + 10);
+      const payload = new Uint8Array(1 + 80);
+      payload[0] = startSlot;
+      for (let r = 0; r < 10; r++) {
+        const row = blockRows[r] || { volume: 0, level: 0, data: 0 };
+        const rowBytes = AoooGProtocol.rowToBytes(row.volume || row.volumeVal, row.level || row.levelVal, row.data || row.dataVal);
+        payload.set(rowBytes, 1 + r * 8);
+      }
+
+      const pct = Math.round(((b + 1) / totalBlocks) * 100);
+      if (progressLbl) progressLbl.innerText = `Escribiendo bloque ${b + 1}/${totalBlocks} (posiciones ${startSlot + 1}-${startSlot + 10})...`;
+      if (progressBar) progressBar.style.width = pct + '%';
+      if (progressPct) progressPct.innerText = pct + '%';
+
+      if (bleState.isSimulated) {
+        await new Promise(r => setTimeout(r, 120));
+      } else {
+        const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x16, payload);
+        await bleState.charWrite.writeValue(frame);
+        await new Promise(r => setTimeout(r, 60));
+      }
+    }
+
+    if (progressLbl) progressLbl.innerText = 'Fijando modo salida en Litros (0x02)...';
+    if (!bleState.isSimulated && bleState.charWrite) {
+      const modeFrame = AoooGProtocol.buildFrame(bleState.sensorId, 0x19, [0x02]);
+      await bleState.charWrite.writeValue(modeFrame);
+    }
+    await new Promise(r => setTimeout(r, 200));
+
+    if (progressLbl) progressLbl.innerText = '¡Calibración de 100 posiciones transferida con éxito!';
+    if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] 100 registros escritos y modo litros 0x02 activado.`;
+    showToast('¡Tabla de 100 puntos y modo litros transferidos al sensor!');
+  }
+
+  async function setSensorLitersMode() {
+    if (!bleState.isConnected && !bleState.isSimulated) {
+      alert('Conecte el sensor Bluetooth primero.');
+      return;
+    }
+    if (bleState.isSimulated) {
+      showToast('Modo Litros (0x02) fijado en sensor demo.');
+      return;
+    }
+    try {
+      const modeFrame = AoooGProtocol.buildFrame(bleState.sensorId, 0x19, [0x02]);
+      await bleState.charWrite.writeValue(modeFrame);
+      showToast('Modo Litros (0x02) aplicado en el sensor físico.');
+    } catch (e) {
+      alert('Error enviando modo litros: ' + e.message);
+    }
+  }
+
+  async function importCalibrationFile(file) {
+    if (!file) return;
+    try {
+      let importedRows = [];
+      const fileName = file.name.toLowerCase();
+
+      if (fileName.endsWith('.xlsx')) {
+        if (!window.ExcelJS) {
+          alert('Librería ExcelJS no disponible.');
+          return;
+        }
+        const buffer = await file.arrayBuffer();
+        const workbook = new window.ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+        const worksheet = workbook.worksheets[0];
+        if (!worksheet) throw new Error('El archivo Excel no contiene hojas de cálculo.');
+
+        worksheet.eachRow((row, rowNumber) => {
+          if (rowNumber === 1) return;
+          const val1 = row.getCell(1).value;
+          const val2 = row.getCell(2).value;
+          const val3 = row.getCell(3).value;
+
+          const num1 = parseFloat(typeof val1 === 'object' && val1 ? val1.result || val1 : val1);
+          const num2 = parseFloat(typeof val2 === 'object' && val2 ? val2.result || val2 : val2);
+          const num3 = parseFloat(typeof val3 === 'object' && val3 ? val3.result || val3 : val3);
+
+          if (!isNaN(num1) && !isNaN(num2) && !isNaN(num3)) {
+            importedRows.push({
+              data: num1,
+              level: num2,
+              volume: num3
+            });
+          }
+        });
+      } else if (fileName.endsWith('.csv')) {
+        const text = await file.text();
+        const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+        lines.forEach((line, idx) => {
+          if (idx === 0 && /[a-zA-Z]/.test(line)) return;
+          const parts = line.split(/[,;\t]/).map(p => parseFloat(p.trim()));
+          if (parts.length >= 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+            importedRows.push({
+              data: parts[0],
+              level: parts[1],
+              volume: parts[2]
+            });
+          }
+        });
+      }
+
+      if (importedRows.length >= 2) {
+        state.isImported = true;
+        state.importedRows = importedRows;
+        state.tank.height = Math.round(importedRows[importedRows.length - 1].level);
+        state.currentLevelMm = state.tank.height;
+        syncInputsFromState();
+        updateAllUI();
+        showToast(`Se importaron exitosamente ${importedRows.length} registros de calibración.`);
+      } else {
+        alert('No se encontraron suficientes filas válidas en el archivo (se requieren mínimo 2 puntos).');
+      }
+    } catch (err) {
+      alert('Error al importar archivo: ' + err.message);
     }
   }
 
@@ -2435,30 +3022,27 @@
       });
     }
 
-    // Plantillas Rápidas Genéricas (Asumen 2 Cintas)
-    const btnPresetBepo300 = document.getElementById('btnPresetBepo300');
-    if (btnPresetBepo300) {
-      btnPresetBepo300.addEventListener('click', () => {
-        state.tank.type = 'rectangular';
-        state.tank.length = 1100;
-        state.tank.width = 700;
-        state.tank.height = 500;
-        state.tank.thickness = 8.0;
-        state.tank.dimType = 'external';
-        state.tank.hasRecovecos = true;
-        state.tank.texturaLevel = 50;
-        state.tank.r_inf_li = 100; state.tank.r_inf_ld = 100; state.tank.r_inf_af = 100; state.tank.r_inf_ap = 100;
-        state.tank.r_sup_li = 70; state.tank.r_sup_ld = 70; state.tank.r_sup_af = 70; state.tank.r_sup_ap = 70;
-        state.tank.r_vert = 100; state.tank.r_vert_fi = 100; state.tank.r_vert_fd = 100; state.tank.r_vert_pi = 100; state.tank.r_vert_pd = 100;
-        state.tank.recovecoLength = 0;
-        state.tank.recovecoSide = 'bottom_right';
-        state.currentLevelMm = 500;
-        applyTextura();
-        syncInputsFromState();
+    // Controles de Chaflán de Chasis y Presets de Estanques Plásticos
+    const chkRecChasis = document.getElementById('chkRecovecoChasis');
+    if (chkRecChasis) {
+      chkRecChasis.addEventListener('change', (e) => {
+        state.tank.recovecoEnabled = e.target.checked;
         updateAllUI();
       });
     }
 
+    const selRecSide = document.getElementById('recovecoSide');
+    if (selRecSide) {
+      selRecSide.addEventListener('change', (e) => {
+        state.tank.recovecoSide = e.target.value;
+        updateAllUI();
+      });
+    }
+
+    bindInput('recovecoWidth', (v) => { state.tank.recovecoWidth = v; });
+    bindInput('recovecoHeight', (v) => { state.tank.recovecoHeight = v; });
+
+    // Plantillas Rápidas con Medidas y Chaflán Físico Real
     const btnPresetVW150 = document.getElementById('btnPresetVW150');
     if (btnPresetVW150) {
       btnPresetVW150.addEventListener('click', () => {
@@ -2469,39 +3053,130 @@
         state.tank.thickness = 8.0;
         state.tank.dimType = 'external';
         state.tank.hasRecovecos = true;
+        state.tank.recovecoEnabled = true;
+        state.tank.recovecoSide = 'bottom_left';
+        state.tank.recovecoWidth = 190;
+        state.tank.recovecoHeight = 175;
         state.tank.texturaLevel = 50;
         state.tank.r_inf_li = 90; state.tank.r_inf_ld = 90; state.tank.r_inf_af = 90; state.tank.r_inf_ap = 90;
         state.tank.r_sup_li = 60; state.tank.r_sup_ld = 60; state.tank.r_sup_af = 60; state.tank.r_sup_ap = 60;
         state.tank.r_vert = 80; state.tank.r_vert_fi = 80; state.tank.r_vert_fd = 80; state.tank.r_vert_pi = 80; state.tank.r_vert_pd = 80;
-        state.tank.recovecoLength = 0;
-        state.tank.recovecoSide = 'bottom_right';
         state.currentLevelMm = 370;
-        applyTextura();
         syncInputsFromState();
+        updateAllUI();
+        showToast('Preset VW 150L (Bepô) cargado: Capacidad neta ~150 Litros con chaflán de chasis.');
+      });
+    }
+
+    const btnPresetCaren300 = document.getElementById('btnPresetCaren300');
+    if (btnPresetCaren300) {
+      btnPresetCaren300.addEventListener('click', () => {
+        state.tank.type = 'rectangular';
+        state.tank.length = 1050;
+        state.tank.width = 670;
+        state.tank.height = 530;
+        state.tank.thickness = 8.0;
+        state.tank.dimType = 'external';
+        state.tank.hasRecovecos = true;
+        state.tank.recovecoEnabled = true;
+        state.tank.recovecoSide = 'bottom_left';
+        state.tank.recovecoWidth = 220;
+        state.tank.recovecoHeight = 210;
+        state.tank.texturaLevel = 50;
+        state.tank.r_inf_li = 100; state.tank.r_inf_ld = 100; state.tank.r_inf_af = 100; state.tank.r_inf_ap = 100;
+        state.tank.r_sup_li = 80; state.tank.r_sup_ld = 80; state.tank.r_sup_af = 80; state.tank.r_sup_ap = 80;
+        state.tank.r_vert = 100; state.tank.r_vert_fi = 100; state.tank.r_vert_fd = 100; state.tank.r_vert_pi = 100; state.tank.r_vert_pd = 100;
+        state.currentLevelMm = 530;
+        syncInputsFromState();
+        updateAllUI();
+        showToast('Preset Caren 300L cargado: Capacidad neta ~300 Litros con chaflán de chasis.');
+      });
+    }
+
+    const btnPresetBepo300 = document.getElementById('btnPresetBepo300');
+    if (btnPresetBepo300) {
+      btnPresetBepo300.addEventListener('click', () => {
+        state.tank.type = 'rectangular';
+        state.tank.length = 1150;
+        state.tank.width = 650;
+        state.tank.height = 490;
+        state.tank.thickness = 8.0;
+        state.tank.dimType = 'external';
+        state.tank.hasRecovecos = true;
+        state.tank.recovecoEnabled = true;
+        state.tank.recovecoSide = 'bottom_left';
+        state.tank.recovecoWidth = 210;
+        state.tank.recovecoHeight = 195;
+        state.tank.texturaLevel = 50;
+        state.tank.r_inf_li = 100; state.tank.r_inf_ld = 100; state.tank.r_inf_af = 100; state.tank.r_inf_ap = 100;
+        state.tank.r_sup_li = 70; state.tank.r_sup_ld = 70; state.tank.r_sup_af = 70; state.tank.r_sup_ap = 70;
+        state.tank.r_vert = 100; state.tank.r_vert_fi = 100; state.tank.r_vert_fd = 100; state.tank.r_vert_pi = 100; state.tank.r_vert_pd = 100;
+        state.currentLevelMm = 490;
+        syncInputsFromState();
+        updateAllUI();
+        showToast('Preset Bepô 300L cargado: Capacidad neta ~300 Litros con chaflán de chasis.');
+      });
+    }
+
+    // Botones de Conexión BLE y Transferencia
+    const btnBleConnect = document.getElementById('btnBleConnect');
+    if (btnBleConnect) {
+      btnBleConnect.addEventListener('click', () => {
+        const panel = document.getElementById('panelBleSensor');
+        if (panel) {
+          const isHidden = (panel.style.display === 'none' || !panel.style.display);
+          panel.style.display = isHidden ? 'block' : 'none';
+        }
+      });
+    }
+
+    const btnBleScan = document.getElementById('btnBleScan');
+    if (btnBleScan) btnBleScan.addEventListener('click', connectBleSensor);
+
+    const btnBleClose = document.getElementById('btnBleClosePanel');
+    if (btnBleClose) {
+      btnBleClose.addEventListener('click', () => {
+        const panel = document.getElementById('panelBleSensor');
+        if (panel) panel.style.display = 'none';
+      });
+    }
+
+    const btnBleDisconnect = document.getElementById('btnBleDisconnect');
+    if (btnBleDisconnect) btnBleDisconnect.addEventListener('click', disconnectBleSensor);
+
+    const btnBleSimulate = document.getElementById('btnBleSimulate');
+    if (btnBleSimulate) btnBleSimulate.addEventListener('click', simulateBleSensor);
+
+    const btnBleAuth = document.getElementById('btnBleAuth');
+    if (btnBleAuth) btnBleAuth.addEventListener('click', authenticateBleSensor);
+
+    const btnBleUpload = document.getElementById('btnBleUploadTable');
+    if (btnBleUpload) btnBleUpload.addEventListener('click', uploadCalibrationTableToBle);
+
+    const btnTableUpload = document.getElementById('btnTableUploadBle');
+    if (btnTableUpload) btnTableUpload.addEventListener('click', uploadCalibrationTableToBle);
+
+    const btnBleMode = document.getElementById('btnBleSetLitersMode');
+    if (btnBleMode) btnBleMode.addEventListener('click', setSensorLitersMode);
+
+    const btnToggle100 = document.getElementById('btnToggleTable100');
+    if (btnToggle100) {
+      btnToggle100.addEventListener('click', () => {
+        state.tableMode = (state.tableMode === 100) ? 30 : 100;
         updateAllUI();
       });
     }
 
-    const btnPresetGenerico200 = document.getElementById('btnPresetGenerico200');
-    if (btnPresetGenerico200) {
-      btnPresetGenerico200.addEventListener('click', () => {
-        state.tank.type = 'rectangular';
-        state.tank.length = 1000;
-        state.tank.width = 600;
-        state.tank.height = 420;
-        state.tank.thickness = 8.0;
-        state.tank.dimType = 'external';
-        state.tank.hasRecovecos = true;
-        state.tank.texturaLevel = 50;
-        state.tank.r_inf_li = 80; state.tank.r_inf_ld = 80; state.tank.r_inf_af = 80; state.tank.r_inf_ap = 80;
-        state.tank.r_sup_li = 60; state.tank.r_sup_ld = 60; state.tank.r_sup_af = 60; state.tank.r_sup_ap = 60;
-        state.tank.r_vert = 70; state.tank.r_vert_fi = 70; state.tank.r_vert_fd = 70; state.tank.r_vert_pi = 70; state.tank.r_vert_pd = 70;
-        state.tank.recovecoLength = 0;
-        state.tank.recovecoSide = 'bottom_right';
-        state.currentLevelMm = 420;
-        applyTextura();
-        syncInputsFromState();
-        updateAllUI();
+    // Importación Excel / CSV Oficial
+    const btnImportExcel = document.getElementById('btnImportExcel');
+    const fileImport = document.getElementById('fileImportExcel');
+    if (btnImportExcel && fileImport) {
+      btnImportExcel.addEventListener('click', () => fileImport.click());
+      fileImport.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          importCalibrationFile(e.target.files[0]);
+          e.target.value = '';
+        }
       });
     }
 
@@ -2648,19 +3323,20 @@
     setVal('sensorDataMax', state.sensor.dataMax);
     setVal('sensorBottomDead', state.sensor.bottomDeadZone);
 
+    setVal('recovecoWidth', state.tank.recovecoWidth || 190);
+    setVal('recovecoHeight', state.tank.recovecoHeight || 175);
+    const selSide = document.getElementById('recovecoSide');
+    if (selSide) selSide.value = state.tank.recovecoSide || 'bottom_left';
+    const chkRec = document.getElementById('chkRecovecoChasis');
+    if (chkRec) chkRec.checked = state.tank.recovecoEnabled !== false;
+
     syncRecovecosUI();
   }
 
   function applyTextura() {
     const lvl = Number(state.tank.texturaLevel) || 50;
-    // Factor de textura/muesca: en 50 = 1.0, en 10 = 0.5, en 90 = 1.5
     const f = 0.5 + (lvl - 10) * (1.0 / 80);
-    const eff = getEffectiveDimensions();
-    const W = eff.W;
-    const H = eff.H;
 
-    state.tank.recovecoWidth = Math.round(W * 0.28 * f);
-    state.tank.recovecoHeight = Math.round(H * 0.36 * f);
     state.tank.cinchasCount = 2; // Asumiendo siempre 2 cintas estándar
     state.tank.cinchasWidth = 70;
     state.tank.cinchasDepth = Math.round(25 * f);
