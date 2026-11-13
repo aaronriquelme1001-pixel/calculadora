@@ -2204,27 +2204,41 @@
       const strapMat = new THREE.MeshStandardMaterial({
         color: 0x0f172a, // Acero / caucho oscuro
         metalness: 0.8,
-        roughness: 0.3
+        roughness: 0.35
       });
-      const strapWidth = 46;
-      const strapThick = 4;
+      const strapWidth = 42;
+      const strapThick = 4.5;
       const zOffset = L * 0.26;
 
+      // Forma continua que abraza los radios del estanque sin sobresalir
+      const rI = Math.min(W / 2 - 2, H / 2 - 2, (rInf.li + rInf.ld) / 2 || 60);
+      const rS = Math.min(W / 2 - 2, H / 2 - 2, (rSup.li + rSup.ld) / 2 || 50);
+
+      function addRoundedRect(path, x, y, width, height, ri, rs) {
+        path.moveTo(x - width / 2 + ri, y);
+        path.lineTo(x + width / 2 - ri, y);
+        path.absarc(x + width / 2 - ri, y + ri, ri, -Math.PI / 2, 0, false);
+        path.lineTo(x + width / 2, y + height - rs);
+        path.absarc(x + width / 2 - rs, y + height - rs, rs, 0, Math.PI / 2, false);
+        path.lineTo(x - width / 2 + rs, y + height);
+        path.absarc(x - width / 2 + rs, y + height - rs, rs, Math.PI / 2, Math.PI, false);
+        path.lineTo(x - width / 2, y + ri);
+        path.absarc(x - width / 2 + ri, y + ri, ri, Math.PI, Math.PI * 1.5, false);
+      }
+
+      const strapShape = new THREE.Shape();
+      addRoundedRect(strapShape, 0, -strapThick, W + strapThick * 2, H + strapThick * 2, rI + strapThick, rS + strapThick);
+      const strapHole = new THREE.Path();
+      addRoundedRect(strapHole, 0, 0, W, H, rI, rS);
+      strapShape.holes.push(strapHole);
+
+      const strapGeom = new THREE.ExtrudeGeometry(strapShape, { depth: strapWidth, bevelEnabled: false, curveSegments: 16 });
+      strapGeom.translate(0, 0, -strapWidth / 2);
+
       [-zOffset, zOffset].forEach(zPos => {
-        // Banda superior en el canal
-        const topBar = new THREE.Mesh(new THREE.BoxGeometry(W + strapThick, strapThick, strapWidth), strapMat);
-        topBar.position.set(0, H + strapThick / 2, zPos);
-        strapsGroup.add(topBar);
-
-        // Banda lateral izquierda
-        const leftBar = new THREE.Mesh(new THREE.BoxGeometry(strapThick, H + strapThick, strapWidth), strapMat);
-        leftBar.position.set(-W / 2 - strapThick / 2, H / 2, zPos);
-        strapsGroup.add(leftBar);
-
-        // Banda lateral derecha
-        const rightBar = new THREE.Mesh(new THREE.BoxGeometry(strapThick, H + strapThick, strapWidth), strapMat);
-        rightBar.position.set(W / 2 + strapThick / 2, H / 2, zPos);
-        strapsGroup.add(rightBar);
+        const mesh = new THREE.Mesh(strapGeom, strapMat);
+        mesh.position.set(0, 0, zPos);
+        strapsGroup.add(mesh);
       });
 
       // Tapa y cuello de boca de carga rotomoldeada en el nicho frontal (como en foto Bepô)
