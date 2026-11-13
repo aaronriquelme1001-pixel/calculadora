@@ -2970,6 +2970,7 @@
           if (data.battery !== null) bleState.battery = data.battery;
           if (data.temperature !== null) bleState.temperature = data.temperature;
           if (data.frequency !== null) bleState.currentFreq = data.frequency;
+          if (data.outputMode !== undefined && data.outputMode !== null) bleState.outputMode = data.outputMode;
           updateBleUI();
           finish(data.id);
         }
