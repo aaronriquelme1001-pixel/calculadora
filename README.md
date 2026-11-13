@@ -43,7 +43,11 @@ La tabla de referencia SHVS36 contiene 29 registros incluyendo origen y termina 
 
 ## Consola BLE web
 
-La consola web valida el ID del sensor desde los anuncios BLE. Si el navegador no ofrece `watchAdvertisements()` o no recibe un anuncio AOOOG/Universal válido, la conexión se detiene de forma segura; no se envían comandos con un ID inventado.
+La búsqueda web usa `requestDevice({ acceptAllDevices: true })`: el selector del navegador muestra dispositivos BLE cercanos sin depender del nombre anunciado, del UUID de servicio en el anuncio ni de los manufacturer data. El usuario selecciona el dispositivo; el software no puede iniciar un escaneo silencioso ni enumerar dispositivos fuera del selector del navegador.
+
+Después de seleccionar, se conecta a GATT y consulta el servicio FFF0, característica FFF1 (escritura) y FFF2 (notificaciones). `watchAdvertisements()` se usa solo como fuente opcional para extraer el ID AOOOG/Universal; su ausencia no impide descubrir ni conectar GATT. También se acepta una trama espontánea válida recibida por FFF2. Si ninguna fuente entrega el ID, se solicita el ID real de seis caracteres hexadecimales de la etiqueta/documentación. No hay valor de ejemplo predeterminado. Antes de habilitar operaciones, se valida el ID mediante la lectura de solo lectura 0x1A y se exige un modo válido (0, 1 o 2). Un ID incorrecto provoca desconexión; no se ejecutan escrituras.
+
+Si el selector no muestra dispositivos, revisar primero navegador compatible, HTTPS, radio/adaptador BLE, permisos del sistema operativo, sensor encendido y anunciando, y que la aplicación oficial no mantenga ocupada la conexión. Ver `docs/WEB_BLUETOOTH_DIAGNOSTICS.md`.
 
 La escritura de tabla requiere autenticación, respaldo de los diez bloques, ACK por bloque, lectura de retorno byte a byte y verificación del modo de salida. Ante un fallo intenta restaurar tabla y modo originales. La API Web Bluetooth no expone una lectura fiable del MTU negociado; si el navegador/dispositivo no acepta el paquete de bloque, la operación falla y activa la ruta de restauración. Para la validación BLE física completa se recomienda la app Flutter.
 
@@ -54,6 +58,7 @@ El modo DEMO no se presenta como conexión ni escritura física. La altura de so
 Web:
 ```bash
 node --check app.js
+node --test tests/*.test.cjs
 ```
 
 Android:
