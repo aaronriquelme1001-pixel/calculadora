@@ -178,6 +178,10 @@ class AoooGManager {
       await Future.delayed(const Duration(milliseconds: 100));
       waitLimit++;
     }
+    if (_commandInFlight) {
+      debugPrint('[BLE TX] Comando omitido: existe otra solicitud sin respuesta.');
+      return null;
+    }
 
     _commandInFlight = true;
     final completer = Completer<List<int>>();
