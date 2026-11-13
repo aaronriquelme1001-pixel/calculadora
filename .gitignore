@@ -22,3 +22,9 @@ fuel_master_pro/.flutter-plugins-dependencies
 *.aab
 .gradle/
 local.properties
+
+# Archivos de referencia oficiales del fabricante AoooG
+!docs/reference/*
+!docs/reference/*.apk
+!docs/reference/*.zip
+!docs/reference/*.pdf
