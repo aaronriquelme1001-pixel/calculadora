@@ -11,6 +11,8 @@
   // ESTADO GLOBAL
   const state = {
     viewMode: 'plane-transverse', // 'plane-transverse', 'plane-longitudinal', 'view-3d'
+    view3DShading: 'solid', // 'solid' (plástico rotomoldeado real) o 'xray' (rayos x para ver diesel y sonda)
+    show3DWireframe: false, // malla técnica desactivada por defecto para acabado realista
 
     vehicle: {
       client: 'Transportes Vikar S.A.',
@@ -1988,7 +1990,7 @@
   // ==========================================================================
 
   // ==========================================================================
-  // 5. VISOR 3D REAL CON THREE.JS (INSPECCIÓN PURA, SIN EDICIÓN DE FORMAS)
+  // 5. VISOR 3D REAL CON THREE.JS (TEXTURAS ROTOMOLDEADAS REALES Y 2 CINTAS)
   // ==========================================================================
   let threeScene = null;
   let threeCamera = null;
@@ -2001,6 +2003,43 @@
   let threeStrapsMesh = null;
   let threeGrid = null;
   let threeAnimFrame = null;
+  let cachedRotomoldTexture = null;
+
+  // Generador de textura procedural para plástico rotomoldeado PEHD (piel de naranja / microporos)
+  function getRotomoldTexture() {
+    if (cachedRotomoldTexture) return cachedRotomoldTexture;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    const imgData = ctx.createImageData(512, 512);
+    const data = imgData.data;
+
+    for (let y = 0; y < 512; y++) {
+      for (let x = 0; x < 512; x++) {
+        const idx = (y * 512 + x) * 4;
+        // Grano fino aleatorio de polietileno
+        const nGrain = (Math.random() - 0.5) * 40;
+        // Ondulación estocástica de matriz de molde rotacional
+        const nCell = (Math.sin(x * 0.22) * Math.cos(y * 0.22) + Math.cos(x * 0.11 + y * 0.14)) * 14;
+        const nWave = Math.sin(x * 0.035) * Math.sin(y * 0.035) * 8;
+
+        const val = Math.max(0, Math.min(255, Math.round(128 + nGrain + nCell + nWave)));
+        data[idx] = val;
+        data[idx + 1] = val;
+        data[idx + 2] = val;
+        data[idx + 3] = 255;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    cachedRotomoldTexture = new THREE.CanvasTexture(canvas);
+    cachedRotomoldTexture.wrapS = THREE.RepeatWrapping;
+    cachedRotomoldTexture.wrapT = THREE.RepeatWrapping;
+    cachedRotomoldTexture.repeat.set(5, 5);
+    return cachedRotomoldTexture;
+  }
 
   function initThreeViewer() {
     const container = document.getElementById('threeContainer');
@@ -2009,18 +2048,20 @@
     const width = container.clientWidth || 600;
     const height = 420;
 
-    // Escena profesional con fondo oscuro
+    // Escena profesional con fondo grafito oscuro de estudio industrial
     threeScene = new THREE.Scene();
-    threeScene.background = new THREE.Color(0x0f172a);
+    threeScene.background = new THREE.Color(0x0b0f17);
 
     // Cámara de perspectiva
     threeCamera = new THREE.PerspectiveCamera(45, width / height, 1, 10000);
     threeCamera.position.set(900, 700, 1100);
 
-    // Renderer WebGL
+    // Renderer WebGL con antialiasing
     threeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     threeRenderer.setSize(width, height);
     threeRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    threeRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    threeRenderer.toneMappingExposure = 1.05;
     container.innerHTML = '';
     container.appendChild(threeRenderer.domElement);
 
@@ -2035,17 +2076,29 @@
       threeControls.maxDistance = 8000;
     }
 
-    // Luces
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+    // Iluminación industrial de estudio: luces neutras y sobrias sin tintes fluorescentes
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
     threeScene.add(ambientLight);
 
-    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.85);
-    dirLight1.position.set(800, 1500, 1000);
-    threeScene.add(dirLight1);
+    // Luz cenital principal (destaca curvas y canales de las 2 cinchas)
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.25);
+    keyLight.position.set(1200, 1800, 1400);
+    threeScene.add(keyLight);
 
-    const dirLight2 = new THREE.DirectionalLight(0x38bdf8, 0.4);
-    dirLight2.position.set(-800, -400, -800);
-    threeScene.add(dirLight2);
+    // Luz de relleno suave neutra
+    const fillLight = new THREE.DirectionalLight(0x94a3b8, 0.45);
+    fillLight.position.set(-1200, 800, -1000);
+    threeScene.add(fillLight);
+
+    // Luz de contorno superior para destacar aristas redondeadas
+    const rimLight = new THREE.DirectionalLight(0xe2e8f0, 0.35);
+    rimLight.position.set(0, 1200, -1400);
+    threeScene.add(rimLight);
+
+    // Luz inferior suave para sombras de contacto
+    const bottomLight = new THREE.DirectionalLight(0x1e293b, 0.25);
+    bottomLight.position.set(0, -1000, 0);
+    threeScene.add(bottomLight);
 
     function animate() {
       threeAnimFrame = requestAnimationFrame(animate);
@@ -2129,7 +2182,7 @@
       pd: Math.min(Number(state.tank.r_vert_pd) || rvGlobal, W / 2 - 1, L / 2 - 1)
     };
 
-    function create3DTankGeometry(w, h, l, rI, rS, rV, seg = 28, isLiquid = false, liqH = h) {
+    function create3DTankGeometry(w, h, l, rI, rS, rV, seg = 44, isLiquid = false, liqH = h) {
       const geom = new THREE.BoxGeometry(w, h, l, seg, seg, seg);
       const pos = geom.attributes.position;
       const v = new THREE.Vector3();
@@ -2198,15 +2251,15 @@
           }
         }
 
-        // Texturas y hendiduras estructurales de estanque plástico rotomoldeado (estilo Bepô / Caren)
+        // Texturas y hendiduras estructurales de estanque plástico rotomoldeado (estilo Bepô / Caren / Volvo / Scania)
         if (state.tank.hasRecovecos) {
           const depthScale = (Number(state.tank.texturaLevel) || 50) / 50;
 
-          // 1. Canales para las 2 Cinchas / Zunchos (hendiduras en Z en las posiciones de las correas)
+          // 1. Canales para las 2 Cinchas / Zunchos (hendiduras continuas perimetrales)
           const z1 = -l * 0.26;
           const z2 = l * 0.26;
-          const strapHalfW = 42;
-          const strapDepth = (Number(state.tank.cinchasDepth) || 22) * depthScale;
+          const strapHalfW = 46;
+          const strapDepth = (Number(state.tank.cinchasDepth) || 24) * depthScale;
 
           const distZ1 = Math.abs(v.z - z1);
           const distZ2 = Math.abs(v.z - z2);
@@ -2217,46 +2270,58 @@
             const indent = factor * factor * strapDepth;
 
             // Indentar paredes frontal y trasera
-            if (v.x > w * 0.20) {
+            if (v.x > w * 0.18) {
               v.x = Math.max(0, v.x - indent);
-            } else if (v.x < -w * 0.20) {
+            } else if (v.x < -w * 0.18) {
               v.x = Math.min(0, v.x + indent);
             }
 
             // Indentar techo y piso suavemente
-            if (v.y > h * 0.20) {
+            if (v.y > h * 0.18) {
               v.y = Math.max(0, v.y - indent * 0.55);
-            } else if (v.y < -h * 0.20) {
+            } else if (v.y < -h * 0.18) {
               v.y = Math.min(0, v.y + indent * 0.55);
             }
           }
 
-          // 2. Nicho / Alojamiento de Boca de Carga (Centro frontal superior)
-          const isFrontWall = v.x > w * 0.28;
-          const isTopHalf = v.y > h * 0.15;
+          // 2. Nicho / Alojamiento de Boca de Carga (Centro-frontal superior, como en foto real)
+          const isFrontWall = v.x > w * 0.22;
+          const isTopRoof = v.y > h * 0.18;
           const isCenterZ = Math.abs(v.z) < (l * 0.18);
 
-          if (isFrontWall && isTopHalf && isCenterZ) {
+          if (isFrontWall && isTopRoof && isCenterZ) {
             const zNorm = Math.abs(v.z) / (l * 0.18);
-            const yNorm = (v.y - h * 0.15) / (h * 0.35);
-            const neckIndent = (1 - zNorm) * Math.min(1, yNorm) * 26 * depthScale;
+            const yNorm = Math.max(0, (v.y - h * 0.18) / (h * 0.32));
+            const neckIndent = (1 - zNorm) * Math.min(1, yNorm) * 28 * depthScale;
             v.x = Math.max(0, v.x - neckIndent);
-          }
 
-          // 3. Nervadura horizontal de refuerzo (a media altura)
-          const isWallX = Math.abs(v.x) > w * 0.35;
-          if (isWallX) {
-            const yDistMid = Math.abs(v.y);
-            const ribSpan = h * 0.14;
-            if (yDistMid < ribSpan) {
-              const ribFactor = Math.cos((yDistMid / ribSpan) * (Math.PI / 2));
-              const ribIndent = ribFactor * ribFactor * 9 * depthScale;
-              if (v.x > 0) v.x -= ribIndent;
-              else v.x += ribIndent;
+            // Depresión suave en la cara superior
+            if (v.y > h * 0.32) {
+              v.y = Math.max(0, v.y - (1 - zNorm) * 18 * depthScale);
             }
           }
 
-          // 4. Chaflán / Bisel Inferior de Chasis (Corte diagonal para despeje de larguero de camión, idéntico a Imagen 2)
+          // 3. Paneles estructurales y nervaduras de refuerzo frontales (idénticas a Imagen 2)
+          if (v.x > w * 0.30) {
+            // Panel central rehundido entre las 2 cinchas
+            if (Math.abs(v.z) < l * 0.18 && v.y > -h * 0.32 && v.y < h * 0.10) {
+              const pz = Math.cos((Math.abs(v.z) / (l * 0.18)) * (Math.PI / 2));
+              const py = Math.cos(((v.y + h * 0.11) / (h * 0.21)) * (Math.PI / 2));
+              const centerIndent = pz * py * 14 * depthScale;
+              v.x = Math.max(0, v.x - centerIndent);
+            }
+
+            // Nervadura horizontal de rigidez a media altura
+            const yDistMid = Math.abs(v.y);
+            const ribSpan = h * 0.12;
+            if (yDistMid < ribSpan) {
+              const ribFactor = Math.cos((yDistMid / ribSpan) * (Math.PI / 2));
+              const ribIndent = ribFactor * ribFactor * 8 * depthScale;
+              v.x = Math.max(0, v.x - ribIndent);
+            }
+          }
+
+          // 4. Chaflán / Bisel Inferior de Chasis (Corte diagonal para despeje de larguero de camión)
           if (state.tank.recovecoEnabled !== false) {
             const recW = Math.min(w * 0.75, Math.max(0, Number(state.tank.recovecoWidth) || 0));
             const recH = Math.min(H * 0.85, Math.max(0, Number(state.tank.recovecoHeight) || 0));
@@ -2293,40 +2358,99 @@
     }
 
     const isPlastic = Boolean(state.tank.hasRecovecos);
-    const tankGeom = create3DTankGeometry(W, H, L, rInf, rSup, rVerts, 36);
-    const tankMat = new THREE.MeshPhysicalMaterial({
-      color: isPlastic ? 0x232931 : 0x94a3b8, // Negro antracita PEHD para plástico rotomoldeado
-      metalness: isPlastic ? 0.08 : 0.5,
-      roughness: isPlastic ? 0.65 : 0.2,
-      transmission: isPlastic ? 0.30 : 0.55,
-      transparent: true,
-      opacity: isPlastic ? 0.88 : 0.38,
-      depthWrite: false,
-      side: THREE.DoubleSide
-    });
+    const rotomoldTex = getRotomoldTexture();
+    const depthScale = (Number(state.tank.texturaLevel) || 50) / 50;
+
+    // Escala del relieve bump según slider de textura: 10 (Menos) -> 0.35, 50 (Normal) -> 0.95, 90 (Más) -> 1.75
+    const plasticBumpScale = (0.35 + ((Number(state.tank.texturaLevel) || 50) - 10) * (1.4 / 80));
+    const isSolid = state.view3DShading !== 'xray';
+
+    const tankGeom = create3DTankGeometry(W, H, L, rInf, rSup, rVerts, 44);
+    let tankMat;
+
+    if (isPlastic) {
+      if (isSolid) {
+        // MODO REALISTA SÓLIDO (Idéntico a foto real de estanque rotomoldeado PEHD negro)
+        tankMat = new THREE.MeshPhysicalMaterial({
+          color: 0x1f2125, // Negro antracita / grafito PEHD
+          metalness: 0.04,
+          roughness: 0.74,
+          bumpMap: rotomoldTex,
+          bumpScale: plasticBumpScale,
+          roughnessMap: rotomoldTex,
+          clearcoat: 0.14,
+          clearcoatRoughness: 0.55,
+          transparent: false,
+          opacity: 1.0,
+          depthWrite: true,
+          side: THREE.DoubleSide
+        });
+      } else {
+        // MODO RAYOS X (Permite inspeccionar diesel ámbar y sonda AoooG interior)
+        tankMat = new THREE.MeshPhysicalMaterial({
+          color: 0x1e293b,
+          metalness: 0.1,
+          roughness: 0.35,
+          bumpMap: rotomoldTex,
+          bumpScale: plasticBumpScale * 0.35,
+          transparent: true,
+          opacity: 0.40,
+          depthWrite: false,
+          side: THREE.DoubleSide
+        });
+      }
+    } else {
+      // Estanque metálico estándar (aluminio / acero pulido)
+      if (isSolid) {
+        tankMat = new THREE.MeshStandardMaterial({
+          color: 0x94a3b8,
+          metalness: 0.75,
+          roughness: 0.25,
+          transparent: false,
+          opacity: 1.0,
+          depthWrite: true,
+          side: THREE.DoubleSide
+        });
+      } else {
+        tankMat = new THREE.MeshPhysicalMaterial({
+          color: 0x64748b,
+          metalness: 0.5,
+          roughness: 0.2,
+          transparent: true,
+          opacity: 0.38,
+          depthWrite: false,
+          side: THREE.DoubleSide
+        });
+      }
+    }
+
     threeTankMesh = new THREE.Mesh(tankGeom, tankMat);
     threeScene.add(threeTankMesh);
 
-    const edgesGeom = new THREE.EdgesGeometry(tankGeom, 8);
-    const edgesMat = new THREE.LineBasicMaterial({
-      color: isPlastic ? 0x0284c7 : 0x38bdf8,
-      linewidth: 1.5,
-      transparent: true,
-      opacity: isPlastic ? 0.35 : 0.85
-    });
-    threeTankEdges = new THREE.LineSegments(edgesGeom, edgesMat);
-    threeScene.add(threeTankEdges);
+    // Malla de alambre (Wireframe): NO SE MUESTRA por defecto en modo realista
+    // Sólo si el usuario activa explícitamente state.show3DWireframe, y en color grafito sobrio (no fluor)
+    if (state.show3DWireframe) {
+      const edgesGeom = new THREE.EdgesGeometry(tankGeom, 35);
+      const edgesMat = new THREE.LineBasicMaterial({
+        color: 0x475569, // Grafito oscuro sobrio
+        linewidth: 1.0,
+        transparent: true,
+        opacity: 0.45
+      });
+      threeTankEdges = new THREE.LineSegments(edgesGeom, edgesMat);
+      threeScene.add(threeTankEdges);
+    }
 
-    // Líquido Diésel Ámbar
+    // Líquido Diésel Ámbar (se renderiza en modo Rayos X o en estanque metálico)
     const curLevel = Math.max(0, Math.min(H, state.currentLevelMm));
-    if (curLevel > 1) {
-      const liqGeom = create3DTankGeometry(W - 2, curLevel, L - 2, rInf, rSup, rVerts, 28, true, curLevel);
+    if (curLevel > 1 && (!isSolid || !isPlastic)) {
+      const liqGeom = create3DTankGeometry(W - 4, curLevel, L - 4, rInf, rSup, rVerts, 32, true, curLevel);
       const liqMat = new THREE.MeshStandardMaterial({
         color: 0xd97706,
         roughness: 0.15,
-        metalness: 0.15,
+        metalness: 0.12,
         transparent: true,
-        opacity: 0.82,
+        opacity: 0.85,
         side: THREE.DoubleSide
       });
       threeLiquidMesh = new THREE.Mesh(liqGeom, liqMat);
@@ -2335,12 +2459,16 @@
 
     // Sonda y sensor AoooG
     const probeGroup = new THREE.Group();
-    const rodGeom = new THREE.CylinderGeometry(3, 3, H + 10, 16);
-    const rodMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.1 });
-    const rodMesh = new THREE.Mesh(rodGeom, rodMat);
-    rodMesh.position.set(0, H / 2, 0);
-    probeGroup.add(rodMesh);
+    // La varilla interna sólo se renderiza cuando es visible (Rayos X o corte)
+    if (!isSolid || !isPlastic) {
+      const rodGeom = new THREE.CylinderGeometry(3, 3, H + 10, 16);
+      const rodMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.1 });
+      const rodMesh = new THREE.Mesh(rodGeom, rodMat);
+      rodMesh.position.set(0, H / 2, 0);
+      probeGroup.add(rodMesh);
+    }
 
+    // Cabezal exterior del sensor (siempre visible sobre el techo del estanque)
     const headGeom = new THREE.CylinderGeometry(14, 14, 28, 24);
     const headMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8, roughness: 0.2 });
     const headMesh = new THREE.Mesh(headGeom, headMat);
@@ -2361,11 +2489,11 @@
     if (state.tank.hasRecovecos) {
       const strapsGroup = new THREE.Group();
       const strapMat = new THREE.MeshStandardMaterial({
-        color: 0x0f172a, // Acero / caucho oscuro
-        metalness: 0.8,
-        roughness: 0.35
+        color: 0x181a1d, // Acero negro satinado
+        metalness: 0.85,
+        roughness: 0.32
       });
-      const strapWidth = 42;
+      const strapWidth = 46;
       const strapThick = 4.5;
       const zOffset = L * 0.26;
 
@@ -2402,20 +2530,31 @@
 
       // Tapa y cuello de boca de carga rotomoldeada en el nicho frontal (como en foto Bepô)
       const capGroup = new THREE.Group();
-      const capMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7, roughness: 0.3 });
-      const neckMesh = new THREE.Mesh(new THREE.CylinderGeometry(18, 20, 22, 24), capMat);
-      neckMesh.rotation.z = Math.PI * 0.12;
-      neckMesh.position.set(W / 2 - 18, H - 2, 0);
+      const capMat = new THREE.MeshStandardMaterial({
+        color: 0x181a1d,
+        metalness: 0.1,
+        roughness: 0.65,
+        bumpMap: rotomoldTex,
+        bumpScale: 0.5
+      });
+      const neckMesh = new THREE.Mesh(new THREE.CylinderGeometry(18, 22, 24, 24), capMat);
+      neckMesh.rotation.z = Math.PI * 0.10;
+      neckMesh.position.set(W / 2 - 20, H - 2, 0);
       capGroup.add(neckMesh);
 
-      const capMesh = new THREE.Mesh(new THREE.CylinderGeometry(24, 24, 10, 24), capMat);
-      capMesh.rotation.z = Math.PI * 0.12;
-      capMesh.position.set(W / 2 - 15, H + 9, 0);
+      const capMesh = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 12, 24), capMat);
+      capMesh.rotation.z = Math.PI * 0.10;
+      capMesh.position.set(W / 2 - 17, H + 10, 0);
       capGroup.add(capMesh);
+
+      const gripMesh = new THREE.Mesh(new THREE.BoxGeometry(32, 6, 10), capMat);
+      gripMesh.rotation.z = Math.PI * 0.10;
+      gripMesh.position.set(W / 2 - 17, H + 16, 0);
+      capGroup.add(gripMesh);
 
       strapsGroup.add(capGroup);
 
-      // Soportes / Patas de Chasis y Punto Luminoso (idénticos a Imagen 2)
+      // Soportes / Patas de Chasis (para montaje de larguero)
       if (state.tank.recovecoEnabled !== false) {
         const recW = Math.min(W * 0.75, Math.max(0, Number(state.tank.recovecoWidth) || 0));
         const recH = Math.min(H * 0.85, Math.max(0, Number(state.tank.recovecoHeight) || 0));
@@ -2423,30 +2562,22 @@
         const isLeft = state.tank.recovecoSide !== 'bottom_right';
 
         const bracketMat = new THREE.MeshStandardMaterial({
-          color: 0x0f172a, // Acero negro chasis
-          metalness: 0.85,
-          roughness: 0.25
+          color: 0x181a1d, // Acero negro chasis
+          metalness: 0.8,
+          roughness: 0.35
         });
 
-        const bW = 16;
-        const bD = 32;
+        const bW = 18;
+        const bD = 36;
         const bH = recH;
         const bGeom = new THREE.BoxGeometry(bW, bH, bD);
-        const posX = isLeft ? (-W / 2 + stepW / 2 + 8) : (W / 2 - stepW / 2 - 8);
+        const posX = isLeft ? (-W / 2 + stepW / 2 + 10) : (W / 2 - stepW / 2 - 10);
 
-        [-L * 0.25, L * 0.25].forEach(zPos => {
+        [-L * 0.26, L * 0.26].forEach(zPos => {
           const mesh = new THREE.Mesh(bGeom, bracketMat);
           mesh.position.set(posX, bH / 2, zPos);
           strapsGroup.add(mesh);
         });
-
-        // Punto luminoso de referencia en esquina inferior (como en Imagen 2)
-        const markerGeom = new THREE.SphereGeometry(6, 16, 16);
-        const markerMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
-        const markerMesh = new THREE.Mesh(markerGeom, markerMat);
-        const markerX = isLeft ? (W / 2 - 20) : (-W / 2 + 20);
-        markerMesh.position.set(markerX, 10, L / 2 - 20);
-        strapsGroup.add(markerMesh);
       }
 
       threeStrapsMesh = strapsGroup;
@@ -3092,7 +3223,7 @@
       state.viewMode = mode;
       [btnTransverse, btnLongitudinal, btn3D].forEach(b => b && b.classList.remove('active'));
 
-      const threeCont = document.getElementById('threeContainer');
+      const threeCont = document.getElementById('threeContainerWrapper') || document.getElementById('threeContainer');
 
       if (mode === 'plane-transverse') {
         if (btnTransverse) btnTransverse.classList.add('active');
@@ -3115,8 +3246,65 @@
         if (threeCont) threeCont.style.display = 'block';
         initThreeViewer();
         onThreeResize();
+        sync3DToolbarUI();
         updateThreeTank();
       }
+    }
+
+    const btnSolid = document.getElementById('btn3DModeSolid');
+    const btnXRay = document.getElementById('btn3DModeXRay');
+    const btnWire = document.getElementById('btn3DModeWire');
+
+    function sync3DToolbarUI() {
+      if (!btnSolid || !btnXRay) return;
+      if (state.view3DShading === 'xray') {
+        btnSolid.style.background = 'transparent';
+        btnSolid.style.color = '#94a3b8';
+        btnSolid.style.border = '1px solid #475569';
+        btnXRay.style.background = '#0284c7';
+        btnXRay.style.color = '#ffffff';
+        btnXRay.style.border = 'none';
+      } else {
+        btnSolid.style.background = '#0284c7';
+        btnSolid.style.color = '#ffffff';
+        btnSolid.style.border = 'none';
+        btnXRay.style.background = 'transparent';
+        btnXRay.style.color = '#94a3b8';
+        btnXRay.style.border = '1px solid #475569';
+      }
+      if (btnWire) {
+        if (state.show3DWireframe) {
+          btnWire.style.background = '#334155';
+          btnWire.style.color = '#38bdf8';
+          btnWire.style.borderColor = '#0284c7';
+        } else {
+          btnWire.style.background = 'transparent';
+          btnWire.style.color = '#64748b';
+          btnWire.style.borderColor = '#334155';
+        }
+      }
+    }
+
+    if (btnSolid) {
+      btnSolid.addEventListener('click', () => {
+        state.view3DShading = 'solid';
+        sync3DToolbarUI();
+        updateThreeTank();
+      });
+    }
+    if (btnXRay) {
+      btnXRay.addEventListener('click', () => {
+        state.view3DShading = 'xray';
+        sync3DToolbarUI();
+        updateThreeTank();
+      });
+    }
+    if (btnWire) {
+      btnWire.addEventListener('click', () => {
+        state.show3DWireframe = !state.show3DWireframe;
+        sync3DToolbarUI();
+        updateThreeTank();
+      });
     }
 
     if (btnTransverse) btnTransverse.addEventListener('click', () => setActiveView('plane-transverse'));
