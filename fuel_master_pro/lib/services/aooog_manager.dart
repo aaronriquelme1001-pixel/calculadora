@@ -266,6 +266,7 @@ class AoooGManager {
         response.length != 20) return null;
     final parsed = AoooGProtocol.parseParameters(response.sublist(6, 19));
     if (parsed == null) return null;
+    currentOutputMode = parsed['outputMode'] as int;
     return {
       'broadcastInterval': (parsed['broadcastInterval'] as int).toDouble(),
       'continueAfterRestart': (parsed['continueAfterRestart'] as bool) ? 1.0 : 0.0,
