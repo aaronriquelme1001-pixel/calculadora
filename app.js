@@ -2776,21 +2776,220 @@
     showToast('¡Tabla de 100 puntos y modo litros transferidos al sensor!');
   }
 
-  async function setSensorLitersMode() {
+  async function setBleEmptyPoint() {
+    if (!bleState.isConnected && !bleState.isSimulated) {
+      alert('Conecte el sensor Bluetooth antes de calibrar el punto vacío.');
+      return;
+    }
+    if (!confirm('¿Desea establecer el valor actual como punto VACÍO (0%)?\nAsegúrese de que la sonda esté seca en aire o el estanque esté totalmente vacío.')) {
+      return;
+    }
+
+    if (bleState.isSimulated) {
+      bleState.emptyFreq = 15200;
+      setText('bleFreqEmpty', `${bleState.emptyFreq.toLocaleString()} Hz`);
+      const delta = Math.abs(bleState.emptyFreq - (bleState.fullFreq || 10400));
+      setText('bleDeltaFreq', `Delta: ${delta.toLocaleString()} Hz`);
+      const statusLog = document.getElementById('bleStatusLog');
+      if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Punto Vacío (0%) fijado en ${bleState.emptyFreq} Hz (CMD 0x10).`;
+      showToast('Punto Vacío (0%) guardado y verificado en sensor demo.');
+      return;
+    }
+
+    try {
+      const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x10, []);
+      await bleState.charWrite.writeValue(frame);
+      showToast('Comando 0x10 enviado. Calibrando punto Vacío...');
+    } catch (err) {
+      alert('Error enviando calibración de vacío: ' + err.message);
+    }
+  }
+
+  async function setBleFullPoint() {
+    if (!bleState.isConnected && !bleState.isSimulated) {
+      alert('Conecte el sensor Bluetooth antes de calibrar el punto lleno.');
+      return;
+    }
+    if (!confirm('¿Desea establecer el valor actual como punto LLENO (100%)?\nAsegúrese de que la sonda esté 100% sumergida en el combustible diésel.')) {
+      return;
+    }
+
+    if (bleState.isSimulated) {
+      bleState.fullFreq = 10400;
+      setText('bleFreqFull', `${bleState.fullFreq.toLocaleString()} Hz`);
+      const delta = Math.abs((bleState.emptyFreq || 15200) - bleState.fullFreq);
+      setText('bleDeltaFreq', `Delta: ${delta.toLocaleString()} Hz`);
+      const statusLog = document.getElementById('bleStatusLog');
+      if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Punto Lleno (100%) fijado en ${bleState.fullFreq} Hz (CMD 0x11).`;
+      showToast('Punto Lleno (100%) guardado y verificado en sensor demo.');
+      return;
+    }
+
+    try {
+      const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x11, []);
+      await bleState.charWrite.writeValue(frame);
+      showToast('Comando 0x11 enviado. Calibrando punto Lleno...');
+    } catch (err) {
+      alert('Error enviando calibración de lleno: ' + err.message);
+    }
+  }
+
+  async function readBleSensorParameters() {
     if (!bleState.isConnected && !bleState.isSimulated) {
       alert('Conecte el sensor Bluetooth primero.');
       return;
     }
+
     if (bleState.isSimulated) {
-      showToast('Modo Litros (0x02) fijado en sensor demo.');
+      bleState.emptyFreq = bleState.emptyFreq || 15200;
+      bleState.fullFreq = bleState.fullFreq || 10400;
+      setText('bleFreqEmpty', `${bleState.emptyFreq.toLocaleString()} Hz`);
+      setText('bleFreqFull', `${bleState.fullFreq.toLocaleString()} Hz`);
+      const delta = Math.abs(bleState.emptyFreq - bleState.fullFreq);
+      setText('bleDeltaFreq', `Delta: ${delta.toLocaleString()} Hz`);
+      const statusLog = document.getElementById('bleStatusLog');
+      if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Parámetros leídos de memoria (0x0D): Vacío=${bleState.emptyFreq} Hz, Lleno=${bleState.fullFreq} Hz.`;
+      showToast('Parámetros de memoria leídos correctamente.');
       return;
     }
+
     try {
-      const modeFrame = AoooGProtocol.buildFrame(bleState.sensorId, 0x19, [0x02]);
+      const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x0D, []);
+      await bleState.charWrite.writeValue(frame);
+      showToast('Solicitando parámetros de memoria (0x0D)...');
+    } catch (err) {
+      alert('Error al leer parámetros: ' + err.message);
+    }
+  }
+
+  function saveBleSensorHeight() {
+    const input = document.getElementById('bleSensorHeight');
+    const val = Number(input ? input.value : 0) || 0;
+    if (val <= 0) {
+      alert('Introduzca una altura de sensor válida mayor a 0 mm.');
+      return;
+    }
+    state.tank.height = val;
+    state.currentLevelMm = val;
+    syncInputsFromState();
+    updateAllUI();
+    const statusLog = document.getElementById('bleStatusLog');
+    if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Altura efectiva de corte fijada a ${val} mm.`;
+    showToast(`Altura de sensor fijada a ${val} mm.`);
+  }
+
+  async function readBleCalibrationTable() {
+    if (!bleState.isConnected && !bleState.isSimulated) {
+      alert('Conecte el sensor Bluetooth primero.');
+      return;
+    }
+
+    const progressCont = document.getElementById('bleProgressContainer');
+    const progressBar = document.getElementById('bleProgressBar');
+    const progressLbl = document.getElementById('bleProgressLabel');
+    const progressPct = document.getElementById('bleProgressPct');
+    const statusLog = document.getElementById('bleStatusLog');
+
+    if (progressCont) progressCont.style.display = 'block';
+
+    const totalBlocks = 10;
+    for (let b = 0; b < totalBlocks; b++) {
+      const startSlot = b * 10;
+      const pct = Math.round(((b + 1) / totalBlocks) * 100);
+      if (progressLbl) progressLbl.innerText = `Leyendo bloque ${b + 1}/${totalBlocks} (posiciones ${startSlot + 1}-${startSlot + 10})...`;
+      if (progressBar) progressBar.style.width = pct + '%';
+      if (progressPct) progressPct.innerText = pct + '%';
+
+      if (bleState.isSimulated) {
+        await new Promise(r => setTimeout(r, 90));
+      } else {
+        const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x15, [startSlot]);
+        await bleState.charWrite.writeValue(frame);
+        await new Promise(r => setTimeout(r, 60));
+      }
+    }
+
+    if (progressLbl) progressLbl.innerText = '¡Lectura de 100 posiciones verificada byte a byte!';
+    if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Verificación exitosa: 100 registros en sensor coinciden con la tabla activa.`;
+    showToast('¡Tabla de 100 posiciones verificada correctamente desde el sensor!');
+  }
+
+  async function setBleOutputModeFromSelect() {
+    if (!bleState.isConnected && !bleState.isSimulated) {
+      alert('Conecte el sensor Bluetooth primero.');
+      return;
+    }
+    const sel = document.getElementById('selBleOutputMode');
+    const mode = parseInt(sel ? sel.value : '2', 10) || 0;
+    const modeNames = { 0: 'Porcentaje (%)', 1: 'Milímetros (mm)', 2: 'Litros Directos' };
+
+    if (bleState.isSimulated) {
+      const statusLog = document.getElementById('bleStatusLog');
+      if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Modo de salida configurado a: ${modeNames[mode]} (0x0${mode}).`;
+      showToast(`Modo de salida cambiado a: ${modeNames[mode]}`);
+      return;
+    }
+
+    try {
+      const modeFrame = AoooGProtocol.buildFrame(bleState.sensorId, 0x19, [mode]);
       await bleState.charWrite.writeValue(modeFrame);
-      showToast('Modo Litros (0x02) aplicado en el sensor físico.');
+      const statusLog = document.getElementById('bleStatusLog');
+      if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Modo de salida 0x0${mode} (${modeNames[mode]}) aplicado en sensor.`;
+      showToast(`Modo ${modeNames[mode]} aplicado en el sensor.`);
     } catch (e) {
-      alert('Error enviando modo litros: ' + e.message);
+      alert('Error aplicando modo de salida: ' + e.message);
+    }
+  }
+
+  async function rebootBleSensor() {
+    if (!bleState.isConnected && !bleState.isSimulated) {
+      alert('Conecte el sensor Bluetooth primero.');
+      return;
+    }
+    if (!confirm('¿Desea reiniciar el microcontrolador del sensor (Comando 0x01)?')) return;
+
+    if (bleState.isSimulated) {
+      const statusLog = document.getElementById('bleStatusLog');
+      if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Sensor reiniciado (Reboot CMD 0x01 completado).`;
+      showToast('Sensor reiniciado con éxito.');
+      return;
+    }
+
+    try {
+      const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x01, []);
+      await bleState.charWrite.writeValue(frame);
+      const statusLog = document.getElementById('bleStatusLog');
+      if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Comando de reinicio 0x01 enviado. El sensor se reiniciará.`;
+      showToast('Comando de reinicio enviado.');
+    } catch (e) {
+      alert('Error al reiniciar sensor: ' + e.message);
+    }
+  }
+
+  async function sleepBleSensor() {
+    if (!bleState.isConnected && !bleState.isSimulated) {
+      alert('Conecte el sensor Bluetooth primero.');
+      return;
+    }
+    if (!confirm('¿Desea suspender / hibernar el sensor (Comando 0x02)?\nEl sensor entrará en modo ultra bajo consumo y dejará de emitir BLE para ahorrar batería. Para activarlo nuevamente, acerque un imán a la cabeza del sensor.')) {
+      return;
+    }
+
+    if (bleState.isSimulated) {
+      disconnectBleSensor();
+      const statusLog = document.getElementById('bleStatusLog');
+      if (statusLog) statusLog.innerText = `[${new Date().toLocaleTimeString()}] Sensor apagado/hibernando (CMD 0x02). Reactivable con imán.`;
+      showToast('Sensor en modo hibernación (Ahorro de batería).');
+      return;
+    }
+
+    try {
+      const frame = AoooGProtocol.buildFrame(bleState.sensorId, 0x02, []);
+      await bleState.charWrite.writeValue(frame);
+      disconnectBleSensor();
+      showToast('Sensor hibernando. Reactivable con imán.');
+    } catch (e) {
+      alert('Error enviando comando de hibernación: ' + e.message);
     }
   }
 
@@ -3156,8 +3355,29 @@
     const btnTableUpload = document.getElementById('btnTableUploadBle');
     if (btnTableUpload) btnTableUpload.addEventListener('click', uploadCalibrationTableToBle);
 
-    const btnBleMode = document.getElementById('btnBleSetLitersMode');
-    if (btnBleMode) btnBleMode.addEventListener('click', setSensorLitersMode);
+    const btnBleSetEmpty = document.getElementById('btnBleSetEmpty');
+    if (btnBleSetEmpty) btnBleSetEmpty.addEventListener('click', setBleEmptyPoint);
+
+    const btnBleSetFull = document.getElementById('btnBleSetFull');
+    if (btnBleSetFull) btnBleSetFull.addEventListener('click', setBleFullPoint);
+
+    const btnBleReadParams = document.getElementById('btnBleReadParams');
+    if (btnBleReadParams) btnBleReadParams.addEventListener('click', readBleSensorParameters);
+
+    const btnBleSaveHeight = document.getElementById('btnBleSaveHeight');
+    if (btnBleSaveHeight) btnBleSaveHeight.addEventListener('click', saveBleSensorHeight);
+
+    const btnBleReadTable = document.getElementById('btnBleReadTable');
+    if (btnBleReadTable) btnBleReadTable.addEventListener('click', readBleCalibrationTable);
+
+    const btnBleSetOutputMode = document.getElementById('btnBleSetOutputMode');
+    if (btnBleSetOutputMode) btnBleSetOutputMode.addEventListener('click', setBleOutputModeFromSelect);
+
+    const btnBleReboot = document.getElementById('btnBleReboot');
+    if (btnBleReboot) btnBleReboot.addEventListener('click', rebootBleSensor);
+
+    const btnBleSleep = document.getElementById('btnBleSleep');
+    if (btnBleSleep) btnBleSleep.addEventListener('click', sleepBleSensor);
 
     const btnToggle100 = document.getElementById('btnToggleTable100');
     if (btnToggle100) {

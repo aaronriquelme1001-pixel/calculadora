@@ -75,76 +75,138 @@
   <!-- CONTENIDO -->
   <main class="container">
 
-    <!-- PANEL SENSOR BLUETOOTH BLE EN VIVO -->
-    <div id="panelBleSensor" class="no-print" style="display: none; background: #0f172a; color: #ffffff; border-radius: 12px; padding: 16px; margin-bottom: 20px; border: 1.5px solid #38bdf8; box-shadow: 0 10px 25px -5px rgba(15,23,42,0.4);">
-      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+    <!-- CONSOLA DE CALIBRACIÓN PROFESIONAL SENSOR BLUETOOTH BLE (AOOOG / AG-BFLS) -->
+    <div id="panelBleSensor" class="no-print" style="display: none; background: #0f172a; color: #f8fafc; border-radius: 12px; padding: 18px; margin-bottom: 20px; border: 1px solid #334155; box-shadow: 0 10px 25px -5px rgba(15,23,42,0.4);">
+      
+      <!-- Cabecera de la Consola -->
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 12px; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <div style="background: #0284c7; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 20px; height: 20px; color: #ffffff;">
+          <div style="background: #1e293b; border: 1px solid #334155; width: 38px; height: 38px; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2.2" style="width: 20px; height: 20px;">
               <path d="m7 7 10 10-5 5V2l5 5L7 17"></path>
             </svg>
           </div>
           <div>
             <div style="font-size: 0.95rem; font-weight: 800; display: flex; align-items: center; gap: 8px;">
-              <span id="bleDeviceName">AOOG_BL_SENSOR</span>
-              <span id="badgeBleLive" style="font-size: 0.65rem; background: #16a34a; color: #ffffff; padding: 2px 6px; border-radius: 4px; font-weight: 800;">EN VIVO</span>
-              <span id="badgeBleAuth" style="font-size: 0.65rem; background: #eab308; color: #000000; padding: 2px 6px; border-radius: 4px; font-weight: 800;">BLOQUEADO</span>
+              <span id="bleDeviceName" style="color: #ffffff;">AOOG_BL_SENSOR</span>
+              <span id="badgeBleLive" style="font-size: 0.65rem; background: #065f46; color: #a7f3d0; padding: 2px 8px; border-radius: 4px; font-weight: 700; border: 1px solid #047857;">EN VIVO</span>
+              <span id="badgeBleAuth" style="font-size: 0.65rem; background: #1e293b; color: #cbd5e1; padding: 2px 8px; border-radius: 4px; font-weight: 700; border: 1px solid #475569;">BLOQUEADO</span>
             </div>
             <div style="font-size: 0.72rem; color: #94a3b8;" id="bleDeviceInfo">ID: -- • GATT Conectado</div>
           </div>
         </div>
 
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-          <button type="button" id="btnBleScan" class="btn" style="background: #2563eb; color: #ffffff; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: none; cursor: pointer;">
+          <button type="button" id="btnBleScan" class="btn" style="background: #1e40af; color: #ffffff; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: 1px solid #1d4ed8; cursor: pointer;">
             🔍 Buscar Bluetooth
           </button>
-          <button type="button" id="btnBleSimulate" class="btn" style="background: #0284c7; color: #ffffff; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: none; cursor: pointer;">
+          <button type="button" id="btnBleSimulate" class="btn" style="background: #334155; color: #f1f5f9; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: 1px solid #475569; cursor: pointer;">
             ⚡ Probar Demo
           </button>
-          <button type="button" id="btnBleDisconnect" class="btn" style="background: #dc2626; color: #ffffff; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: none; cursor: pointer;">
+          <button type="button" id="btnBleDisconnect" class="btn" style="background: #991b1b; color: #ffffff; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: none; cursor: pointer;">
             Desconectar
           </button>
-          <button type="button" id="btnBleClosePanel" class="btn" style="background: #334155; color: #94a3b8; padding: 6px 10px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: none; cursor: pointer;">
+          <button type="button" id="btnBleClosePanel" class="btn" style="background: #1e293b; color: #94a3b8; padding: 6px 10px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: 1px solid #334155; cursor: pointer;">
             ✕
           </button>
         </div>
       </div>
 
-      <!-- Telemetría en vivo en 4 badges -->
+      <!-- Telemetría en vivo en 4 tarjetas sobrias -->
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px;">
         <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px; text-align: center;">
-          <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700;">Nivel Detectado</div>
+          <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Nivel Detectado</div>
           <div id="bleLiveLevel" style="font-size: 1.25rem; font-weight: 800; color: #38bdf8; margin-top: 2px;">-- mm</div>
         </div>
         <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px; text-align: center;">
-          <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700;">Volumen Actual</div>
-          <div id="bleLiveVolume" style="font-size: 1.25rem; font-weight: 800; color: #4ade80; margin-top: 2px;">-- L</div>
+          <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Volumen Actual</div>
+          <div id="bleLiveVolume" style="font-size: 1.25rem; font-weight: 800; color: #34d399; margin-top: 2px;">-- L</div>
         </div>
         <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px; text-align: center;">
-          <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700;">Frecuencia Sensor</div>
-          <div id="bleLiveFreq" style="font-size: 1.15rem; font-weight: 800; color: #facc15; margin-top: 2px;">-- Hz</div>
+          <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Frecuencia Actual</div>
+          <div id="bleLiveFreq" style="font-size: 1.15rem; font-weight: 800; color: #f8fafc; margin-top: 2px;">-- Hz</div>
         </div>
         <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px; text-align: center;">
-          <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700;">Batería • Temp</div>
-          <div id="bleLiveBatteryTemp" style="font-size: 1.15rem; font-weight: 800; color: #e2e8f0; margin-top: 2px;">--% • --°C</div>
+          <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">Batería • Temp</div>
+          <div id="bleLiveBatteryTemp" style="font-size: 1.15rem; font-weight: 800; color: #cbd5e1; margin-top: 2px;">--% • --°C</div>
         </div>
       </div>
 
-      <!-- Acciones del Sensor -->
-      <div style="background: #1e293b; border-radius: 8px; padding: 12px;">
-        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
-          <input type="text" id="bleCredentialInput" placeholder="Credencial 8 bytes (Hex o clave de fabricante)" value="0000000000000000" style="flex: 1; min-width: 220px; padding: 7px 10px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #ffffff; font-size: 0.75rem; font-family: monospace;">
-          <button type="button" id="btnBleAuth" class="btn" style="background: #0284c7; color: #ffffff; padding: 7px 14px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: none; cursor: pointer;">
-            🔑 Autenticar Sensor
+      <!-- SECCIÓN 1: CALIBRACIÓN BASE DE REFERENCIAS (VACÍO Y LLENO) -->
+      <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+        <div style="font-size: 0.78rem; font-weight: 800; color: #93c5fd; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+          <span>1. Calibración de Puntos Cero (Vacío & Lleno)</span>
+          <span style="font-size: 0.68rem; color: #94a3b8; font-weight: 600;">Comandos 0x10 / 0x11</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 10px;">
+          <!-- Punto Vacío -->
+          <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px;">
+            <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700;">Frecuencia Vacío (0%):</div>
+            <div id="bleFreqEmpty" style="font-size: 1.05rem; font-weight: 800; color: #f8fafc; margin: 4px 0 8px 0;">15,000 Hz</div>
+            <button type="button" id="btnBleSetEmpty" class="btn" style="width: 100%; background: #334155; color: #f8fafc; font-size: 0.72rem; font-weight: 700; padding: 6px; border-radius: 4px; border: 1px solid #475569; cursor: pointer;">
+              📌 Fijar Vacío Actual (0x10)
+            </button>
+            <div style="font-size: 0.62rem; color: #64748b; margin-top: 4px;">Sonda seca en aire o estanque vacío.</div>
+          </div>
+
+          <!-- Punto Lleno -->
+          <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px;">
+            <div style="font-size: 0.68rem; color: #94a3b8; font-weight: 700;">Frecuencia Lleno (100%):</div>
+            <div id="bleFreqFull" style="font-size: 1.05rem; font-weight: 800; color: #f8fafc; margin: 4px 0 8px 0;">10,000 Hz</div>
+            <button type="button" id="btnBleSetFull" class="btn" style="width: 100%; background: #334155; color: #f8fafc; font-size: 0.72rem; font-weight: 700; padding: 6px; border-radius: 4px; border: 1px solid #475569; cursor: pointer;">
+              📌 Fijar Lleno Actual (0x11)
+            </button>
+            <div style="font-size: 0.62rem; color: #64748b; margin-top: 4px;">Sonda 100% sumergida en combustible.</div>
+          </div>
+
+          <!-- Parámetros y Altura -->
+          <div style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-size: 0.68rem; color: #94a3b8; font-weight: 700;">Altura Sonda (mm):</span>
+                <span id="bleDeltaFreq" style="font-size: 0.68rem; color: #34d399; font-weight: 700;">Delta: 5,000 Hz</span>
+              </div>
+              <input type="number" id="bleSensorHeight" value="500" style="width: 100%; padding: 5px 8px; background: #1e293b; border: 1px solid #475569; border-radius: 4px; color: #ffffff; font-size: 0.8rem; font-weight: 700; margin-bottom: 6px;">
+            </div>
+            <div style="display: flex; gap: 6px;">
+              <button type="button" id="btnBleReadParams" class="btn" style="flex: 1; background: #1e293b; color: #cbd5e1; font-size: 0.7rem; font-weight: 700; padding: 6px; border-radius: 4px; border: 1px solid #334155; cursor: pointer;">
+                📥 Leer (0x0D)
+              </button>
+              <button type="button" id="btnBleSaveHeight" class="btn" style="flex: 1; background: #334155; color: #f8fafc; font-size: 0.7rem; font-weight: 700; padding: 6px; border-radius: 4px; border: 1px solid #475569; cursor: pointer;">
+                💾 Fijar Altura
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN 2: TABLA DE CALIBRACIÓN MULTIPUNTO (100 POSICIONES BLE) -->
+      <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+        <div style="font-size: 0.78rem; font-weight: 800; color: #93c5fd; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+          <span>2. Tabla de Linealización y Aforo (100 Posiciones)</span>
+          <span id="bleTableSourceInfo" style="font-size: 0.68rem; color: #94a3b8;">100 Registros • Memoria EEPROM</span>
+        </div>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
+          <button type="button" id="btnBleUploadTable" class="btn" style="background: #1e40af; color: #ffffff; padding: 8px 16px; font-size: 0.78rem; font-weight: 800; border-radius: 6px; border: 1px solid #1d4ed8; cursor: pointer; flex: 2; min-width: 200px;">
+            📤 Subir Tabla de Calibración al Sensor (100 Pts)
+          </button>
+          <button type="button" id="btnBleReadTable" class="btn" style="background: #334155; color: #e2e8f0; padding: 8px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: 1px solid #475569; cursor: pointer; flex: 1; min-width: 140px;">
+            📥 Verificar Tabla (0x15)
           </button>
         </div>
 
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button type="button" id="btnBleUploadTable" class="btn" style="background: #16a34a; color: #ffffff; padding: 8px 16px; font-size: 0.8rem; font-weight: 800; border-radius: 6px; border: none; cursor: pointer; flex: 1;">
-            📤 Subir Tabla de Calibración al Sensor (100 Posiciones)
-          </button>
-          <button type="button" id="btnBleSetLitersMode" class="btn" style="background: #475569; color: #ffffff; padding: 8px 12px; font-size: 0.75rem; font-weight: 700; border-radius: 6px; border: none; cursor: pointer;">
-            ⚖️ Fijar Modo Litros (0x02)
+        <!-- Selector de Modo de Salida -->
+        <div style="display: flex; gap: 8px; align-items: center; background: #0f172a; padding: 8px 10px; border-radius: 6px; border: 1px solid #334155; flex-wrap: wrap;">
+          <span style="font-size: 0.72rem; color: #94a3b8; font-weight: 700;">Modo de Salida Sensor (0x19):</span>
+          <select id="selBleOutputMode" style="background: #1e293b; border: 1px solid #475569; color: #ffffff; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700;">
+            <option value="2" selected>Modo 0x02: Litros Directos</option>
+            <option value="1">Modo 0x01: Milímetros (mm)</option>
+            <option value="0">Modo 0x00: Porcentaje Normalizado (%)</option>
+          </select>
+          <button type="button" id="btnBleSetOutputMode" class="btn" style="background: #334155; color: #ffffff; padding: 4px 10px; font-size: 0.72rem; font-weight: 700; border-radius: 4px; border: 1px solid #475569; cursor: pointer;">
+            Aplicar Modo
           </button>
         </div>
 
@@ -154,13 +216,37 @@
             <span id="bleProgressLabel">Escribiendo bloque 1/10...</span>
             <span id="bleProgressPct">10%</span>
           </div>
-          <div style="width: 100%; height: 8px; background: #0f172a; border-radius: 4px; overflow: hidden;">
-            <div id="bleProgressBar" style="width: 0%; height: 100%; background: #22c55e; transition: width 0.2s ease;"></div>
+          <div style="width: 100%; height: 6px; background: #0f172a; border-radius: 3px; overflow: hidden;">
+            <div id="bleProgressBar" style="width: 0%; height: 100%; background: #2563eb; transition: width 0.2s ease;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN 3: AUTENTICACIÓN Y MANTENIMIENTO -->
+      <div style="background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+          <span style="font-size: 0.75rem; font-weight: 800; color: #93c5fd;">3. Seguridad y Mantenimiento</span>
+          <div style="display: flex; gap: 6px;">
+            <button type="button" id="btnBleReboot" class="btn" style="background: #334155; color: #cbd5e1; padding: 4px 8px; font-size: 0.7rem; font-weight: 700; border-radius: 4px; border: 1px solid #475569; cursor: pointer;">
+              🔄 Reiniciar Sensor (0x01)
+            </button>
+            <button type="button" id="btnBleSleep" class="btn" style="background: #334155; color: #cbd5e1; padding: 4px 8px; font-size: 0.7rem; font-weight: 700; border-radius: 4px; border: 1px solid #475569; cursor: pointer;">
+              💤 Hibernar Sensor (0x02)
+            </button>
           </div>
         </div>
 
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <input type="text" id="bleCredentialInput" placeholder="Credencial 8 bytes Hex (ej. 0000000000000000)" value="0000000000000000" style="flex: 1; min-width: 220px; padding: 6px 10px; background: #0f172a; border: 1px solid #475569; border-radius: 4px; color: #ffffff; font-size: 0.75rem; font-family: monospace;">
+          <button type="button" id="btnBleAuth" class="btn" style="background: #334155; color: #ffffff; padding: 6px 14px; font-size: 0.75rem; font-weight: 700; border-radius: 4px; border: 1px solid #475569; cursor: pointer;">
+            🔑 Autenticar
+          </button>
+        </div>
+
         <!-- Log de estado del sensor -->
-        <div id="bleStatusLog" style="font-size: 0.72rem; color: #38bdf8; margin-top: 8px; font-family: monospace;"></div>
+        <div id="bleStatusLog" style="font-size: 0.7rem; color: #94a3b8; margin-top: 8px; font-family: monospace;">
+          Listo. Sensor en espera de instrucciones.
+        </div>
       </div>
     </div>
     <div class="app-grid">
