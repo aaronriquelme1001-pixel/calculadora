@@ -86,6 +86,8 @@
     currentLevelMm: 580,
     tableMode: 30, // 30 o 100
     isImported: false,
+    importedRows: [],
+    importedTankSignature: null,
 
     calcCache: {
       effH: 650,
@@ -406,6 +408,11 @@
   }
 
   function computeCalibrationRows(targetCount = state.tableMode || 30) {
+    if (state.isImported && state.importedTankSignature && state.importedTankSignature !== JSON.stringify(state.tank)) {
+      state.isImported = false;
+      state.importedRows = [];
+      state.importedTankSignature = null;
+    }
     if (state.isImported && state.importedRows && state.importedRows.length > 0) {
       const H = state.calcCache.effH;
       const V_total = state.importedRows[state.importedRows.length - 1].volume || state.calcCache.totalVolume;
@@ -3281,6 +3288,7 @@
       state.tank.height = importedRows[importedRows.length - 1].level;
       state.currentLevelMm = state.tank.height;
       syncInputsFromState();
+      state.importedTankSignature = JSON.stringify(state.tank);
       updateAllUI();
       showToast('Tabla importada y validada: ' + importedRows.length + ' registros. Se preservaron Data, Level y Volume.');
     } catch (error) {
