@@ -231,3 +231,48 @@ node --test tests/*.test.cjs
 3. Revisar el diff completo, especialmente el orden conexión → notificaciones → ID → lectura `0x1A` → autenticación `0x12`.
 4. Probar con un AG-BFLS físico: selector abierto, identificar por SN de etiqueta, conectar GATT, validar modo por `0x1A`, autenticar con credencial del fabricante sin registrarla.
 5. Mantener cualquier prueba de escritura fuera del alcance hasta contar con autorización, backup de 100 slots y procedimiento de rollback.
+
+
+---
+
+## 12. Handoff — implementación contra el perfil público AG-BFLS (2026-11-13)
+
+Este apartado **actualiza y reemplaza cualquier nota anterior** que dijera que no se modificó Flutter o que solo estaban cubiertos descubrimiento/autenticación.
+
+### Cambios añadidos desde la sección 11
+
+- Web `app.js`:
+  - Decodificadores oficiales 0x0D, 0x14, 0x1B, 0x20, 0x21 y 0x26.
+  - Comandos y controles UI para 0x04/05, 0x0A/0B, 0x0C, 0x20/21/22, 0x26 y 0x1B.
+  - Validación central de payload por comando, longitud, rango e índice.
+  - Guardas centrales de autenticación para 01, 02, 04, 0A, 0C, 10, 11 y 16.
+  - Conversión de batería con `floor((code - 500) * 100 / 220)`, porcentaje modo 0 = salida / 100, y validación del byte reservado de 0x14.
+  - Modos mm/L bloqueados hasta tener tabla del sensor validada.
+  - Backup previo, escritura por 10 bloques, readback byte a byte y rollback ya existente preservados.
+- Flutter:
+  - Decodificadores de parámetros, versión, dirección BLE, formato de publicidad y coordenada 1B.
+  - Validación central de payload y comandos protegidos.
+  - Verificación de identidad por lectura 1A tras habilitar notificaciones.
+  - Requisitos de ATT MTU: 90 para respuesta 15 y 91 para escritura 16.
+  - Conversión de batería por floor y rechazo de telemetría 14 con reservado inválido.
+  - Métodos de lectura/escritura con readback para potencia TX, intervalo, continuar tras reinicio y formato de publicidad.
+- Pruebas:
+  - `tests/ble-protocol.test.cjs`: decodificación 0D/14/1B/20/21/26, conversión batería, validación de payload y guards.
+  - `fuel_master_pro/test/aooog_protocol_test.dart`: CRC, batería, estructuras 0D, coordenada, versión, address, advertising protocol y payloads.
+
+### Restricción real de Web Bluetooth
+
+Web Bluetooth no expone una API estándar para solicitar ni consultar el ATT MTU. La app web puede intentar la escritura completa de 88 bytes y manejar el error; no puede garantizar previamente que el MTU cumpla el requisito. Las respuestas 0x15 de 87 bytes requieren ATT MTU ≥90. Para lectura/escritura fiable de tabla, la ruta preferida es Flutter nativo, que solicita MTU 247 y comprueba los mínimos.
+
+### Validación pendiente — no marcar como terminada
+
+- Los commits creados por la integración GitHub no han producido una ejecución Actions nueva asociada al HEAD más reciente; el run anterior solo validó el commit anterior a esta ampliación. Debe ejecutarse `flutter pub get`, `flutter analyze`, `flutter test`, `node --check app.js` y `node --test tests/*.test.cjs` sobre el HEAD actual.
+- La prueba física sigue pendiente: anuncio con SN correcto, conexión GATT, lectura 1A, autenticación 12, lectura 0D/14 y respaldo 15. No se ha realizado escritura EEPROM real.
+- El navegador depende del MTU negociado por el sistema; si falla la transferencia 15/16, no reintentar automáticamente desde cero. Usar Flutter nativo o revisar el MTU.
+- El comando 22 cambia el formato de publicidad; puede alterar cómo otras apps encuentran el sensor. Solo usar tras confirmación del técnico.
+- No integrar a main hasta CI verde y prueba física de solo lectura. La prueba de escritura requiere backup y autorización explícita.
+
+### Fuente de protocolo
+
+`docs/AG_BFLS_PUBLIC_PROTOCOL_IMPLEMENTATION.md`  
+`https://www.aooog.com/bluetooth-protocol.html`
