@@ -2674,6 +2674,8 @@
         const id = [bytes[0], bytes[1], bytes[2]];
         if (id.some(v => v !== 0)) {
           const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+          const outputMode = bytes[3] >> 4;
+          if (outputMode > 2) return null;
           const batteryCode = ((bytes[3] & 0x0f) << 8) | bytes[4];
           const battery = Math.floor(Math.max(0, Math.min(100, ((batteryCode - 500) * 100) / 220)));
           const temperature = Math.round(view.getInt16(5, false) / 8);
@@ -2685,8 +2687,9 @@
             sn,
             battery,
             temperature,
-            frequency: Number.isFinite(frequency) ? frequency : null,
-            output: Number.isFinite(output) ? output : null
+            outputMode,
+            frequency: Number.isFinite(frequency) && frequency >= 0 ? frequency : null,
+            output: Number.isFinite(output) && output >= 0 ? output : null
           };
         }
       }
