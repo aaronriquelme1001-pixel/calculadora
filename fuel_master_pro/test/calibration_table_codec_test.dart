@@ -24,6 +24,9 @@ void main() {
     test('rejects malformed cells instead of silently coercing to zero', () {
       expect(() => CalibrationTableCodec.parseMatrix([['Data', 'Level', 'Volume'], [0, 0, 0], ['bad', 20, 6.6]], emptyFreqHz: 15000, fullFreqHz: 10000), throwsFormatException);
     });
+    test('rejects volume outside the supported float calibration range', () {
+      expect(() => CalibrationTableCodec.parseMatrix([['Data', 'Level', 'Volume'], [0, 0, 0], [100, 20, 1000001]], emptyFreqHz: 15000, fullFreqHz: 10000), throwsFormatException);
+    });
     test('rejects non-monotonic and out-of-range coordinates', () {
       expect(() => CalibrationTableCodec.parseMatrix([['Data', 'Level', 'Volume'], [0, 0, 0], [100, 20, 6.6], [90, 30, 9]], emptyFreqHz: 15000, fullFreqHz: 10000), throwsFormatException);
       expect(() => CalibrationTableCodec.parseMatrix([['Data', 'Level', 'Volume'], [0, 0, 0], [5001, 20, 6.6]], emptyFreqHz: 15000, fullFreqHz: 10000), throwsFormatException);
