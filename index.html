@@ -76,23 +76,23 @@
   <main class="container">
 
     <!-- CONSOLA DE CALIBRACIÓN PROFESIONAL SENSOR BLUETOOTH BLE (AOOOG / AG-BFLS) -->
-    <div id="panelBleSensor" class="no-print" style="display: none; background: #0b1120; color: #f8fafc; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; border: 1px solid #1e293b; box-shadow: 0 4px 16px -2px rgba(15,23,42,0.5);">
+    <div id="panelBleSensor" class="card no-print" style="display: none; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); color: #0f172a;">
       
-      <!-- Cabecera Compacta de la Consola -->
-      <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 8px; margin-bottom: 10px; border-bottom: 1px solid #1e293b; flex-wrap: wrap; gap: 8px;">
+      <!-- Cabecera Limpia y Sobria -->
+      <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 8px;">
         <div style="display: flex; align-items: center; gap: 8px;">
-          <div style="background: #1e293b; width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2.2" style="width: 14px; height: 14px;">
+          <div style="background: #eff6ff; color: #2563eb; width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 15px; height: 15px;">
               <path d="m7 7 10 10-5 5V2l5 5L7 17"></path>
             </svg>
           </div>
           <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-            <span id="bleDeviceName" style="color: #ffffff; font-weight: 800; font-size: 0.88rem;">Sensor AG-BFLS</span>
-            <span id="badgeBleLive" style="font-size: 0.62rem; background: #065f46; color: #a7f3d0; padding: 1px 6px; border-radius: 3px; font-weight: 700;">EN VIVO</span>
-            <span id="badgeBleAuth" style="font-size: 0.62rem; background: #1e293b; color: #94a3b8; padding: 1px 6px; border-radius: 3px; font-weight: 700;">BLOQUEADO</span>
-            <span style="color: #334155; font-size: 0.75rem;">•</span>
-            <span id="bleDeviceInfo" style="font-size: 0.72rem; color: #94a3b8;">SN: -- • GATT Desconectado</span>
-            <button type="button" id="btnBleEditId" style="display: none; background: transparent; color: #38bdf8; border: 1px solid #334155; border-radius: 3px; font-size: 0.62rem; padding: 1px 5px; cursor: pointer; font-weight: 700;">
+            <span id="bleDeviceName" style="color: #0f172a; font-weight: 800; font-size: 0.92rem;">Sensor AG-BFLS</span>
+            <span id="badgeBleLive" style="font-size: 0.65rem; background: #f1f5f9; color: #64748b; padding: 2px 7px; border-radius: 4px; font-weight: 700; border: 1px solid #e2e8f0;">DESCONECTADO</span>
+            <span id="badgeBleAuth" style="font-size: 0.65rem; background: #fef3c7; color: #92400e; padding: 2px 7px; border-radius: 4px; font-weight: 700; border: 1px solid #fde68a;">BLOQUEADO</span>
+            <span style="color: #cbd5e1; font-size: 0.75rem;">•</span>
+            <span id="bleDeviceInfo" style="font-size: 0.74rem; color: #64748b;">SN: -- • GATT Desconectado</span>
+            <button type="button" id="btnBleEditId" style="display: none; background: #f8fafc; color: #2563eb; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.65rem; padding: 2px 6px; cursor: pointer; font-weight: 700;">
               ✏️ Cambiar SN/ID
             </button>
           </div>
@@ -100,90 +100,90 @@
 
         <!-- Botones de Acción de Cabecera -->
         <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-          <button type="button" id="btnBleScan" class="btn" style="background: #2563eb; color: #ffffff; padding: 4px 10px; font-size: 0.72rem; font-weight: 700; border-radius: 4px; border: none; cursor: pointer;" title="Filtra y muestra exclusivamente sensores de nivel AoooG/Universal para no saturar con otros dispositivos">
+          <button type="button" id="btnBleScan" class="btn" style="background: #2563eb; color: #ffffff; padding: 5px 12px; font-size: 0.74rem; font-weight: 700; border-radius: 6px; border: none; cursor: pointer;" title="Filtra y muestra exclusivamente sensores de nivel AoooG/Universal para no saturar con otros dispositivos">
             🔍 Buscar Sensor
           </button>
-          <button type="button" id="btnBleScanAll" class="btn" style="background: transparent; color: #94a3b8; padding: 4px 8px; font-size: 0.72rem; font-weight: 600; border-radius: 4px; border: 1px solid #334155; cursor: pointer;" title="Muestra todos los dispositivos Bluetooth LE cercanos si tu sensor no anuncia el fabricante">
+          <button type="button" id="btnBleScanAll" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.74rem; font-weight: 600; border-radius: 6px; cursor: pointer;" title="Muestra todos los dispositivos Bluetooth LE cercanos si tu sensor no anuncia el fabricante">
             🌐 Todos
           </button>
-          <button type="button" id="btnBleSimulate" class="btn" style="background: transparent; color: #cbd5e1; padding: 4px 8px; font-size: 0.72rem; font-weight: 600; border-radius: 4px; border: 1px solid #334155; cursor: pointer;">
+          <button type="button" id="btnBleSimulate" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.74rem; font-weight: 600; border-radius: 6px; cursor: pointer;">
             ⚡ Demo
           </button>
-          <button type="button" id="btnBleDisconnect" class="btn" style="background: #7f1d1d; color: #fecaca; padding: 4px 8px; font-size: 0.72rem; font-weight: 700; border-radius: 4px; border: none; cursor: pointer;">
+          <button type="button" id="btnBleDisconnect" class="btn" style="background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; padding: 5px 10px; font-size: 0.74rem; font-weight: 700; border-radius: 6px; cursor: pointer;">
             Desconectar
           </button>
-          <button type="button" id="btnBleClosePanel" class="btn" style="background: transparent; color: #64748b; padding: 4px 6px; font-size: 0.72rem; border-radius: 4px; border: 1px solid #334155; cursor: pointer;" title="Ocultar consola BLE">
+          <button type="button" id="btnBleClosePanel" class="btn btn-secondary" style="padding: 5px 8px; font-size: 0.74rem; border-radius: 6px; cursor: pointer;" title="Ocultar consola BLE">
             ✕
           </button>
         </div>
       </div>
 
-      <!-- Barra de Métricas y Telemetría en Vivo (Franja Única Horizontal) -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); background: #111a2e; border: 1px solid #1e293b; border-radius: 6px; padding: 6px 12px; margin-bottom: 10px; gap: 8px;">
+      <!-- Barra de Métricas y Telemetría en Vivo (Franja Sobria en Gris Claro) -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 16px; margin: 8px 0 12px 0; gap: 12px; align-items: center;">
         <div style="display: flex; align-items: baseline; gap: 6px;">
-          <span style="font-size: 0.62rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Nivel:</span>
-          <span id="bleLiveLevel" style="font-size: 1.05rem; font-weight: 800; color: #38bdf8;">-- mm</span>
+          <span style="font-size: 0.65rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Nivel:</span>
+          <strong id="bleLiveLevel" style="font-size: 1.15rem; font-weight: 800; color: #0284c7;">-- mm</strong>
         </div>
-        <div style="display: flex; align-items: baseline; gap: 6px; border-left: 1px solid #1e293b; padding-left: 8px;">
-          <span style="font-size: 0.62rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Volumen:</span>
-          <span id="bleLiveVolume" style="font-size: 1.05rem; font-weight: 800; color: #34d399;">-- L</span>
+        <div style="display: flex; align-items: baseline; gap: 6px; border-left: 1px solid #e2e8f0; padding-left: 12px;">
+          <span style="font-size: 0.65rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Volumen:</span>
+          <strong id="bleLiveVolume" style="font-size: 1.15rem; font-weight: 800; color: #059669;">-- L</strong>
         </div>
-        <div style="display: flex; align-items: baseline; gap: 6px; border-left: 1px solid #1e293b; padding-left: 8px;">
-          <span style="font-size: 0.62rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Frecuencia:</span>
-          <span id="bleLiveFreq" style="font-size: 1.0rem; font-weight: 800; color: #f8fafc;">-- Hz</span>
+        <div style="display: flex; align-items: baseline; gap: 6px; border-left: 1px solid #e2e8f0; padding-left: 12px;">
+          <span style="font-size: 0.65rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Frecuencia:</span>
+          <strong id="bleLiveFreq" style="font-size: 1.1rem; font-weight: 800; color: #0f172a;">-- Hz</strong>
         </div>
-        <div style="display: flex; align-items: baseline; gap: 6px; border-left: 1px solid #1e293b; padding-left: 8px;">
-          <span style="font-size: 0.62rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Batería • Temp:</span>
-          <span id="bleLiveBatteryTemp" style="font-size: 1.0rem; font-weight: 800; color: #cbd5e1;">--% • --°C</span>
+        <div style="display: flex; align-items: baseline; gap: 6px; border-left: 1px solid #e2e8f0; padding-left: 12px;">
+          <span style="font-size: 0.65rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Batería • Temp:</span>
+          <strong id="bleLiveBatteryTemp" style="font-size: 1.05rem; font-weight: 800; color: #334155;">--% • --°C</strong>
         </div>
       </div>
 
-      <!-- Área de Control en Dos Columnas Limpias (Sin Recuadros Anidados) -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; border-top: 1px solid #1e293b; padding-top: 10px;">
+      <!-- Área de Control en Dos Columnas Limpias (Sin Cajas Anidadas) -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; padding-top: 4px;">
         
         <!-- COLUMNA 1: PUNTOS CERO & ALTURA -->
         <div>
-          <div style="font-size: 0.68rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+          <div style="font-size: 0.72rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
             <span>1. Puntos Cero (Vacío & Lleno)</span>
-            <span style="font-size: 0.62rem; color: #475569;">Comandos 0x10 / 0x11</span>
+            <span style="font-size: 0.65rem; color: #94a3b8; font-weight: 600;">Comandos 0x10 / 0x11</span>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px;">
             <!-- Punto Vacío -->
-            <div style="background: rgba(30,41,59,0.4); border-radius: 5px; padding: 6px 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0;">
               <div>
-                <div style="font-size: 0.6rem; color: #64748b; font-weight: 700;">Vacío (0%):</div>
-                <div id="bleFreqEmpty" style="font-size: 0.85rem; font-weight: 800; color: #f8fafc;">15,000 Hz</div>
+                <span style="font-size: 0.68rem; color: #64748b; font-weight: 700;">Vacío (0%):</span>
+                <strong id="bleFreqEmpty" style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin-left: 4px;">15,000 Hz</strong>
               </div>
-              <button type="button" id="btnBleSetEmpty" class="btn" style="background: #1e293b; color: #cbd5e1; font-size: 0.66rem; font-weight: 700; padding: 4px 7px; border-radius: 4px; border: 1px solid #334155; cursor: pointer;">
-                📌 Fijar
+              <button type="button" id="btnBleSetEmpty" class="btn btn-secondary" style="padding: 3px 8px; font-size: 0.7rem; font-weight: 700;">
+                📌 Fijar Vacío
               </button>
             </div>
 
             <!-- Punto Lleno -->
-            <div style="background: rgba(30,41,59,0.4); border-radius: 5px; padding: 6px 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0;">
               <div>
-                <div style="font-size: 0.6rem; color: #64748b; font-weight: 700;">Lleno (100%):</div>
-                <div id="bleFreqFull" style="font-size: 0.85rem; font-weight: 800; color: #f8fafc;">10,000 Hz</div>
+                <span style="font-size: 0.68rem; color: #64748b; font-weight: 700;">Lleno (100%):</span>
+                <strong id="bleFreqFull" style="font-size: 0.95rem; font-weight: 800; color: #0f172a; margin-left: 4px;">10,000 Hz</strong>
               </div>
-              <button type="button" id="btnBleSetFull" class="btn" style="background: #1e293b; color: #cbd5e1; font-size: 0.66rem; font-weight: 700; padding: 4px 7px; border-radius: 4px; border: 1px solid #334155; cursor: pointer;">
-                📌 Fijar
+              <button type="button" id="btnBleSetFull" class="btn btn-secondary" style="padding: 3px 8px; font-size: 0.7rem; font-weight: 700;">
+                📌 Fijar Lleno
               </button>
             </div>
           </div>
 
           <!-- Parámetros y Altura -->
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 6px; border-top: 1px solid #f1f5f9; flex-wrap: wrap;">
             <div style="display: flex; align-items: center; gap: 6px;">
-              <span style="font-size: 0.65rem; color: #94a3b8; font-weight: 700;">Altura (mm):</span>
-              <input type="number" id="bleSensorHeight" value="500" style="width: 65px; padding: 3px 6px; background: #1e293b; border: 1px solid #334155; border-radius: 4px; color: #ffffff; font-size: 0.75rem; font-weight: 700;">
-              <span id="bleDeltaFreq" style="font-size: 0.65rem; color: #34d399; font-weight: 700;">Delta: 5,000 Hz</span>
+              <span style="font-size: 0.68rem; color: #64748b; font-weight: 700;">Altura (mm):</span>
+              <input type="number" id="bleSensorHeight" value="500" style="width: 70px; padding: 3px 6px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; color: #0f172a; font-size: 0.78rem; font-weight: 700;">
+              <span id="bleDeltaFreq" style="font-size: 0.68rem; color: #059669; font-weight: 700;">Delta: 5,000 Hz</span>
             </div>
             <div style="display: flex; gap: 4px;">
-              <button type="button" id="btnBleReadParams" class="btn" style="background: #1e293b; color: #cbd5e1; font-size: 0.66rem; font-weight: 700; padding: 3px 7px; border-radius: 4px; border: 1px solid #334155; cursor: pointer;">
+              <button type="button" id="btnBleReadParams" class="btn btn-secondary" style="padding: 3px 8px; font-size: 0.7rem; font-weight: 700;">
                 📥 Leer (0x0D)
               </button>
-              <button type="button" id="btnBleSaveHeight" class="btn" style="background: #334155; color: #f8fafc; font-size: 0.66rem; font-weight: 700; padding: 3px 7px; border-radius: 4px; border: 1px solid #475569; cursor: pointer;">
+              <button type="button" id="btnBleSaveHeight" class="btn btn-secondary" style="padding: 3px 8px; font-size: 0.7rem; font-weight: 700;">
                 💾 Aplicar
               </button>
             </div>
@@ -191,58 +191,58 @@
         </div>
 
         <!-- COLUMNA 2: TABLA EEPROM, MODO & SEGURIDAD -->
-        <div>
-          <div style="font-size: 0.68rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+        <div style="border-left: 1px solid #f1f5f9; padding-left: 14px;">
+          <div style="font-size: 0.72rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
             <span>2. Tabla EEPROM & Mantenimiento</span>
-            <span id="bleTableSourceInfo" style="font-size: 0.62rem; color: #475569;">100 Registros</span>
+            <span id="bleTableSourceInfo" style="font-size: 0.65rem; color: #94a3b8; font-weight: 600;">100 Registros</span>
           </div>
 
           <!-- Transferencia de Tabla y Modo -->
           <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
-            <button type="button" id="btnBleUploadTable" class="btn" style="background: #1e40af; color: #ffffff; padding: 4px 10px; font-size: 0.72rem; font-weight: 800; border-radius: 4px; border: 1px solid #1d4ed8; cursor: pointer; flex: 1; min-width: 140px;">
+            <button type="button" id="btnBleUploadTable" class="btn btn-primary" style="background: #0284c7; border-color: #0369a1; padding: 4px 12px; font-size: 0.74rem; font-weight: 800; border-radius: 6px; cursor: pointer; flex: 1; min-width: 140px;">
               📤 Subir Tabla (100 Pts)
             </button>
-            <button type="button" id="btnBleReadTable" class="btn" style="background: #1e293b; color: #cbd5e1; padding: 4px 8px; font-size: 0.7rem; font-weight: 700; border-radius: 4px; border: 1px solid #334155; cursor: pointer;">
+            <button type="button" id="btnBleReadTable" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.72rem; font-weight: 700; border-radius: 6px; cursor: pointer;">
               📥 Leer (0x15)
             </button>
-            <select id="selBleOutputMode" style="background: #1e293b; border: 1px solid #334155; color: #ffffff; padding: 3px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 700;">
+            <select id="selBleOutputMode" style="background: #ffffff; border: 1px solid #cbd5e1; color: #0f172a; padding: 4px 6px; border-radius: 4px; font-size: 0.72rem; font-weight: 700;">
               <option value="2" selected>Modo 0x02: Litros</option>
               <option value="1">Modo 0x01: mm</option>
               <option value="0">Modo 0x00: %</option>
             </select>
-            <button type="button" id="btnBleSetOutputMode" class="btn" style="background: #334155; color: #ffffff; padding: 3px 6px; font-size: 0.66rem; font-weight: 700; border-radius: 4px; border: 1px solid #475569; cursor: pointer;">
+            <button type="button" id="btnBleSetOutputMode" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.7rem; font-weight: 700; border-radius: 4px; cursor: pointer;">
               OK
             </button>
           </div>
 
           <!-- Barra de progreso de subida -->
           <div id="bleProgressContainer" style="display: none; margin-bottom: 8px;">
-            <div style="display: flex; justify-content: space-between; font-size: 0.65rem; color: #94a3b8; margin-bottom: 3px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.65rem; color: #64748b; margin-bottom: 3px;">
               <span id="bleProgressLabel">Escribiendo bloque 1/10...</span>
               <span id="bleProgressPct">10%</span>
             </div>
-            <div style="width: 100%; height: 4px; background: #1e293b; border-radius: 2px; overflow: hidden;">
+            <div style="width: 100%; height: 5px; background: #e2e8f0; border-radius: 3px; overflow: hidden;">
               <div id="bleProgressBar" style="width: 0%; height: 100%; background: #2563eb; transition: width 0.2s ease;"></div>
             </div>
           </div>
 
           <!-- Credencial y Mantenimiento -->
           <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-            <input type="password" id="bleCredentialInput" placeholder="Credencial 16 hex (8 bytes)" maxlength="16" autocomplete="off" autocapitalize="characters" style="flex: 1; min-width: 140px; padding: 3px 6px; background: #1e293b; border: 1px solid #334155; border-radius: 4px; color: #ffffff; font-size: 0.7rem; font-family: monospace;">
-            <button type="button" id="btnBleAuth" class="btn" style="background: #334155; color: #ffffff; padding: 3px 8px; font-size: 0.68rem; font-weight: 700; border-radius: 4px; border: 1px solid #475569; cursor: pointer;">
+            <input type="password" id="bleCredentialInput" placeholder="Credencial 16 caracteres hex (8 bytes)" maxlength="16" autocomplete="off" autocapitalize="characters" style="flex: 1; min-width: 150px; padding: 4px 8px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; color: #0f172a; font-size: 0.74rem; font-family: monospace;">
+            <button type="button" id="btnBleAuth" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 700; border-radius: 4px; cursor: pointer;">
               🔑 Autenticar
             </button>
-            <button type="button" id="btnBleReboot" class="btn" style="background: transparent; color: #94a3b8; padding: 3px 6px; font-size: 0.66rem; font-weight: 600; border-radius: 4px; border: 1px solid #334155; cursor: pointer;" title="Reiniciar Sensor (0x01)">
+            <button type="button" id="btnBleReboot" class="btn btn-secondary" style="padding: 4px 7px; font-size: 0.72rem; font-weight: 600; border-radius: 4px; cursor: pointer;" title="Reiniciar Sensor (0x01)">
               🔄
             </button>
-            <button type="button" id="btnBleSleep" class="btn" style="background: transparent; color: #94a3b8; padding: 3px 6px; font-size: 0.66rem; font-weight: 600; border-radius: 4px; border: 1px solid #334155; cursor: pointer;" title="Hibernar Sensor (0x02)">
+            <button type="button" id="btnBleSleep" class="btn btn-secondary" style="padding: 4px 7px; font-size: 0.72rem; font-weight: 600; border-radius: 4px; cursor: pointer;" title="Hibernar Sensor (0x02)">
               💤
             </button>
           </div>
 
           <!-- Log de estado del sensor -->
-          <div id="bleStatusLog" style="font-size: 0.65rem; color: #64748b; margin-top: 4px; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-            Listo. Sensor en espera.
+          <div id="bleStatusLog" style="font-size: 0.68rem; color: #64748b; margin-top: 5px; font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+            Listo. Sensor en espera de instrucciones.
           </div>
         </div>
       </div>

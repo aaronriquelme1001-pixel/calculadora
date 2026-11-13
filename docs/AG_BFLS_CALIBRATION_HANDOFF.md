@@ -34,11 +34,27 @@ El objetivo es que nuestra aplicación importe una tabla oficial de calibración
 - Característica notificaciones: `0000fff2-1212-efde-1523-785feabcd123`.
 - Trama: `0C [LL] [ID2 ID1 ID0] [CMD] [DATA...] [CRC8]`.
 - CRC-8 reflejado con polinomio `0x8C`.
-- ID: tres bytes, no un ID de seis caracteres decimal. Para ingreso humano se representan como seis caracteres hexadecimales.
-- Manufacturer ID de anuncio conocido: `0xFF43` (AOOOG) y `0xFFFF` (Universal/Dominator), con sus longitudes/firmas específicas.
-- Credencial: exactamente ocho bytes del fabricante, sin valores por defecto.
-- Comandos usados: `0x0D` parámetros; `0x14` telemetría; `0x15` lectura de bloque; `0x16` escritura de bloque; `0x19/0x1A` establecer/leer modo de salida; `0x12` autenticación.
+- ID del sensor y Número de Serie (SN):
+  - En el protocolo de tramas son exactamente 3 bytes: `[ID2, ID1, ID0]`.
+  - El Número de Serie comercial (SN) impreso en la etiqueta del sensor y listado en Fuel Master oficial es el entero decimal de 24 bits:
+    $$\text{SN} = (\text{byte}_0 \ll 16) \mid (\text{byte}_1 \ll 8) \mid \text{byte}_2$$
+    Ejemplo: bytes `[0x0C, 0x52, 0x02]` corresponden a `SN: 807426`.
+  - Para ingreso humano la aplicación admite indistintamente el SN decimal (ej. `807426`) o los 3 bytes en hexadecimal (ej. `0C:52:02`, `0C-52-02` o `78:24:15`).
+- Manufacturer ID de anuncio conocido: `0xFF43` (AOOOG, 15 bytes) y `0xFFFF` (Universal/Dominator, 24 bytes), parseando ID, SN, batería (%), temperatura (°C) y frecuencia (Hz).
+- Credencial: exactamente ocho bytes del fabricante (16 caracteres hexadecimales), sin valores por defecto.
+- Comandos usados: `0x01` reinicio; `0x02` hibernación; `0x0D` parámetros; `0x10` punto vacío; `0x11` punto lleno; `0x12` autenticación; `0x14` telemetría; `0x15` lectura de bloque; `0x16` escritura de bloque; `0x19/0x1A` establecer/leer modo de salida.
 - Las respuestas deben validarse por ID, comando, longitud y CRC. Los comandos de escritura requieren ACK de éxito.
+
+### Consola BLE Web (Diseño Blanco Sobrio y Compacto)
+
+- La consola web BLE (`#panelBleSensor`) está integrada en el sistema de diseño claro de la aplicación (`var(--bg-card): #ffffff`, `var(--border): #e2e8f0`).
+- No utiliza recuadros oscuros ni cajas anidadas repetitivas; presenta una sola tarjeta blanca sobria con:
+  1. Barra de cabecera con estado, SN, HEX, porcentaje de batería y botones de acción limpios.
+  2. Franja horizontal de telemetría de perfil bajo en gris suave (`#f8fafc`).
+  3. Área de control en dos columnas limpias (Calibración base izquierda; Tabla EEPROM y seguridad derecha).
+- Búsqueda dual:
+  - `🔍 Buscar Sensor (Filtro AG-BFLS)`: filtra con `manufacturerData` (`0xFF43` y `0xFFFF`) para aislar los sensores en terreno.
+  - `🌐 Todos`: búsqueda abierta con `acceptAllDevices: true` para compatibilidad total ante adaptadores que no procesen datos de fabricante antes del emparejamiento.
 
 ### Importación de calibración
 
@@ -159,8 +175,10 @@ GitHub Actions ahora ejecuta ambas verificaciones web además de Flutter analyze
 - `docs/WEB_BLUETOOTH_DIAGNOSTICS.md`: diagnóstico navegador BLE.
 - `README.md`: mapa general del repositorio.
 
-## 10. APK y archivos de referencia
+## 10. Archivos de referencia oficiales del fabricante
 
-- No generar nuestra APK/AAB en este repositorio ni en este flujo.
-- El repositorio contiene una APK de Fuel Master de referencia añadida por el usuario; no confundirla con un artefacto generado por este proyecto. Verificar derechos/permiso antes de redistribuirla públicamente.
-- No borrar ni reescribir historia Git de forma destructiva sin autorización explícita.
+El repositorio conserva en `docs/reference/` los tres documentos y aplicaciones originales de AoooG como base inmutable de verificación técnica:
+- `docs/reference/AG-BFLS_User_Manual.pdf` (1.5 MB): Manual de usuario oficial, instalación mecánica, conexión de cables y procedimiento de calibración física (puntos vacío y lleno).
+- `docs/reference/AG-BFLS_Datasheet.pdf` (733 KB): Ficha técnica, precisión capacitiva, protocolo, señales y especificaciones eléctricas.
+- `docs/reference/Fuel Master V0.1.4.apk` (57.6 MB): APK oficial del fabricante de referencia. No confundir con la APK de nuestra aplicación que se compila externamente.
+- `docs/reference/README.md`: Resumen y hashes de integridad de los archivos de referencia.

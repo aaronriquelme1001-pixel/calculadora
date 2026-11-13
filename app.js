@@ -2919,18 +2919,31 @@
 
       if (badgeAuth) {
         badgeAuth.innerText = bleState.isSimulated ? 'DEMO' : (bleState.isAuthenticated ? 'AUTENTICADO' : 'BLOQUEADO');
-        badgeAuth.style.background = bleState.isSimulated ? '#475569' : (bleState.isAuthenticated ? '#16a34a' : '#eab308');
-        badgeAuth.style.color = '#ffffff';
+        badgeAuth.style.background = bleState.isSimulated ? '#e0f2fe' : (bleState.isAuthenticated ? '#dcfce7' : '#fef3c7');
+        badgeAuth.style.color = bleState.isSimulated ? '#0369a1' : (bleState.isAuthenticated ? '#166534' : '#92400e');
+        badgeAuth.style.border = '1px solid ' + (bleState.isSimulated ? '#bae6fd' : (bleState.isAuthenticated ? '#bbf7d0' : '#fde68a'));
       }
       if (badgeLive) {
         badgeLive.innerText = bleState.isSimulated ? 'SIMULADO' : 'CONECTADO';
-        badgeLive.style.background = bleState.isSimulated ? '#475569' : '#16a34a';
+        badgeLive.style.background = bleState.isSimulated ? '#e0f2fe' : '#dcfce7';
+        badgeLive.style.color = bleState.isSimulated ? '#0369a1' : '#166534';
+        badgeLive.style.border = '1px solid ' + (bleState.isSimulated ? '#bae6fd' : '#bbf7d0');
       }
     } else {
       if (devName) devName.innerText = 'Sensor AG-BFLS';
       if (devInfo) devInfo.innerText = 'SN: -- • GATT Desconectado';
-      if (badgeAuth) { badgeAuth.innerText = 'BLOQUEADO'; badgeAuth.style.background = '#1e293b'; }
-      if (badgeLive) { badgeLive.innerText = 'DESCONECTADO'; badgeLive.style.background = '#475569'; }
+      if (badgeAuth) {
+        badgeAuth.innerText = 'BLOQUEADO';
+        badgeAuth.style.background = '#fef3c7';
+        badgeAuth.style.color = '#92400e';
+        badgeAuth.style.border = '1px solid #fde68a';
+      }
+      if (badgeLive) {
+        badgeLive.innerText = 'DESCONECTADO';
+        badgeLive.style.background = '#f1f5f9';
+        badgeLive.style.color = '#64748b';
+        badgeLive.style.border = '1px solid #e2e8f0';
+      }
     }
   }
 

@@ -15,15 +15,19 @@ Trama:
 0C [LL] [ID2 ID1 ID0] [CMD] [DATA...] [CRC8]
 ```
 
-- ID del sensor: tres bytes obtenidos del anuncio BLE AOOOG (manufacturer ID `0xFF43`) o Universal/Dominator (`0xFFFF`). No se inventa ni se fija un ID genérico.
+- ID del sensor y Número de Serie (SN):
+  - Protocolo binario: 3 bytes `[ID2 ID1 ID0]`.
+  - Número de Serie comercial: entero decimal de 24 bits impreso en la etiqueta y mostrado en Fuel Master: $\text{SN} = (\text{byte}_0 \ll 16) \mid (\text{byte}_1 \ll 8) \mid \text{byte}_2$ (ej. `[0x0C, 0x52, 0x02]` $\to$ `SN: 807426`).
+  - Anuncios reconocidos: manufacturer data `0xFF43` (AoooG, 15 bytes) y `0xFFFF` (Universal, 24 bytes), extrayendo ID, SN, nivel de batería, temperatura y frecuencia.
 - CRC-8: implementación reflejada con polinomio `0x8C`.
-- `0x12`: autenticación con los ocho bytes de credencial entregados por el fabricante. No hay PIN ni clave predeterminada.
-- `0x0D`: lectura de parámetros.
-- `0x14`: telemetría.
-- `0x15`: lectura de un bloque de diez registros.
-- `0x16`: escritura de diez registros (80 bytes).
-- `0x19` / `0x1A`: escritura y lectura del modo de salida (`0x02` = litros).
-- Las respuestas se validan por ID, comando, longitud y CRC. Las operaciones de escritura requieren ACK explícito.
+- Comandos soportados:
+  - `0x01` / `0x02`: reinicio e hibernación del sensor.
+  - `0x0D`: lectura de parámetros (frecuencia vacío y lleno).
+  - `0x10` / `0x11`: fijar punto vacío (0%) y punto lleno (100%).
+  - `0x12`: autenticación con credencial de 8 bytes (16 caracteres hexadecimales).
+  - `0x14`: telemetría periódica en vivo.
+  - `0x15` / `0x16`: lectura y escritura de bloques de calibración (10 filas / 80 bytes).
+  - `0x19` / `0x1A`: escritura y lectura del modo de salida (`0x02` = litros directos).
 
 ## Tabla de calibración
 
@@ -41,9 +45,19 @@ Formato oficial: `Data | Level | Volume`.
 
 La tabla de referencia SHVS36 contiene 29 registros incluyendo origen y termina en Data=5000, Level=546 mm y Volume=249.2 L. El Excel del cliente no se versiona.
 
-## Consola BLE web
+## Consola BLE web (Diseño Blanco Sobrio y Compacto)
 
-La búsqueda web usa `requestDevice({ acceptAllDevices: true })`: el selector del navegador muestra dispositivos BLE cercanos sin depender del nombre anunciado, del UUID de servicio en el anuncio ni de los manufacturer data. El usuario selecciona el dispositivo; el software no puede iniciar un escaneo silencioso ni enumerar dispositivos fuera del selector del navegador.
+La consola web BLE (`#panelBleSensor`) utiliza el mismo sistema de diseño blanco sobrio que el resto de la aplicación (`background: #ffffff`, borde sutil `1px solid #e2e8f0`). Se eliminaron todos los recuadros oscuros y cajas anidadas, organizando los controles en:
+1. **Cabecera compacta:** Nombre, badges de estado (`EN VIVO`, `BLOQUEADO`), Número de Serie decimal (`SN: [número]`), HEX, porcentaje de batería y botones de acción.
+2. **Barra de telemetría horizontal (KPI Ribbon):** Franja limpia en gris suave (`#f8fafc`) con Nivel (mm), Volumen (L), Frecuencia (Hz) y Batería/Temp (°C) en una sola fila.
+3. **Área de control en dos columnas directas:**
+   - Columna 1: Puntos Cero (Vacío y Lleno) con botones fijar (0x10/0x11), más altura local y delta Hz.
+   - Columna 2: Subida y lectura de 100 posiciones (0x15/0x16), selector de modo litros (0x19), credencial de 16 hex y acciones de energía (0x01/0x02).
+
+### Modos de Búsqueda Bluetooth
+
+- `🔍 Buscar Sensor (Filtro AG-BFLS)`: filtra con `manufacturerData` (`0xFF43` y `0xFFFF`) para aislar los sensores de nivel en terreno, ocultando dispositivos Bluetooth ajenos.
+- `🌐 Todos`: búsqueda abierta con `acceptAllDevices: true` como respaldo universal si el adaptador Bluetooth del sistema operativo no procesa los datos del fabricante antes del emparejamiento.
 
 Después de seleccionar, se conecta a GATT y consulta el servicio FFF0, característica FFF1 (escritura) y FFF2 (notificaciones). `watchAdvertisements()` se usa solo como fuente opcional para extraer el ID AOOOG/Universal; su ausencia no impide descubrir ni conectar GATT. También se acepta una trama espontánea válida recibida por FFF2. Si ninguna fuente entrega el ID, se solicita el ID real de seis caracteres hexadecimales de la etiqueta/documentación. No hay valor de ejemplo predeterminado. Antes de habilitar operaciones, se valida el ID mediante la lectura de solo lectura 0x1A y se exige un modo válido (0, 1 o 2). Un ID incorrecto provoca desconexión; no se ejecutan escrituras.
 
@@ -76,6 +90,14 @@ GitHub Actions ejecuta validación JavaScript y análisis/pruebas Flutter en `ma
 - No versionar credenciales, PIN, claves, keystores, APK firmadas ni archivos privados de clientes.
 - GitHub Pages publica exclusivamente `index.html`, `app.js` y `app.css` desde un directorio de distribución temporal. No publica el repositorio completo ni planillas internas.
 - No incluir datos sensibles en logs ni documentación.
+
+## Archivos de referencia oficiales del fabricante AoooG
+
+El repositorio incluye en `docs/reference/` los tres documentos y aplicaciones originales del fabricante para asegurar compatibilidad estricta con el hardware real:
+- `docs/reference/AG-BFLS_User_Manual.pdf` (1.5 MB): Manual de usuario oficial, instalación mecánica, cableado y calibración física (puntos vacío y lleno).
+- `docs/reference/AG-BFLS_Datasheet.pdf` (733 KB): Ficha técnica, precisión capacitiva, protocolo, señales y especificaciones eléctricas.
+- `docs/reference/Fuel Master V0.1.4.apk` (57.6 MB): APK oficial de referencia del fabricante.
+- `docs/reference/README.md`: Resumen y hashes de integridad de los archivos de referencia.
 
 ## Validación física pendiente
 
