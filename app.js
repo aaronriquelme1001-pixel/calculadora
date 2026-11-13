@@ -3220,6 +3220,15 @@
       const advertisedId = await advertisedIdPromise;
       if (!bleState.sensorId && advertisedId) bleState.sensorId = advertisedId;
 
+      // Esperar brevemente (hasta 2.5s) a que el sensor emita su primera trama espontánea de telemetría
+      // para capturar el Número de Serie (SN) automáticamente desde el hardware sin intervención manual.
+      if (!bleState.sensorId) {
+        const startWait = Date.now();
+        while (!bleState.sensorId && (Date.now() - startWait) < 2500) {
+          await new Promise(r => setTimeout(r, 200));
+        }
+      }
+
       // No inferir el ID del nombre Bluetooth y no usar IDs de ejemplo.
       if (!bleState.sensorId) {
         const manual = prompt(
