@@ -65,6 +65,7 @@ class AoooGManager {
   StreamSubscription<BluetoothConnectionState>? _connectionSub;
 
   int? currentSensorId;
+  int? currentOutputMode;
   int? negotiatedMtu;
   final _responseCompleters = <int, Completer<List<int>>>{};
   bool _commandInFlight = false;
@@ -123,6 +124,7 @@ class AoooGManager {
         await disconnect();
         return false;
       }
+      currentOutputMode = confirmedMode;
       return true;
     } catch (_) {
       await disconnect();
@@ -139,6 +141,7 @@ class AoooGManager {
     notifyChar = null;
     connectedDevice = null;
     currentSensorId = null;
+    currentOutputMode = null;
     negotiatedMtu = null;
     _isAuthenticated = false;
     _failPendingCommands();
@@ -363,7 +366,8 @@ class AoooGManager {
     if ((mode == 1 || mode == 2) && verifyTable && !await _hasValidStoredCalibrationTable()) return false;
     final resp = await sendCommand(0x19, [mode]);
     if (!_isSuccessStatus(resp, 0x19)) return false;
-    return await readOutputMode() == mode;
+    final actual = await readOutputMode();
+    return actual == mode;
   }
 
   /// Lee el modo de salida actual (comando 0x1A)
@@ -372,6 +376,7 @@ class AoooGManager {
     if (resp != null &&
         AoooGProtocol.isValidFrame(resp, expectedSensorId: currentSensorId, expectedCommand: 0x1A) &&
         resp.length == 8 && resp[6] <= 2) {
+      currentOutputMode = resp[6];
       return resp[6];
     }
     return null;
