@@ -71,6 +71,35 @@ void main() {
       );
     });
   });
+  group('AG-BFLS protocol response and calibration frame lengths', () {
+    test('0x0D parameter response contains exactly 13 payload bytes', () {
+      final response = AoooGProtocol.buildFrame(0x123456, 0x0D, List<int>.filled(13, 0));
+      expect(response.length, 20);
+      expect(AoooGProtocol.isValidFrame(response, expectedCommand: 0x0D), isTrue);
+    });
+
+    test('0x1B coordinate response contains exactly four payload bytes', () {
+      final response = AoooGProtocol.buildFrame(0x123456, 0x1B, [0, 0, 0, 0]);
+      expect(response.length, 11);
+      expect(AoooGProtocol.isValidFrame(response, expectedCommand: 0x1B), isTrue);
+    });
+
+    test('0x16 calibration write frame is 88 bytes including framing and CRC', () {
+      final frame = AoooGProtocol.buildFrame(0x123456, 0x16,
+          [0, ...List<int>.filled(80, 0)]);
+      expect(frame.length, 88);
+      expect(frame[1], 86);
+      expect(AoooGProtocol.isValidFrame(frame, expectedCommand: 0x16), isTrue);
+    });
+
+    test('0x15 read request carries only the start index', () {
+      final frame = AoooGProtocol.buildFrame(0x123456, 0x15, [90]);
+      expect(frame.length, 8);
+      expect(frame[6], 90);
+      expect(AoooGProtocol.isValidFrame(frame, expectedCommand: 0x15), isTrue);
+    });
+  });
+
   group('TankGeometryEngine', () {
     test('rectangular tank returns zero, half and full volume correctly', () {
       const length = 850.0;
