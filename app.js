@@ -3124,70 +3124,139 @@
     }
   }
 
+  function normalizeCalibrationHeader(value) {
+    return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function calibrationCellValue(value) {
+    if (value && typeof value === 'object') {
+      if (value.result !== undefined) return value.result;
+      if (value.text !== undefined) return value.text;
+      if (Array.isArray(value.richText)) return value.richText.map(part => part.text || '').join('');
+    }
+    return value;
+  }
+
+  function parseCalibrationNumber(raw, field, rowNumber) {
+    const value = calibrationCellValue(raw);
+    if (value === null || value === undefined || String(value).trim() === '') throw new Error(field + ' vacío en fila ' + rowNumber + '.');
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) throw new Error(field + ' no es finito en fila ' + rowNumber + '.');
+      return value;
+    }
+    let text = String(value).trim().replace(/\s/g, '');
+    if (text.includes(',') && text.includes('.')) text = text.replace(/\./g, '').replace(',', '.');
+    else if (text.includes(',')) text = text.replace(',', '.');
+    const number = Number(text);
+    if (!Number.isFinite(number)) throw new Error(field + ' no es numérico en fila ' + rowNumber + ': ' + value);
+    return number;
+  }
+
+  function splitCalibrationDelimitedLine(line, delimiter) {
+    const cells = [];
+    let current = '', quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (quoted && line[i + 1] === '"') { current += '"'; i++; }
+        else quoted = !quoted;
+      } else if (char === delimiter && !quoted) {
+        cells.push(current.trim()); current = '';
+      } else current += char;
+    }
+    if (quoted) throw new Error('Archivo delimitado con comillas sin cerrar.');
+    cells.push(current.trim());
+    return cells;
+  }
+
+  function parseCalibrationMatrix(matrix) {
+    if (!Array.isArray(matrix) || !matrix.length) throw new Error('La hoja no contiene filas.');
+    const aliases = {
+      data: new Set(['data', 'dato', 'fix', 'fix value', 'coordenada', 'sensor data']),
+      level: new Set(['level', 'nivel', 'mm', 'level mm', 'nivel mm']),
+      volume: new Set(['volume', 'volumen', 'vol', 'litros', 'volume l', 'volumen l', 'capacity'])
+    };
+    let headerRow = -1, columns = { data: 0, level: 1, volume: 2 };
+    for (let r = 0; r < Math.min(matrix.length, 10); r++) {
+      const row = matrix[r].map(value => normalizeCalibrationHeader(calibrationCellValue(value)));
+      const found = {};
+      for (const key of Object.keys(aliases)) found[key] = row.findIndex(value => aliases[key].has(value));
+      if (found.data >= 0 && found.level >= 0 && found.volume >= 0 &&
+          new Set([found.data, found.level, found.volume]).size === 3) {
+        headerRow = r; columns = found; break;
+      }
+    }
+    const rows = [];
+    for (let r = headerRow + 1; r < matrix.length; r++) {
+      const row = matrix[r] || [];
+      if (row.every(value => value === null || value === undefined || String(calibrationCellValue(value) ?? '').trim() === '')) continue;
+      const data = parseCalibrationNumber(row[columns.data], 'Data', r + 1);
+      const level = parseCalibrationNumber(row[columns.level], 'Level', r + 1);
+      const volume = parseCalibrationNumber(row[columns.volume], 'Volume', r + 1);
+      if (!Number.isInteger(data) || data < 0 || data > 5000) throw new Error('Data debe ser entero entre 0 y 5000 en fila ' + (r + 1) + '.');
+      if (!Number.isInteger(level) || level < 0 || level > 65535) throw new Error('Level debe ser entero entre 0 y 65535 mm en fila ' + (r + 1) + '.');
+      if (volume < 0) throw new Error('Volume no puede ser negativo en fila ' + (r + 1) + '.');
+      rows.push({ data, level, volume });
+      if (rows.length > 100) throw new Error('La tabla supera los 100 registros admitidos.');
+    }
+    if (rows.length && (rows[0].data !== 0 || rows[0].level !== 0 || rows[0].volume !== 0)) rows.unshift({ data: 0, level: 0, volume: 0 });
+    if (rows.length < 2 || rows.length > 100) throw new Error('La tabla debe contener entre 2 y 100 registros.');
+    let previous = rows[0];
+    if (previous.data !== 0 || previous.level !== 0 || previous.volume !== 0) throw new Error('El origen debe ser 0 / 0 / 0.');
+    for (let i = 1; i < rows.length; i++) {
+      const current = rows[i];
+      if (current.data <= previous.data || current.level <= previous.level || current.volume < previous.volume) {
+        throw new Error('Data y Level deben crecer estrictamente; Volume no puede disminuir (registro ' + (i + 1) + ').');
+      }
+      previous = current;
+    }
+    if (rows[rows.length - 1].level <= 0 || rows[rows.length - 1].volume <= 0) throw new Error('El último registro debe tener nivel y volumen positivos.');
+    return rows;
+  }
+
+  function parseCalibrationDelimitedText(text) {
+    const lines = String(text).replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim());
+    while (lines.length && /^sep\s*=\s*[,;\t]$/i.test(lines[0].trim())) lines.shift();
+    if (!lines.length) throw new Error('El archivo está vacío.');
+    const sample = lines[0];
+    const delimiter = sample.includes(';') ? ';' : (sample.includes('\t') ? '\t' : ',');
+    return parseCalibrationMatrix(lines.map(line => splitCalibrationDelimitedLine(line, delimiter)));
+  }
+
   async function importCalibrationFile(file) {
     if (!file) return;
     try {
-      let importedRows = [];
-      const fileName = file.name.toLowerCase();
-
-      if (fileName.endsWith('.xlsx')) {
-        if (!window.ExcelJS) {
-          alert('Librería ExcelJS no disponible.');
-          return;
-        }
-        const buffer = await file.arrayBuffer();
+      const name = file.name.toLowerCase();
+      let importedRows;
+      if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+        if (!window.ExcelJS) throw new Error('ExcelJS no está disponible.');
         const workbook = new window.ExcelJS.Workbook();
-        await workbook.xlsx.load(buffer);
-        const worksheet = workbook.worksheets[0];
-        if (!worksheet) throw new Error('El archivo Excel no contiene hojas de cálculo.');
-
-        worksheet.eachRow((row, rowNumber) => {
-          if (rowNumber === 1) return;
-          const val1 = row.getCell(1).value;
-          const val2 = row.getCell(2).value;
-          const val3 = row.getCell(3).value;
-
-          const num1 = parseFloat(typeof val1 === 'object' && val1 ? val1.result || val1 : val1);
-          const num2 = parseFloat(typeof val2 === 'object' && val2 ? val2.result || val2 : val2);
-          const num3 = parseFloat(typeof val3 === 'object' && val3 ? val3.result || val3 : val3);
-
-          if (!isNaN(num1) && !isNaN(num2) && !isNaN(num3)) {
-            importedRows.push({
-              data: num1,
-              level: num2,
-              volume: num3
-            });
-          }
-        });
-      } else if (fileName.endsWith('.csv')) {
-        const text = await file.text();
-        const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-        lines.forEach((line, idx) => {
-          if (idx === 0 && /[a-zA-Z]/.test(line)) return;
-          const parts = line.split(/[,;\t]/).map(p => parseFloat(p.trim()));
-          if (parts.length >= 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
-            importedRows.push({
-              data: parts[0],
-              level: parts[1],
-              volume: parts[2]
-            });
-          }
-        });
-      }
-
-      if (importedRows.length >= 2) {
-        state.isImported = true;
-        state.importedRows = importedRows;
-        state.tank.height = Math.round(importedRows[importedRows.length - 1].level);
-        state.currentLevelMm = state.tank.height;
-        syncInputsFromState();
-        updateAllUI();
-        showToast(`Se importaron exitosamente ${importedRows.length} registros de calibración.`);
+        await workbook.xlsx.load(await file.arrayBuffer());
+        let lastError = null;
+        importedRows = null;
+        for (const worksheet of workbook.worksheets) {
+          const matrix = [];
+          worksheet.eachRow({ includeEmpty: false }, row => {
+            matrix[row.number - 1] = Array.from({ length: row.cellCount }, (_, index) => row.getCell(index + 1).value);
+          });
+          try { importedRows = parseCalibrationMatrix(matrix); break; }
+          catch (error) { lastError = error; }
+        }
+        if (!importedRows) throw new Error('No se encontró una hoja con columnas Data, Level y Volume. ' + (lastError?.message || ''));
+      } else if (name.endsWith('.csv') || name.endsWith('.txt')) {
+        importedRows = parseCalibrationDelimitedText(await file.text());
       } else {
-        alert('No se encontraron suficientes filas válidas en el archivo (se requieren mínimo 2 puntos).');
+        throw new Error('Formato no admitido. Selecciona XLSX, CSV o TXT.');
       }
-    } catch (err) {
-      alert('Error al importar archivo: ' + err.message);
+      state.isImported = true;
+      state.importedRows = importedRows;
+      state.tank.height = importedRows[importedRows.length - 1].level;
+      state.currentLevelMm = state.tank.height;
+      syncInputsFromState();
+      updateAllUI();
+      showToast('Tabla importada y validada: ' + importedRows.length + ' registros. Se preservaron Data, Level y Volume.');
+    } catch (error) {
+      alert('No se importó la calibración: ' + error.message);
     }
   }
 
