@@ -155,7 +155,8 @@ class AoooGManager {
       try { row.toBytes(); } catch (_) { return false; }
       lastFix = row.fixValue; lastLevel = row.levelMm; lastVolume = row.volumeL;
     }
-    return rows.takeWhile((r) => !(r.volumeL == 0 && r.levelMm == 0 && r.fixValue == 0)).length >= 2;
+    final measuredCount = rows.where((r) => r.volumeL != 0 || r.levelMm != 0 || r.fixValue != 0).length;
+    return measuredCount >= 2;
   }
 
   Future<bool> uploadCalibrationTable(List<CalibrationRow> rows,
