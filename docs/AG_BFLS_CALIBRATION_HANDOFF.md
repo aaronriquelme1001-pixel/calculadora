@@ -288,3 +288,26 @@ Web Bluetooth no expone una API estándar para solicitar ni consultar el ATT MTU
 - Modos 1/2 requieren origen 0/0/0 y tabla completa válida con terminador sin huecos; se valida antes de cambiar modo.
 - Web Bluetooth no tiene API estándar para consultar/solicitar MTU: no se usa un método no estándar. Los comandos 15/16 intentan transferencia y manejan error/rollback; Flutter nativo es la ruta fiable cuando el navegador/OS no negocia MTU suficiente.
 
+---
+
+## 14. Estado vigente después de integrar a main (2026-11-13)
+
+**Esta sección es la referencia vigente y prevalece sobre instrucciones históricas anteriores que indicaban no integrar la rama.**
+
+- PR #5 fue fusionado en `main`: https://github.com/aaronriquelme1001-pixel/calculadora/pull/5
+- Merge commit: `f000e4d0d66dfb2c841848145004841c89780ca5`.
+- Rama integrada: `fix/ble-identification-auth-regression-2026-11-13`, HEAD `25dd6ae936b29173afe12958bf3778d2328fca77`.
+- Los dos checks de GitHub Actions sobre el HEAD del PR finalizaron en SUCCESS: validación web y análisis/pruebas Flutter. Esto confirma CI del código integrado; no sustituye pruebas de radio/GATT con hardware.
+- La matriz de protocolo está en `docs/AG_BFLS_PUBLIC_PROTOCOL_IMPLEMENTATION.md`; el diagnóstico de navegador está en `docs/WEB_BLUETOOTH_DIAGNOSTICS.md`; el mapa de continuidad está en este handoff y `README.md`.
+- No se ha realizado todavía una prueba física AG-BFLS. No afirmar que el descubrimiento BLE, GATT, autenticación o lecturas funcionen en el equipo real hasta ejecutar el procedimiento de la sección 8.
+- No se ha escrito EEPROM en un sensor físico. No ejecutar 0x16 ni calibración física sin autorización explícita, respaldo íntegro de los 100 slots y plan de rollback.
+- No se ha generado ni publicado APK/AAB; la APK de la app propia se compila fuera de este repositorio. La APK Fuel Master oficial es solo referencia.
+- No se realizaron despliegues ni cambios de producción.
+
+### Próximo trabajo permitido
+
+1. Actualizar/clonar `main` y verificar el merge commit anterior.
+2. Ejecutar CI local o GitHub Actions si hay cambios posteriores.
+3. Realizar primero prueba física de solo lectura: publicidad/SN, GATT FFF0/FFF1/FFF2, lectura 0x1A, autenticación 0x12 con credencial del fabricante no registrada, lecturas 0x0D/0x14 y lectura/backup 0x15.
+4. Documentar modelo, firmware, navegador/OS/adaptador y logs saneados.
+5. Mantener escritura 0x16 bloqueada operacionalmente hasta autorización, backup verificado y procedimiento de rollback aprobado.
