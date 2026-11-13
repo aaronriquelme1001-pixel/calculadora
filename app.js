@@ -2727,7 +2727,7 @@
     bleState.sensorId = [0x53, 0x49, 0x4d];
     bleState.isConnected = false; bleState.isSimulated = true; bleState.isAuthenticated = false;
     bleState.emptyFreq = 15200; bleState.fullFreq = 10400; bleState.outputMode = 2;
-    bleState.calibrationTable = Array.from({ length: 100 }, (_, i) => ({ volume: 0, level: 0, data: 0 }));
+    bleState.calibrationTable = Array.from({ length: 100 }, () => ({ volume: 0, level: 0, data: 0 }));
     updateBleUI();
     let angle = 0;
     bleState.pollTimer = setInterval(() => {
@@ -2736,7 +2736,13 @@
       const level = Math.round((state.calcCache.effH || 370) * (0.6 + Math.sin(angle) * 0.15));
       setText('bleLiveLevel', level + ' mm');
       setText('bleLiveVolume', getVolumeAtHeight(level).toFixed(1) + ' L');
-      setText('bleLiveFreq', Math.round(15200 - (angle % 6.28)   async function authenticateBleSensor() {
+      setText('bleLiveFreq', Math.round(15200 - (angle % 6.28) * 760) + ' Hz');
+      setText('bleLiveBatteryTemp', '98% • 24.5°C');
+    }, 1500);
+    showToast('Modo DEMO activo: no hay comunicación con un sensor físico.');
+  }
+
+  async function authenticateBleSensor() {
     const input = document.getElementById('bleCredentialInput');
     const credential = (input?.value || '').trim();
     if (!/^[0-9a-fA-F]{16}$/.test(credential)) {
