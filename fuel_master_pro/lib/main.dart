@@ -64,6 +64,25 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   double _liveBattery = 100.0;
   int _outputMode = 2; // 0=%, 1=mm, 2=litros
   int _broadcastInterval = 8;
+
+  String get _formattedSensorOutput {
+    switch (_outputMode) {
+      case 0:
+        return '${(_liveFuelLiters / 100).toStringAsFixed(2)} %';
+      case 1:
+        return '${_liveFuelLiters.toStringAsFixed(0)} mm';
+      default:
+        return '${_liveFuelLiters.toStringAsFixed(1)} L';
+    }
+  }
+
+  String get _sensorOutputTitle {
+    switch (_outputMode) {
+      case 0: return 'Salida sensor (%)';
+      case 1: return 'Nivel sensor (mm)';
+      default: return 'Volumen sensor (L)';
+    }
+  }
   Timer? _telemetryTimer;
 
   // Medidas Generales del Estanque Rectangular (mm)
@@ -262,14 +281,17 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
         _liveTemperature = sensor.temperature.toDouble();
         _liveBattery = sensor.battery.toDouble();
         _liveFuelLiters = sensor.output;
+        _outputMode = sensor.outputMode ?? 2;
       });
 
       // Leer parámetros
       final params = await _bleManager.readParameters();
       if (params != null && mounted) {
         setState(() {
-          if (params['emptyFreq']! > 0) _emptyFreq = params['emptyFreq']!;
-          if (params['fullFreq']! > 0) _fullFreq = params['fullFreq']!;
+          _emptyFreq = params['emptyFreq']!;
+          _fullFreq = params['fullFreq']!;
+          _outputMode = params['outputMode']!.toInt();
+          _broadcastInterval = params['broadcastInterval']!.toInt();
         });
       }
 
@@ -284,8 +306,8 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
             _liveTemperature = data.temperatureC;
             _liveBattery = data.batteryPct;
             _liveFuelLiters = data.fuelOutput;
-            if (data.emptyFreqHz > 0) _emptyFreq = data.emptyFreqHz;
-            if (data.fullFreqHz > 0) _fullFreq = data.fullFreqHz;
+            _emptyFreq = data.emptyFreqHz;
+            _fullFreq = data.fullFreqHz;
           });
         }
       });
@@ -889,8 +911,8 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: _metricBox(
-                                        'Nivel / Litros',
-                                        '${_liveFuelLiters.toStringAsFixed(1)} L',
+                                        _sensorOutputTitle,
+                                        _formattedSensorOutput,
                                         const Color(0xFFEFF6FF),
                                         const Color(0xFF2563EB),
                                       ),
