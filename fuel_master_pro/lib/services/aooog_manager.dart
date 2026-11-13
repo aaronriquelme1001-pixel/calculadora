@@ -114,7 +114,7 @@ class AoooGManager {
   Future<Map<String, double>?> readParameters() async {
     final r = await sendCommand(0x0d, []);
     if (r == null || !AoooGProtocol.isValidFrame(r, expectedSensorId: currentSensorId,
-        expectedCommand: 0x0d) || r.length != 21) return null;
+        expectedCommand: 0x0d) || r.length != 20) return null;
     final d = ByteData.sublistView(Uint8List.fromList(r), 6);
     final empty = d.getFloat32(4, Endian.little);
     final full = d.getFloat32(8, Endian.little);
@@ -125,7 +125,7 @@ class AoooGManager {
   Future<double?> readCalibrationCoordinate() async {
     final r = await sendCommand(0x1b, []);
     if (r == null || !AoooGProtocol.isValidFrame(r, expectedSensorId: currentSensorId,
-        expectedCommand: 0x1b) || r.length != 12) return null;
+        expectedCommand: 0x1b) || r.length != 11) return null;
     final value = ByteData.sublistView(Uint8List.fromList(r), 6).getFloat32(0, Endian.little);
     if (!value.isFinite || value < 0 || value > 5000) return null;
     return value;
@@ -135,7 +135,7 @@ class AoooGManager {
     if (startIndex < 0 || startIndex > 90 || startIndex % 10 != 0) return null;
     final r = await sendCommand(0x15, [startIndex], timeout: const Duration(seconds: 8));
     if (r == null || !AoooGProtocol.isValidFrame(r, expectedSensorId: currentSensorId,
-        expectedCommand: 0x15) || r.length != 88) return null;
+        expectedCommand: 0x15) || r.length != 87) return null;
     return Uint8List.fromList(r.sublist(6, 86));
   }
 
@@ -175,12 +175,15 @@ class AoooGManager {
       final payload = <int>[start];
       for (var i = start; i < start + 10; i++) payload.addAll(rows[i].toBytes());
       if (!_statusOk(await sendCommand(0x16, payload, timeout: const Duration(seconds: 8)), 0x16)) {
-        // Do not retry or restart from zero: caller must inspect/restore from backup.
+        await _restoreCalibrationBackup(backup);
         return false;
       }
       final readBack = await readCalibrationBlock(start);
       final expected = Uint8List.fromList(payload.sublist(1));
-      if (readBack == null || !_bytesEqual(readBack, expected)) return false;
+      if (readBack == null || !_bytesEqual(readBack, expected)) {
+        await _restoreCalibrationBackup(backup);
+        return false;
+      }
       onProgress?.call(start ~/ 10 + 1, 10);
     }
     if (!_statusOk(await sendCommand(0x19, [0x02]), 0x19)) return false;
@@ -188,6 +191,18 @@ class AoooGManager {
     return mode != null && AoooGProtocol.isValidFrame(mode,
       expectedSensorId: currentSensorId, expectedCommand: 0x1a) &&
       mode.length == 8 && mode[6] == 0x02;
+  }
+
+  Future<bool> _restoreCalibrationBackup(List<Uint8List> backup) async {
+    if (backup.length != 10 || connectedDevice == null) return false;
+    for (var block = 0; block < 10; block++) {
+      final start = block * 10;
+      final payload = <int>[start, ...backup[block]];
+      if (!_statusOk(await sendCommand(0x16, payload, timeout: const Duration(seconds: 8)), 0x16)) return false;
+      final check = await readCalibrationBlock(start);
+      if (check == null || !_bytesEqual(check, backup[block])) return false;
+    }
+    return true;
   }
 
   bool _bytesEqual(List<int> a, List<int> b) {
