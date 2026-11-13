@@ -21,8 +21,8 @@ class CalibrationRow {
 
   /// 8 bytes: float32 LE (volume), uint16 LE (level), uint16 LE (fix_value)
   Uint8List toBytes() {
-    if (!volumeL.isFinite || volumeL < 0) {
-      throw ArgumentError('Volume must be non-negative and finite.');
+    if (!volumeL.isFinite || volumeL < 0 || volumeL > 1000000) {
+      throw ArgumentError('Volume must be finite and in 0..1000000 L.');
     }
     if (levelMm < 0 || levelMm > 0xFFFF) {
       throw ArgumentError('Level must fit in uint16.');
