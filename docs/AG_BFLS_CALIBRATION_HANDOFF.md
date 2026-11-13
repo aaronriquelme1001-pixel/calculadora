@@ -264,9 +264,9 @@ Este apartado **actualiza y reemplaza cualquier nota anterior** que dijera que n
 
 Web Bluetooth no expone una API estándar para solicitar ni consultar el ATT MTU. La app web puede intentar la escritura completa de 88 bytes y manejar el error; no puede garantizar previamente que el MTU cumpla el requisito. Las respuestas 0x15 de 87 bytes requieren ATT MTU ≥90. Para lectura/escritura fiable de tabla, la ruta preferida es Flutter nativo, que solicita MTU 247 y comprueba los mínimos.
 
-### Validación pendiente — no marcar como terminada
+### Validación pendiente en hardware — no marcar como terminada
 
-- Los commits creados por la integración GitHub no han producido una ejecución Actions nueva asociada al HEAD más reciente; el run anterior solo validó el commit anterior a esta ampliación. Debe ejecutarse `flutter pub get`, `flutter analyze`, `flutter test`, `node --check app.js` y `node --test tests/*.test.cjs` sobre el HEAD actual.
+- CI ejecutado correctamente en el código HEAD `2a7d0197cb3919cf4e1b271db9068c2de28409e3`: run `43489968286`. Web: `node --check app.js` y `node --test tests/*.test.cjs` PASS. Flutter: `flutter pub get`, `flutter analyze` y `flutter test` PASS. El commit posterior que actualiza este handoff solo modifica documentación.
 - La prueba física sigue pendiente: anuncio con SN correcto, conexión GATT, lectura 1A, autenticación 12, lectura 0D/14 y respaldo 15. No se ha realizado escritura EEPROM real.
 - El navegador depende del MTU negociado por el sistema; si falla la transferencia 15/16, no reintentar automáticamente desde cero. Usar Flutter nativo o revisar el MTU.
 - El comando 22 cambia el formato de publicidad; puede alterar cómo otras apps encuentran el sensor. Solo usar tras confirmación del técnico.
