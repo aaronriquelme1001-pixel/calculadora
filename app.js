@@ -2861,6 +2861,7 @@
   const bleState = {
     device: null, server: null, charWrite: null, charNotify: null,
     sensorId: null, isAuthenticated: false, isConnected: false, isSimulated: false,
+    panelOpen: false,
     pollTimer: null, pendingCommand: null, emptyFreq: null, fullFreq: null,
     outputMode: null, calibrationTable: null,
     battery: null, temperature: null, currentFreq: null, rssi: null
@@ -3028,7 +3029,7 @@
     const lblBtn = document.getElementById('lblBleBtn');
     const btnUpload = document.getElementById('btnTableUploadBle');
     const active = bleState.isConnected || bleState.isSimulated;
-    if (panel) panel.style.display = active ? 'block' : 'none';
+    if (panel) panel.style.display = (bleState.panelOpen || active) ? 'block' : 'none';
     if (btnUpload) btnUpload.style.display = active ? 'inline-flex' : 'none';
     if (lblBtn) lblBtn.innerText = active ? 'Sensor Conectado' : 'Conectar Sensor BLE';
     if (btnEditId) btnEditId.style.display = active ? 'inline-block' : 'none';
@@ -3138,11 +3139,43 @@
 
   async function connectBleSensor() {
     if (!window.isSecureContext) {
-      alert('Bluetooth web requiere un contexto seguro HTTPS. Abre la calculadora desde GitHub Pages o http://localhost.');
+      alert(
+        'Bluetooth web requiere un contexto seguro HTTPS.\n\n' +
+        'Si estás en tu celular, asegúrate de ingresar mediante el enlace seguro:\n' +
+        'https://aaronriquelme1001-pixel.github.io/calculadora/'
+      );
       return;
     }
     if (!navigator.bluetooth || typeof navigator.bluetooth.requestDevice !== 'function') {
-      alert('Este navegador no ofrece Web Bluetooth. Usa Google Chrome o Microsoft Edge actualizado en Windows/macOS/Linux, o Chrome en Android. Safari/iOS y Firefox no ofrecen esta conexión web.');
+      const ua = navigator.userAgent || '';
+      const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+      const isInApp = /FBAN|FBAV|Instagram|WhatsApp|Line|Twitter|Telegram/i.test(ua);
+      
+      if (isIOS) {
+        alert(
+          'Bluetooth no disponible en este dispositivo (iOS/Apple):\n\n' +
+          'Apple no permite Web Bluetooth en ningún navegador web de iPhone o iPad (Safari, Chrome iOS, etc.).\n\n' +
+          'Opciones recomendadas:\n' +
+          '1. Conectar desde una PC con Google Chrome o Microsoft Edge.\n' +
+          '2. Conectar desde un teléfono Android usando Google Chrome.\n' +
+          '3. En iPhone, usar un navegador con soporte BLE como Bluefy, o la app oficial.'
+        );
+      } else if (isInApp) {
+        alert(
+          'Navegador interno de aplicación detectado:\n\n' +
+          'Estás viendo la página dentro de WhatsApp u otra app, la cual bloquea el acceso a Bluetooth.\n\n' +
+          'Solución:\n' +
+          'Toca los tres puntos (⋮) o el icono de compartir en la esquina y selecciona "Abrir en Chrome" o "Abrir en el navegador del sistema".'
+        );
+      } else {
+        alert(
+          'Este navegador no ofrece soporte para Web Bluetooth.\n\n' +
+          'En teléfonos móviles Android:\n' +
+          '• Abre la página directamente en la aplicación Google Chrome oficial.\n' +
+          '• Comprueba que el Bluetooth y la Ubicación (GPS) estén activados en los ajustes del teléfono.\n' +
+          '• En PC: Usa Chrome o Edge actualizado.'
+        );
+      }
       return;
     }
 
@@ -4090,10 +4123,16 @@
     const btnBleConnect = document.getElementById('btnBleConnect');
     if (btnBleConnect) {
       btnBleConnect.addEventListener('click', () => {
+        bleState.panelOpen = true;
         const panel = document.getElementById('panelBleSensor');
         if (panel) {
           panel.style.display = 'block';
           panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        const notice = document.getElementById('bleMobileNotice');
+        if (notice) {
+          const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || window.innerWidth <= 768;
+          notice.style.display = isMobile ? 'block' : 'none';
         }
         if (!bleState.isConnected && !bleState.isSimulated) {
           connectBleSensorTargeted();
@@ -4113,6 +4152,7 @@
     const btnBleClose = document.getElementById('btnBleClosePanel');
     if (btnBleClose) {
       btnBleClose.addEventListener('click', () => {
+        bleState.panelOpen = false;
         const panel = document.getElementById('panelBleSensor');
         if (panel) panel.style.display = 'none';
       });

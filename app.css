@@ -643,6 +643,198 @@ body {
   opacity: 1;
 }
 
+/* ========================================================================== */
+/* OPTIMIZACIONES RESPONSIVAS PARA SMARTPHONES Y PANTALLAS TÁCTILES           */
+/* ========================================================================== */
+
+@media (max-width: 900px) {
+  .app-header {
+    padding: 8px 12px;
+  }
+  .header-inner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .brand-section {
+    justify-content: space-between;
+    width: 100%;
+  }
+  .header-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+  }
+  .header-actions .btn {
+    width: 100%;
+    padding: 8px 6px;
+    font-size: 0.74rem;
+    justify-content: center;
+    min-height: 38px;
+  }
+  .container {
+    padding: 0 8px;
+    margin: 8px auto;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Panel BLE en Celulares */
+  .ble-panel {
+    padding: 10px 12px !important;
+    border-radius: 10px !important;
+  }
+  .ble-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .ble-header-info {
+    width: 100% !important;
+    justify-content: flex-start !important;
+    gap: 6px !important;
+  }
+  .ble-header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 5px !important;
+    width: 100% !important;
+  }
+  .ble-header-actions .btn {
+    padding: 7px 4px !important;
+    font-size: 0.72rem !important;
+    justify-content: center !important;
+    min-height: 36px !important;
+  }
+  #btnBleDisconnect {
+    grid-column: span 2 !important;
+  }
+  #btnBleClosePanel {
+    grid-column: span 1 !important;
+  }
+
+  /* Telemetría: 2 columnas con tarjetas blancas bien definidas */
+  .ble-telemetry-ribbon {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    padding: 8px !important;
+  }
+  .ble-telemetry-item {
+    border-left: none !important;
+    padding-left: 0 !important;
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 6px !important;
+    padding: 8px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 2px !important;
+  }
+  .ble-telemetry-item strong {
+    font-size: 1.05rem !important;
+  }
+
+  /* Columnas de control: apiladas ordenadamente sin bordes rotos */
+  .ble-columns {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .ble-col-right {
+    border-left: none !important;
+    padding-left: 0 !important;
+    border-top: 1px solid #e2e8f0 !important;
+    padding-top: 12px !important;
+  }
+
+  /* Controles públicos adicionales de calibración */
+  .ble-extra-controls {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6px !important;
+  }
+  .ble-extra-controls > button,
+  .ble-extra-controls > label {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 2px !important;
+  }
+  .ble-extra-controls input,
+  .ble-extra-controls select {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Formularios de dimensiones generales */
+  .card {
+    padding: 12px !important;
+    border-radius: 10px !important;
+  }
+  .grid-3 {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 4px !important;
+  }
+  .grid-3 .form-item label {
+    font-size: 0.68rem !important;
+  }
+  .grid-3 input {
+    font-size: 0.85rem !important;
+    padding: 6px 4px !important;
+  }
+
+  /* Radios en 2x2 para fácil lectura y toque en pantalla */
+  .radios-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 6px !important;
+  }
+  .radios-grid .form-item {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* Visor 3D y Canvas adaptado al scroll vertical */
+  .viewport-card {
+    margin-bottom: 10px !important;
+  }
+  #tankPreviewCanvas {
+    max-height: 280px !important;
+    height: 260px !important;
+  }
+  .view-btn-group {
+    flex-wrap: wrap !important;
+    gap: 3px !important;
+  }
+  .view-btn-group .btn {
+    padding: 5px 7px !important;
+    font-size: 0.7rem !important;
+    min-height: 32px !important;
+  }
+
+  /* Pestañas horizontales desplazables */
+  .tab-row {
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+    gap: 4px !important;
+    padding-bottom: 4px !important;
+  }
+  .tab-btn {
+    padding: 8px 12px !important;
+    font-size: 0.78rem !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Notificaciones toast centradas */
+  .toast-notice {
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    text-align: center !important;
+  }
+}
+
 @media print {
   body { background: #fff !important; padding: 0 !important; }
   .app-header, .tab-row, .header-actions, .step-buttons-row, .viewport-header, .no-print { display: none !important; }
