@@ -115,6 +115,7 @@ class AoooGProtocol {
         universal[0] != 0x3f || universal[1] != 0x36 ||
         universal[2] != 0xb4 || universal[5] != 0x5b) return null;
     final id = (universal[6] << 16) | (universal[7] << 8) | universal[8];
+    if (id == 0) return null;
     final frequency = ((universal[14] << 8) | universal[15]).toDouble();
     final emptyFrequency = ((universal[18] << 8) | universal[19]).toDouble();
     final output = ((universal[20] << 8) | universal[21]).toDouble();
