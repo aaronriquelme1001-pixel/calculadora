@@ -4030,6 +4030,21 @@
     const btnBleSleep = document.getElementById('btnBleSleep');
     if (btnBleSleep) btnBleSleep.addEventListener('click', sleepBleSensor);
 
+    const btnBleDiagnostics = document.getElementById('btnBleDiagnostics');
+    if (btnBleDiagnostics) btnBleDiagnostics.addEventListener('click', readBleAdvancedDiagnostics);
+
+    const btnBleSetInterval = document.getElementById('btnBleSetInterval');
+    if (btnBleSetInterval) btnBleSetInterval.addEventListener('click', setBleBroadcastInterval);
+
+    const btnBleSetPower = document.getElementById('btnBleSetPower');
+    if (btnBleSetPower) btnBleSetPower.addEventListener('click', setBleTransmitPower);
+
+    const btnBleSetContinue = document.getElementById('btnBleSetContinue');
+    if (btnBleSetContinue) btnBleSetContinue.addEventListener('click', setBleContinueAfterRestart);
+
+    const btnBleSetAdvertising = document.getElementById('btnBleSetAdvertising');
+    if (btnBleSetAdvertising) btnBleSetAdvertising.addEventListener('click', setBleAdvertisingProtocol);
+
     const btnToggle100 = document.getElementById('btnToggleTable100');
     if (btnToggle100) {
       btnToggle100.addEventListener('click', () => {
