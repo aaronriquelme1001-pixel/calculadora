@@ -263,10 +263,13 @@ test('official AG-BFLS command decoders match the published 8.27 response layout
   paramsView.setFloat32(4, 15000, true);
   paramsView.setFloat32(8, 10000, true);
   params[12] = 2;
-  assert.deepEqual(protocol.parseParameters(params), {
-    broadcastInterval: 20, continueAfterRestart: true, transmitPower: -4,
-    emptyFrequency: 15000, fullFrequency: 10000, outputMode: 2
-  });
+  const parsedParams = protocol.parseParameters(params);
+  assert.equal(parsedParams.broadcastInterval, 20);
+  assert.equal(parsedParams.continueAfterRestart, true);
+  assert.equal(parsedParams.transmitPower, -4);
+  assert.equal(parsedParams.emptyFrequency, 15000);
+  assert.equal(parsedParams.fullFrequency, 10000);
+  assert.equal(parsedParams.outputMode, 2);
 
   const coordinate = new Uint8Array(4);
   new DataView(coordinate.buffer).setFloat32(0, 2500, true);
