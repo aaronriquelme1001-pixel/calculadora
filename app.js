@@ -2678,6 +2678,9 @@
       device.addEventListener('gattserverdisconnected', disconnectBleSensor);
       // Capturar el ID desde el anuncio antes de abrir GATT; nunca se usa un ID fijo.
       bleState.sensorId = await waitForAdvertisedSensorId(device);
+      if (typeof device.unwatchAdvertisements === 'function') {
+        try { await device.unwatchAdvertisements(); } catch (_) {}
+      }
       const server = await device.gatt.connect();
       bleState.server = server;
       const service = await server.getPrimaryService(AoooGProtocol.SERVICE_UUID);
