@@ -23,6 +23,14 @@ Habilitar FFF2 antes de enviar comandos. Una solicitud pendiente a la vez. La co
 - CRC-8/MAXIM-DOW reflejado: polinomio 0x31 / implementación 0x8C, init 0, xorout 0; cubre LL hasta el último byte de datos, excluye SOF y CRC.
 - Estado: payload de un byte, 00 éxito y 01 fallo. En respuestas de lectura, el byte de payload es dato, no un ACK genérico.
 
+## Identificación por publicidad BLE
+
+El parser recibe el payload de fabricante ya separado de los dos bytes Company ID:
+- `0xFF43` AOOOG: exactamente 15 bytes. ID/SN uint24 BE en bytes 0–2; modo en nibble alto del byte 3 (00/01/02); battery code en nibble bajo del byte 3 + byte 4; temperatura int16 BE / 8 en bytes 5–6; frecuencia float32 LE en 7–10; salida float32 LE en 11–14.
+- `0xFFFF` Universal/Dominator: exactamente 24 bytes; firma `3F 36 B4`, tipo actual `5B`, ID/SN uint24 BE en bytes 6–8, status actual `01` en byte 13, frecuencia/empty/output en los offsets públicos 14,18,20, temperatura byte 22 − 40 y batería byte 23.
+- El ID cero, modo AOOOG fuera de 0–2, firma/tipo/status Universal incorrectos, longitudes distintas o mediciones no finitas se rechazan.
+- Los bytes reservados no se reinterpretan como otros campos. No derivar SN desde la dirección BLE.
+
 ## Comandos públicos implementados
 
 | CMD | Función | Autenticación | Validación |
