@@ -3276,10 +3276,13 @@
       } catch (_) { return null; }
     };
     try {
-      const [versionPayload, addressPayload, advertisingPayload, intervalPayload, powerPayload, coordinatePayload] = await Promise.all([
-        readPayload(0x26, 2500), readPayload(0x20), readPayload(0x21),
-        readPayload(0x05), readPayload(0x0b), readPayload(0x1b)
-      ]);
+      // El protocolo permite una sola solicitud pendiente: leer en serie, nunca en paralelo.
+      const versionPayload = await readPayload(0x26, 2500);
+      const addressPayload = await readPayload(0x20);
+      const advertisingPayload = await readPayload(0x21);
+      const intervalPayload = await readPayload(0x05);
+      const powerPayload = await readPayload(0x0b);
+      const coordinatePayload = await readPayload(0x1b);
       const details = [];
       if (versionPayload) details.push('FW ' + AoooGProtocol.parseFirmwareVersion(versionPayload));
       if (addressPayload) details.push('BLE ' + AoooGProtocol.parseBleAddress(addressPayload) + ' (no es el SN)');
