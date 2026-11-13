@@ -119,7 +119,8 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   double _emptyFreq = 15000;
   double _fullFreq = 10000;
   double _curFreq = 13250;
-  String _authPin = '';
+  String _authCredentialHex = '';
+  final Map<int, int> _capturedFixValues = {};
 
   // Progreso de subida
   bool _isUploading = false;
@@ -245,6 +246,18 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     }
   }
 
+  Future<void> _captureCalibrationPoint(int index) async {
+    if (!_isConnected) return;
+    final coordinate = await _bleManager.readCalibrationCoordinate();
+    if (!mounted) return;
+    if (coordinate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo leer la coordenada real 0x1B del sensor.')));
+      return;
+    }
+    setState(() => _capturedFixValues[index] = coordinate.round());
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Punto ${index + 1}: coordenada real ${coordinate.toStringAsFixed(1)} capturada.')));
+  }
+
   List<CalibrationRow> _generateCalibrationTable() {
     List<CalibrationRow> list = [];
     int totalRows = 30; // Fila 1 a 30
@@ -316,9 +329,9 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       return;
     }
 
-    if (_authPin.length != 8 || !_authPin.codeUnits.every((b) => b >= 0x30 && b <= 0x39)) {
+    if (!RegExp(r'^[0-9A-Fa-f]{16}$').hasMatch(_authCredentialHex)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingresa el PIN real del sensor: exactamente 8 caracteres ASCII.')),
+        const SnackBar(content: Text('Ingresa el credencial entregada por AoooG: exactamente 16 caracteres hexadecimales (8 bytes).')),
       );
       return;
     }
@@ -347,6 +360,15 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     }
 
     final rows = _generateCalibrationTable();
+    if (_capturedFixValues.length != rows.length) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Faltan coordenadas reales: captura los 30 puntos desde el sensor antes de cargar la tabla.')));
+      return;
+    }
+    final orderedCoordinates = rows.map((r) => _capturedFixValues[r.index]!).toList();
+    if (orderedCoordinates.asMap().entries.skip(1).any((e) => e.value <= orderedCoordinates[e.key - 1])) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Las coordenadas capturadas deben ser estrictamente crecientes. Revisa los niveles físicos.')));
+      return;
+    }
     final validRows = rows.length == 30 &&
         rows.first.levelMm == 0 &&
         rows.first.volumeL == 0 &&
@@ -370,20 +392,31 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     });
 
     // 1. Autenticar PIN
-    final List<int> pinBytes = _authPin.codeUnits;
+    final pinBytes = List<int>.generate(8, (i) => int.parse(_authCredentialHex.substring(i * 2, i * 2 + 2), radix: 16));
     bool authOk = await _bleManager.authenticate(pinBytes);
     if (!authOk) {
       if (!mounted) return;
       setState(() => _isUploading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error de Autenticación. Verifica el PIN del sensor.')),
+        const SnackBar(content: Text('Autenticación rechazada o sin respuesta. Verifica los 8 bytes hex entregados por AoooG y vuelve a conectar.')),
       );
       return;
     }
 
     // 2. Subir tabla
+    final calibratedRows = <CalibrationRow>[];
+    for (final row in rows) {
+      calibratedRows.add(CalibrationRow(index: row.index, volumeL: row.volumeL,
+        levelMm: row.levelMm, fixValue: _capturedFixValues[row.index]!,
+        expectedFreqHz: row.expectedFreqHz));
+    }
+    while (calibratedRows.length < 100) {
+      final i = calibratedRows.length;
+      calibratedRows.add(CalibrationRow(index: i, volumeL: 0, levelMm: 0,
+        fixValue: 0, expectedFreqHz: 1));
+    }
     bool uploadOk = await _bleManager.uploadCalibrationTable(
-      rows,
+      calibratedRows,
       onProgress: (cur, tot) {
         if (!mounted) return;
         setState(() {
@@ -401,7 +434,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         context: context,
         builder: (_) => AlertDialog(
           title: const Text('¡Calibración Exitosa!'),
-          content: Text('Se grabaron ${rows.length} puntos en el sensor #${_selectedSensor?.id}.\nSalida fijada en Litros directos.'),
+          content: Text('Se verificaron 100 posiciones de tabla en el sensor #${_selectedSensor?.id}.\nSalida fijada en Litros directos.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('Aceptar')),
           ],
@@ -752,12 +785,13 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                   Text('Frecuencia Actual Sensor: ${_curFreq.toStringAsFixed(0)} Hz', style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF0B1329))),
                   const SizedBox(height: 8),
                   TextFormField(
-                    initialValue: _authPin,
-                    decoration: const InputDecoration(labelText: 'PIN de Acceso Sensor (8 dígitos)', border: OutlineInputBorder()),
+                    initialValue: _authCredentialHex,
+                    decoration: const InputDecoration(labelText: 'Credencial AoooG (16 caracteres hex / 8 bytes)', helperText: 'Solicítala al fabricante. No existe PIN universal.', border: OutlineInputBorder()),
                     obscureText: true,
-                    maxLength: 8,
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) => _authPin = v,
+                    maxLength: 16,
+                    keyboardType: TextInputType.text,
+                    textCapitalization: TextCapitalization.characters,
+                    onChanged: (v) => _authCredentialHex = v.trim().toUpperCase(),
                   ),
                 ],
               ),
@@ -780,7 +814,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Tabla Generada (${rows.length} Puntos)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              Text('Tabla: ${_capturedFixValues.length}/${rows.length} coordenadas reales', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
               ElevatedButton.icon(
                 onPressed: _isUploading ? null : _uploadCalibrationToSensor,
                 style: ElevatedButton.styleFrom(
@@ -808,8 +842,11 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                   child: Text('${idx + 1}', style: const TextStyle(fontSize: 10, color: Colors.white)),
                 ),
                 title: Text('${r.volumeL.toStringAsFixed(1)} Litros  (${r.levelMm} mm)', style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text('Coord Fix: ${r.fixValue}  •  Frecuencia Esperada: ${r.expectedFreqHz.toStringAsFixed(0)} Hz'),
-                trailing: Text('${((r.fixValue / 5000) * 100).toStringAsFixed(0)} %', style: const TextStyle(color: Color(0xFFD97706), fontWeight: FontWeight.bold)),
+                subtitle: Text('Coordenada real: ${_capturedFixValues[idx] ?? 'pendiente'}  •  Nivel: ${r.levelMm} mm'),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(_capturedFixValues.containsKey(idx) ? 'Fix ${_capturedFixValues[idx]}' : 'Sin captura', style: const TextStyle(color: Color(0xFFD97706), fontWeight: FontWeight.bold)),
+                IconButton(tooltip: 'Capturar coordenada real 0x1B', onPressed: _isConnected && !_isUploading ? () => _captureCalibrationPoint(idx) : null, icon: const Icon(Icons.sensors)),
+              ]),
               );
             },
           ),
