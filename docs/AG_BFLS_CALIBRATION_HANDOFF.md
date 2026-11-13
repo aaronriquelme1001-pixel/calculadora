@@ -276,3 +276,15 @@ Web Bluetooth no expone una API estándar para solicitar ni consultar el ATT MTU
 
 `docs/AG_BFLS_PUBLIC_PROTOCOL_IMPLEMENTATION.md`  
 `https://www.aooog.com/bluetooth-protocol.html`
+
+
+## 13. Ajustes finales de consistencia de protocolo y UI (2026-11-13)
+
+- Universal advertisement ahora valida el status actual `0x01` además de firma `3F 36 B4` y Type `5B`; el test cubre status inválido.
+- AOOOG manufacturer data decodifica también el nibble de output mode y rechaza modos fuera de 0–2.
+- Flutter conserva temperatura AOOOG con resolución de 1/8 °C (double), no la redondea en el parser.
+- Flutter mantiene una sola suscripción a `scanResults`, la registra antes de iniciar scan y la cancela al terminar/desmontar o al conectar. La lista muestra `SN: id`, no remoteId/MAC.
+- Flutter usa el modo de salida confirmado por GATT 1A/0D para mostrar % (output/100), mm o L; no etiqueta siempre como litros.
+- Modos 1/2 requieren origen 0/0/0 y tabla completa válida con terminador sin huecos; se valida antes de cambiar modo.
+- Web Bluetooth no tiene API estándar para consultar/solicitar MTU: no se usa un método no estándar. Los comandos 15/16 intentan transferencia y manejan error/rollback; Flutter nativo es la ruta fiable cuando el navegador/OS no negocia MTU suficiente.
+
