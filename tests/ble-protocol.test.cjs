@@ -317,3 +317,17 @@ test('web UI exposes every remaining public AG-BFLS diagnostic and configuration
   assert.match(source, /sendBleCommand\(0x26/);
   assert.match(source, /sendBleCommand\(0x1b/);
 });
+
+
+test('command payload validator enforces documented lengths, ranges and indices', () => {
+  const protocol = loadProtocolFromApplication();
+  assert.equal(protocol.validateCommandPayload(0x12, [0,1,2,3,4,5,6,7]), true);
+  assert.equal(protocol.validateCommandPayload(0x15, [90]), true);
+  assert.equal(protocol.validateCommandPayload(0x16, [0, ...Array(80).fill(0)]), true);
+  assert.throws(() => protocol.validateCommandPayload(0x12, [1,2,3]));
+  assert.throws(() => protocol.validateCommandPayload(0x15, [91]));
+  assert.throws(() => protocol.validateCommandPayload(0x16, [0, ...Array(79).fill(0)]));
+  assert.throws(() => protocol.validateCommandPayload(0x0a, [1]));
+  assert.throws(() => protocol.validateCommandPayload(0x22, [2]));
+  assert.throws(() => protocol.validateCommandPayload(0x7f, []));
+});
