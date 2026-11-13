@@ -54,10 +54,13 @@ La consola web BLE (`#panelBleSensor`) utiliza el mismo sistema de diseño blanc
    - Columna 1: Puntos Cero (Vacío y Lleno) con botones fijar (0x10/0x11), más altura local y delta Hz.
    - Columna 2: Subida y lectura de 100 posiciones (0x15/0x16), selector de modo litros (0x19), credencial de 16 hex y acciones de energía (0x01/0x02).
 
-### Modos de Búsqueda Bluetooth
+### Búsqueda e identificación Bluetooth
 
-- `🔍 Buscar Sensor (Filtro AG-BFLS)`: filtra con `manufacturerData` (`0xFF43` y `0xFFFF`) para aislar los sensores de nivel en terreno, ocultando dispositivos Bluetooth ajenos.
-- `🌐 Todos`: búsqueda abierta con `acceptAllDevices: true` como respaldo universal si el adaptador Bluetooth del sistema operativo no procesa los datos del fabricante antes del emparejamiento.
+- Tanto **Buscar Sensor** como **Todos** abren el selector sin filtros mediante `acceptAllDevices: true`. Es deliberado: algunos AG-BFLS no exponen `manufacturerData` antes de la conexión, por lo que un filtro AoooG/Universal puede ocultarlos.
+- El identificador primario de la aplicación es el **Número de Serie (SN)** de la etiqueta, convertido al ID binario de tres bytes del protocolo. La dirección MAC nunca se interpreta como SN.
+- El ID puede obtenerse del anuncio AoooG/Universal si el navegador lo expone, o de una trama espontánea de telemetría `0x14` completa y coherente. Una trama arbitraria con CRC válido no puede fijar la identidad.
+- Si el navegador no entrega el ID, se solicita el SN/ID de la etiqueta. Antes de habilitar operaciones se confirma con lectura segura `0x1A`; si no coincide o la respuesta es inválida, se desconecta.
+- La credencial se valida como 16 caracteres hexadecimales y se convierte a ocho bytes únicamente al autenticar. No se almacena ni se registra.
 
 Después de seleccionar, se conecta a GATT y consulta el servicio FFF0, característica FFF1 (escritura) y FFF2 (notificaciones). `watchAdvertisements()` se usa solo como fuente opcional para extraer el ID AOOOG/Universal; su ausencia no impide descubrir ni conectar GATT. También se acepta una trama espontánea válida recibida por FFF2. Si ninguna fuente entrega el ID, se solicita el ID real de seis caracteres hexadecimales de la etiqueta/documentación. No hay valor de ejemplo predeterminado. Antes de habilitar operaciones, se valida el ID mediante la lectura de solo lectura 0x1A y se exige un modo válido (0, 1 o 2). Un ID incorrecto provoca desconexión; no se ejecutan escrituras.
 
