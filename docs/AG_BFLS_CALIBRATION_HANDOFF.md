@@ -182,3 +182,51 @@ El repositorio conserva en `docs/reference/` los tres documentos y aplicaciones 
 - `docs/reference/AG-BFLS_Datasheet.pdf` (733 KB): Ficha técnica, precisión capacitiva, protocolo, señales y especificaciones eléctricas.
 - `docs/reference/Fuel Master V0.1.4.apk` (57.6 MB): APK oficial del fabricante de referencia. No confundir con la APK de nuestra aplicación que se compila externamente.
 - `docs/reference/README.md`: Resumen y hashes de integridad de los archivos de referencia.
+
+
+---
+
+## 11. Handoff — endurecimiento BLE e identificación SN (2026-11-13)
+
+**Rama de trabajo:** `fix/ble-identification-auth-regression-2026-11-13`  
+**Base:** `b77cc8e6672ccccb3aaf10e6dbb6ebc0f4d9f3bd`  
+**Estado:** cambios implementados en rama aislada; no fusionados a `main`. No se hizo prueba física BLE.
+
+### Problemas corregidos
+
+1. **Búsqueda primaria demasiado restrictiva:** el botón Buscar Sensor utilizaba filtros manufacturerData `0xFF43` y `0xFFFF`; algunos AG-BFLS no exponen estos datos antes de conectarse. Ahora Buscar Sensor y Todos utilizan el selector abierto `acceptAllDevices: true`, con `optionalServices` FFF0. Se mantiene la identificación de protocolo después de seleccionar.
+2. **Identidad aprendida desde cualquier trama:** antes bastaba una trama con CRC válido y un ID no nulo. Ahora solo se aprende el ID desde una trama `0x14` de exactamente 22 bytes, ID no nulo, temperatura dentro de rango y campos numéricos finitos/no negativos. Las notificaciones de otros comandos no pueden establecer identidad.
+3. **Credencial:** se extrajo `parseBleCredential`; acepta exactamente 16 caracteres hexadecimales y genera ocho bytes. No guarda la cadena en el estado de sesión ni la registra. La autenticación sigue dependiendo del ACK exitoso `0x12`; ante fallo queda `isAuthenticated=false`.
+
+### Pruebas de regresión añadidas
+
+En `tests/ble-protocol.test.cjs`:
+- parser de credencial: 8 bytes exactos, longitud inválida y caracteres no hex;
+- telemetría: acepta estructura válida y rechaza comando distinto, longitud incorrecta, ID cero, NaN, frecuencia negativa y temperatura fuera de rango;
+- guardas de `handleBleNotification`: no aprende identidad de una trama arbitraria;
+- ambas entradas de búsqueda usan el selector abierto;
+- autenticación valida credencial, envía exactamente ocho bytes y requiere ACK positivo.
+
+Comandos locales de validación:
+```bash
+node --check app.js
+node --test tests/*.test.cjs
+```
+
+### Estado de validación y límites
+
+- No afirmar todavía que los tests pasan: deben ejecutarse en CI sobre el HEAD de esta rama.
+- No afirmar que el navegador detecta el sensor físico: hace falta prueba con sensor real y adaptador BLE del usuario.
+- Las pruebas nuevas son unitarias/estructurales sobre funciones puras y guardas de flujo; no son un E2E de Web Bluetooth ni sustituyen un ensayo GATT físico.
+- No se ha autenticado, leído ni escrito EEPROM en hardware durante esta intervención.
+- No se ha cambiado Flutter ni el protocolo del fabricante.
+- No se han tocado credenciales, APK, producción ni despliegues.
+- No fusionar a `main` hasta revisar CI, el diff y completar al menos una prueba física de descubrimiento + GATT + lectura `0x1A`. No hacer escrituras de EEPROM sin backup y autorización explícita.
+
+### Próximos pasos para la siguiente IA
+
+1. Ejecutar `node --check app.js` y `node --test tests/*.test.cjs`; corregir cualquier regresión.
+2. Confirmar que GitHub Actions valida el HEAD de esta rama.
+3. Revisar el diff completo, especialmente el orden conexión → notificaciones → ID → lectura `0x1A` → autenticación `0x12`.
+4. Probar con un AG-BFLS físico: selector abierto, identificar por SN de etiqueta, conectar GATT, validar modo por `0x1A`, autenticar con credencial del fabricante sin registrarla.
+5. Mantener cualquier prueba de escritura fuera del alcance hasta contar con autorización, backup de 100 slots y procedimiento de rollback.
