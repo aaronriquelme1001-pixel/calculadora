@@ -56,6 +56,34 @@ class AoooGProtocol {
   static bool isProtectedCommand(int command) =>
       const {0x01, 0x02, 0x04, 0x0a, 0x0c, 0x10, 0x11, 0x16}.contains(command);
 
+  static bool isValidCommandPayload(int command, List<int> payload) {
+    bool oneByte(int min, int max) => payload.length == 1 && payload[0] >= min && payload[0] <= max;
+    switch (command) {
+      case 0x01: case 0x02: case 0x05: case 0x0b: case 0x0d:
+      case 0x10: case 0x11: case 0x14: case 0x1a: case 0x1b:
+      case 0x20: case 0x21: case 0x26:
+        return payload.isEmpty;
+      case 0x04:
+        return oneByte(1, 255);
+      case 0x0a:
+        return payload.length == 1 && const {-40,-20,-16,-12,-8,-4,0,3,4}.contains(signedInt8(payload[0]));
+      case 0x0c:
+        return oneByte(0, 1);
+      case 0x12:
+        return payload.length == 8 && payload.every((byte) => byte >= 0 && byte <= 0xff);
+      case 0x15:
+        return payload.length == 1 && payload[0] <= 90 && payload[0] % 10 == 0;
+      case 0x16:
+        return payload.length == 81 && payload[0] <= 90 && payload[0] % 10 == 0;
+      case 0x19:
+        return oneByte(0, 2);
+      case 0x22:
+        return oneByte(0, 1);
+      default:
+        return false;
+    }
+  }
+
   static int signedInt8(int value) => value > 127 ? value - 256 : value;
 
   static Map<String, Object>? parseParameters(List<int> payload) {
