@@ -3620,6 +3620,7 @@
 
   function isValidSensorCalibrationTable(rows) {
     if (!Array.isArray(rows) || rows.length !== 100) return false;
+    if (rows[0].volume !== 0 || rows[0].level !== 0 || rows[0].data !== 0) return false;
     let ended = false, active = 0;
     let previous = { volume: -1, level: -1, data: -1 };
     for (let i = 0; i < rows.length; i++) {
