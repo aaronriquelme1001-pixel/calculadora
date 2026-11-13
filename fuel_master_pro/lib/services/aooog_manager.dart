@@ -470,7 +470,8 @@ class AoooGManager {
   }
 
   bool _validCalibrationRows(List<CalibrationRow> rows) {
-    if (rows.length != 100) return false;
+    if (rows.length != 100 || rows.first.volumeL != 0 ||
+        rows.first.levelMm != 0 || rows.first.fixValue != 0) return false;
     var ended = false;
     var active = 0;
     var previousVolume = -1.0;
