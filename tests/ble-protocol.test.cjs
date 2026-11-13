@@ -142,6 +142,7 @@ test('advertisement parser extracts sensor ID, SN, battery, frequency and temper
   const uniBuf = Buffer.alloc(24);
   uniBuf[0] = 0x3f; uniBuf[1] = 0x36; uniBuf[2] = 0xb4; uniBuf[5] = 0x5b;
   uniBuf[6] = 0x0c; uniBuf[7] = 0x52; uniBuf[8] = 0x02; // ID [0x0C, 0x52, 0x02] -> SN 807426
+  uniBuf[13] = 0x01; // status current format
   uniBuf[14] = (546 >> 8) & 0xff; uniBuf[15] = 546 & 0xff; // freq 546 Hz
   uniBuf[18] = 0; uniBuf[19] = 100; // emptyFreq 100 Hz
   uniBuf[20] = 0; uniBuf[21] = 249; // output
