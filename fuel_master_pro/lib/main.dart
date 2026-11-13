@@ -50,6 +50,7 @@ class FuelMasterHomePage extends StatefulWidget {
 class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   // BLE Manager
   final AoooGManager _bleManager = AoooGManager();
+  StreamSubscription<List<ScanResult>>? _scanSubscription;
   bool _isScanning = false;
   final List<AoooGSensor> _sensors = [];
   final Set<int> _expandedCards = {};
@@ -141,6 +142,7 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
   @override
   void dispose() {
     _telemetryTimer?.cancel();
+    _scanSubscription?.cancel();
     _bleManager.disconnect();
     _lenCtrl.dispose();
     _widthCtrl.dispose();
@@ -172,33 +174,38 @@ class _FuelMasterHomePageState extends State<FuelMasterHomePage> {
 
   void _startScan() {
     if (_isScanning) return;
-    setState(() {
-      _isScanning = true;
+    _scanSubscription?.cancel();
+    _sensors.clear();
+    setState(() => _isScanning = true);
+
+    // Escuchar primero para no perder los primeros anuncios del escaneo.
+    _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
+      for (final result in results) {
+        final sensor = AoooGProtocol.parseAdvertisement(result);
+        if (sensor == null) continue;
+        final idx = _sensors.indexWhere((item) => item.id == sensor.id);
+        if (idx >= 0) {
+          _sensors[idx] = sensor;
+        } else {
+          _sensors.add(sensor);
+        }
+      }
+      if (mounted) setState(() {});
     });
 
     FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
-
-    FlutterBluePlus.scanResults.listen((results) {
-      for (final r in results) {
-        final sensor = AoooGProtocol.parseAdvertisement(r);
-        if (sensor != null) {
-          final idx = _sensors.indexWhere((s) => s.id == sensor.id);
-          if (idx >= 0) {
-            _sensors[idx] = sensor;
-          } else {
-            _sensors.add(sensor);
-          }
-          if (mounted) setState(() {});
-        }
-      }
-    });
-
-    Future.delayed(const Duration(seconds: 10), () {
-      if (mounted) setState(() => _isScanning = false);
+    Future.delayed(const Duration(seconds: 10), () async {
+      if (!mounted) return;
+      await _scanSubscription?.cancel();
+      _scanSubscription = null;
+      setState(() => _isScanning = false);
     });
   }
 
   Future<void> _connectSensor(AoooGSensor sensor) async {
+    await FlutterBluePlus.stopScan();
+    await _scanSubscription?.cancel();
+    _scanSubscription = null;
     setState(() => _isConnecting = true);
 
     showDialog(
