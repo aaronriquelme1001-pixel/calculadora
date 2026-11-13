@@ -2918,7 +2918,7 @@
   function isValidTelemetryFrame(parsed) {
     if (!parsed || parsed.cmd !== 0x14 || !Array.isArray(parsed.sensorId) ||
         parsed.sensorId.length !== 3 || parsed.sensorId.every(v => v === 0) ||
-        !parsed.payload || parsed.payload.length !== 22) return false;
+        !parsed.payload || parsed.payload.length !== 22 || parsed.payload[5] !== 0) return false;
     const view = new DataView(parsed.payload.buffer, parsed.payload.byteOffset, parsed.payload.byteLength);
     const temp = view.getInt16(2, false) / 8;
     const fullFreq = view.getFloat32(6, true);
