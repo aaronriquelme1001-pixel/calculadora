@@ -412,6 +412,7 @@
       state.isImported = false;
       state.importedRows = [];
       state.importedTankSignature = null;
+      showToast('Cambió la geometría: la tabla importada dejó de ser la fuente activa. Recalcula o vuelve a importar la tabla.');
     }
     if (state.isImported && state.importedRows && state.importedRows.length > 0) {
       const H = state.calcCache.effH;
