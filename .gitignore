@@ -19,7 +19,6 @@ fuel_master_pro/.flutter-plugins-dependencies
 
 # Android build
 *.apk
-!Fuel_Master_Pro_AoooG.apk
 *.aab
 .gradle/
 local.properties
