@@ -336,59 +336,6 @@
             </div>
           </div>
 
-          <!-- CALIBRACIÓN DEL SENSOR: DATO CRUDO (DATA) & FRECUENCIA (HZ) -->
-          <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px; margin-bottom: 14px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <div style="font-size: 0.85rem; font-weight: 800; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.3px;">
-                Calibración Sensor (Data & Hz)
-              </div>
-              <span id="lblDeltaFreq" style="font-size: 0.72rem; font-weight: 800; color: #059669; background: #ecfdf5; padding: 2px 7px; border-radius: 4px; border: 1px solid #a7f3d0;">
-                Δ 5.000 Hz
-              </span>
-            </div>
-            <div style="font-size: 0.68rem; color: #64748b; margin-bottom: 10px; line-height: 1.35;">
-              El sensor y el software consumen <strong>Dato Crudo (Data 0–5000)</strong> para la tabla de aforo. Los <strong>Hz</strong> se usan para calibrar los puntos cero y lleno en terreno:
-            </div>
-
-            <!-- Fila 1: Rango de Dato Crudo (Data que consume el sensor) -->
-            <div style="font-size: 0.68rem; font-weight: 800; color: #0369a1; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.3px;">
-              1. Dato Crudo (Data consumido por sensor)
-            </div>
-            <div class="grid-2" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
-              <div class="form-item">
-                <label for="sensorDataMin" style="font-size: 0.7rem; font-weight: 700; color: #334155;">Data Mín (Vacío)</label>
-                <div class="input-wrap">
-                  <input type="number" id="sensorDataMin" value="0" min="0" max="5000" step="1" style="font-weight: 800; color: #0284c7; text-align: center;">
-                </div>
-              </div>
-              <div class="form-item">
-                <label for="sensorDataMax" style="font-size: 0.7rem; font-weight: 700; color: #334155;">Data Máx (Lleno)</label>
-                <div class="input-wrap">
-                  <input type="number" id="sensorDataMax" value="5000" min="0" max="5000" step="1" style="font-weight: 800; color: #0284c7; text-align: center;">
-                </div>
-              </div>
-            </div>
-
-            <!-- Fila 2: Frecuencia de Calibración en Terreno (Hz) -->
-            <div style="font-size: 0.68rem; font-weight: 800; color: #059669; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.3px;">
-              2. Frecuencia de Calibración (Hz medidos)
-            </div>
-            <div class="grid-2" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <div class="form-item">
-                <label for="sensorFreqEmpty" style="font-size: 0.7rem; font-weight: 700; color: #334155;">Vacío 0% (Hz)</label>
-                <div class="input-wrap">
-                  <input type="number" id="sensorFreqEmpty" value="15000" min="0" max="100000" step="1" style="font-weight: 800; color: #0f172a; text-align: center;">
-                </div>
-              </div>
-              <div class="form-item">
-                <label for="sensorFreqFull" style="font-size: 0.7rem; font-weight: 700; color: #334155;">Lleno 100% (Hz)</label>
-                <div class="input-wrap">
-                  <input type="number" id="sensorFreqFull" value="10000" min="0" max="100000" step="1" style="font-weight: 800; color: #0f172a; text-align: center;">
-                </div>
-              </div>
-            </div>
-          </div>
-
           <!-- RADIOS EN BORDES INFERIORES / PISO (MM) -->
           <div style="background: #f1f5f9; padding: 12px; border-radius: 10px; margin-bottom: 12px;">
             <div style="font-size: 0.74rem; font-weight: 800; color: #475569; letter-spacing: 0.5px; margin-bottom: 8px;">
@@ -584,6 +531,10 @@
 
           <!-- Campos ocultos requeridos internamente por el motor de cálculo -->
           <div style="display: none;">
+            <input type="number" id="sensorDataMin" value="0">
+            <input type="number" id="sensorDataMax" value="5000">
+            <input type="number" id="sensorFreqEmpty" value="15000">
+            <input type="number" id="sensorFreqFull" value="10000">
             <input type="number" id="r_vert" value="0">
             <input type="number" id="sensorBottomDead" value="0">
             <input type="text" id="vehClient" value="Transportes Vikar S.A.">
@@ -646,9 +597,9 @@
               <div class="tile-sub" id="telemetryEmptySub">0.0000 m³</div>
             </div>
             <div class="metric-tile highlight">
-              <div class="tile-label">Dato Crudo / Frecuencia</div>
+              <div class="tile-label">Dato Sensor (Data)</div>
               <div class="tile-value" id="telemetryRaw" style="color: #0284c7;">0</div>
-              <div class="tile-sub" id="telemetryFreqSub">15.000 Hz en nivel</div>
+              <div class="tile-sub" id="telemetryFreqSub">Escala 0–5000</div>
               <span id="telemetryFreq" style="display: none;">15000</span>
             </div>
           </div>
@@ -693,7 +644,7 @@
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <span id="lblTableTitle" style="font-weight: 800; color: #1e3a8a;">Tabla de Calibración AoooG (95 Puntos)</span>
               <span id="lblTableHzSummary" style="font-size: 0.72rem; background: #eff6ff; color: #1d4ed8; padding: 2px 8px; border-radius: 4px; font-weight: 700; border: 1px solid #bfdbfe;">
-                Vacío: 15.000 Hz → Lleno: 10.000 Hz (Δ 5.000 Hz)
+                95 Puntos de Aforo • Escala estándar Data 0 a 5000
               </span>
               <button type="button" id="btnToggleTable100" class="btn btn-secondary no-print" style="display: none !important;">
                 Ver 100 Posiciones (BLE)

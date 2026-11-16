@@ -1983,7 +1983,7 @@
     setText('telemetryEmptySub', `${emptyM3} m³ restante`);
     setText('telemetryRaw', `${curRaw}`);
     setText('telemetryFreq', `${curFreq.toLocaleString('es-CL')} Hz`);
-    setText('telemetryFreqSub', `Dato Crudo ${curRaw} • ${curFreq.toLocaleString('es-CL')} Hz`);
+    setText('telemetryFreqSub', `Dato ${curRaw} (Escala 0–5000)`);
 
     updateDeltaFreq();
 
@@ -2006,7 +2006,7 @@
     const dMax = Number(state.sensor.dataMax != null ? state.sensor.dataMax : 5000);
     const delta = Math.abs(fEmpty - fFull);
     setText('lblDeltaFreq', `Δ ${delta.toLocaleString('es-CL')} Hz`);
-    setText('lblTableHzSummary', `Data: ${dMin} → ${dMax} • Frecuencia: ${fEmpty.toLocaleString('es-CL')} Hz → ${fFull.toLocaleString('es-CL')} Hz (Δ ${delta.toLocaleString('es-CL')} Hz)`);
+    setText('lblTableHzSummary', `Escala Data: ${dMin} → ${dMax} • 95 Puntos de Aforo`);
   }
 
   function renderTable() {
