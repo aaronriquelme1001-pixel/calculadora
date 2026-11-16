@@ -30,8 +30,8 @@
       <select id="presetSelect" style="display:none;"></select>
 
       <div class="header-actions">
-        <!-- Conectar Sensor Bluetooth BLE -->
-        <button id="btnBleConnect" class="btn no-print" style="background: #2563eb; color: #ffffff; border: none; font-weight: 700; gap: 6px; box-shadow: 0 2px 4px rgba(37,99,235,0.25);">
+        <!-- Conectar Sensor Bluetooth BLE (Oculto en versión Web) -->
+        <button id="btnBleConnect" class="btn no-print" style="display: none !important;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 17px; height: 17px;">
             <path d="m7 7 10 10-5 5V2l5 5L7 17"></path>
           </svg>
@@ -57,7 +57,7 @@
             <line x1="12" y1="18" x2="12" y2="12"></line>
             <line x1="9" y1="15" x2="15" y2="15"></line>
           </svg>
-          Exportar Excel AoooG (30 Filas)
+          Exportar Excel AoooG (95 Puntos)
         </button>
 
         <button id="btnPrintCertificate" class="btn btn-secondary no-print">
@@ -75,8 +75,8 @@
   <!-- CONTENIDO -->
   <main class="container">
 
-    <!-- CONSOLA DE CALIBRACIÓN PROFESIONAL SENSOR BLUETOOTH BLE (AOOOG / AG-BFLS) -->
-    <div id="panelBleSensor" class="card ble-panel no-print" style="display: none;">
+    <!-- CONSOLA DE CALIBRACIÓN PROFESIONAL SENSOR BLUETOOTH BLE (OCULTO EN VERSIÓN WEB) -->
+    <div id="panelBleSensor" class="card ble-panel no-print" style="display: none !important;">
       
       <!-- Aviso Informativo Móvil (Visible solo en smartphones/tablets si se requiere) -->
       <div id="bleMobileNotice" style="display: none; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; font-size: 0.72rem; color: #166534; line-height: 1.35;">
@@ -331,6 +331,35 @@
                     <option value="internal" selected>Interna</option>
                     <option value="external">Externa</option>
                   </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CALIBRACIÓN DE FRECUENCIA DEL SENSOR (HZ) -->
+          <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px; margin-bottom: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <div style="font-size: 0.85rem; font-weight: 800; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.3px;">
+                Frecuencia Sensor (Hz)
+              </div>
+              <span id="lblDeltaFreq" style="font-size: 0.72rem; font-weight: 800; color: #059669; background: #ecfdf5; padding: 2px 7px; border-radius: 4px; border: 1px solid #a7f3d0;">
+                Δ 5.000 Hz
+              </span>
+            </div>
+            <div style="font-size: 0.68rem; color: #64748b; margin-bottom: 10px; line-height: 1.35;">
+              Ajusta los Hz reales que indica tu sensor en seco (Vacío) y sumergido al máximo (Lleno) para calcular la tabla exacta de 95 puntos:
+            </div>
+            <div class="grid-2" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+              <div class="form-item">
+                <label for="sensorFreqEmpty" style="font-size: 0.72rem; font-weight: 700; color: #334155;">Vacío 0% (Hz)</label>
+                <div class="input-wrap">
+                  <input type="number" id="sensorFreqEmpty" value="15000" min="0" max="100000" step="1" style="font-weight: 800; color: #0f172a; text-align: center;">
+                </div>
+              </div>
+              <div class="form-item">
+                <label for="sensorFreqFull" style="font-size: 0.72rem; font-weight: 700; color: #334155;">Lleno 100% (Hz)</label>
+                <div class="input-wrap">
+                  <input type="number" id="sensorFreqFull" value="10000" min="0" max="100000" step="1" style="font-weight: 800; color: #0f172a; text-align: center;">
                 </div>
               </div>
             </div>
@@ -594,10 +623,11 @@
               <div class="tile-value" id="telemetryEmpty">313.7 L</div>
               <div class="tile-sub" id="telemetryEmptySub">0.0000 m³</div>
             </div>
-            <div class="metric-tile">
-              <div class="tile-label">Sensor Raw Fix</div>
-              <div class="tile-value" id="telemetryRaw">0</div>
-              <div class="tile-sub">Puntos AoooG (0-5000)</div>
+            <div class="metric-tile highlight">
+              <div class="tile-label">Frecuencia Sensor</div>
+              <div class="tile-value" id="telemetryFreq">15.000 Hz</div>
+              <div class="tile-sub" id="telemetryFreqSub">En nivel actual</div>
+              <span id="telemetryRaw" style="display: none;">15000</span>
             </div>
           </div>
         </div>
@@ -635,17 +665,20 @@
           </div>
         </div>
 
-        <!-- TABLA DE CALIBRACIÓN: EXACTAMENTE 30 FILAS EN TOTAL -->
+        <!-- TABLA DE CALIBRACIÓN: EXACTAMENTE 95 PUNTOS POR FRECUENCIA HZ -->
         <div class="card">
           <div class="card-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span id="lblTableTitle">Tabla de Calibración AoooG (30 Puntos Proporcionales)</span>
-              <button type="button" id="btnToggleTable100" class="btn btn-secondary no-print" style="padding: 3px 8px; font-size: 0.7rem; font-weight: 700; background: #e0f2fe; color: #0284c7; border-color: #7dd3fc;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span id="lblTableTitle" style="font-weight: 800; color: #1e3a8a;">Tabla de Calibración AoooG (95 Puntos)</span>
+              <span id="lblTableHzSummary" style="font-size: 0.72rem; background: #eff6ff; color: #1d4ed8; padding: 2px 8px; border-radius: 4px; font-weight: 700; border: 1px solid #bfdbfe;">
+                Vacío: 15.000 Hz → Lleno: 10.000 Hz (Δ 5.000 Hz)
+              </span>
+              <button type="button" id="btnToggleTable100" class="btn btn-secondary no-print" style="display: none !important;">
                 Ver 100 Posiciones (BLE)
               </button>
             </div>
             <div class="no-print" style="display: flex; gap: 8px; align-items: center;">
-              <button id="btnTableUploadBle" class="btn" style="display: none; padding: 5px 12px; font-size: 0.78rem; font-weight: 700; background: #0284c7; color: #ffffff; border: none; border-radius: 6px; cursor: pointer;">
+              <button id="btnTableUploadBle" class="btn" style="display: none !important;">
                 📤 Subir al Sensor
               </button>
               <button id="btnTableExportExcel" class="btn btn-primary" style="padding: 5px 12px; font-size: 0.78rem; font-weight: 700; background: #16a34a; border-color: #15803d; display: inline-flex; align-items: center; gap: 5px;">
@@ -653,7 +686,7 @@
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                   <polyline points="14 2 14 8 20 8"></polyline>
                 </svg>
-                Descargar Excel (.xlsx)
+                Descargar Excel (.xlsx) [95 Puntos]
               </button>
               <button id="btnExportCSV" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.78rem; font-weight: 700;">CSV</button>
               <button id="btnCopyTable" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.78rem; font-weight: 700;">Copiar</button>
@@ -664,8 +697,8 @@
             <table class="cal-table">
               <thead>
                 <tr>
-                  <th style="width: 50px;">Fila</th>
-                  <th>Dato (Fix Sensor 0-5000)</th>
+                  <th style="width: 55px;">Punto</th>
+                  <th>Frecuencia (Hz)</th>
                   <th>Nivel (mm)</th>
                   <th>Volumen (Litros L)</th>
                   <th>% Llenado</th>

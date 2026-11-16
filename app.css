@@ -835,6 +835,14 @@ body {
   }
 }
 
+/* Ocultar elementos de conexión Bluetooth en la versión web */
+#panelBleSensor,
+#btnBleConnect,
+#btnToggleTable100,
+#btnTableUploadBle {
+  display: none !important;
+}
+
 @media print {
   body { background: #fff !important; padding: 0 !important; }
   .app-header, .tab-row, .header-actions, .step-buttons-row, .viewport-header, .no-print { display: none !important; }

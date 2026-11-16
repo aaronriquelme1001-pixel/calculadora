@@ -80,13 +80,15 @@
     },
 
     sensor: {
-      dataMin: 0,
-      dataMax: 5000,
+      freqEmpty: 15000,
+      freqFull: 10000,
+      dataMin: 15000,
+      dataMax: 10000,
       bottomDeadZone: 0
     },
 
     currentLevelMm: 580,
-    tableMode: 30, // 30 o 100
+    tableMode: 95, // 95 puntos por defecto
     isImported: false,
     importedRows: [],
     importedTankSignature: null,
@@ -409,7 +411,7 @@
     return cum[low] + frac * (cum[high] - cum[low]);
   }
 
-  function computeCalibrationRows(targetCount = state.tableMode || 30) {
+  function computeCalibrationRows(targetCount = state.tableMode || 95) {
     if (state.isImported && state.importedTankSignature && state.importedTankSignature !== JSON.stringify(state.tank)) {
       state.isImported = false;
       state.importedRows = [];
@@ -420,7 +422,7 @@
       const H = state.calcCache.effH;
       const V_total = state.importedRows[state.importedRows.length - 1].volume || state.calcCache.totalVolume;
       const rows = state.importedRows.map((r, idx) => ({
-        rowNum: idx + 2,
+        rowNum: idx + 1,
         dataVal: r.data,
         dataFormula: `${r.data}`,
         levelVal: r.level,
@@ -433,13 +435,49 @@
     }
 
     const H = state.calcCache.effH;
-    const count = targetCount === 100 ? 100 : 30;
-    const dataMin = Number(state.sensor.dataMin) || 100;
-    const dataMax = Number(state.sensor.dataMax) || 4660;
+    const count = targetCount === 30 ? 30 : (targetCount === 100 ? 100 : 95);
+    const freqEmpty = Number(state.sensor.freqEmpty != null ? state.sensor.freqEmpty : state.sensor.dataMin) || 15000;
+    const freqFull = Number(state.sensor.freqFull != null ? state.sensor.freqFull : state.sensor.dataMax) || 10000;
     const V_total = state.calcCache.totalVolume;
     const rows = [];
 
-    if (count === 30) {
+    if (count === 95) {
+      // EXACTAMENTE 95 PUNTOS POR FRECUENCIA HZ (Puntos 1 al 95)
+      for (let i = 0; i < 95; i++) {
+        const frac = i / 94; // 0 en vacío, 1.0 en lleno
+        const estLevel = Math.round(frac * H);
+        const estVol = Number(getVolumeAtHeight(estLevel).toFixed(1));
+        const estFreq = Math.round(freqEmpty + frac * (freqFull - freqEmpty));
+        const excelRow = i + 2; // Fila en Excel (Fila 1 Header, Filas 2 a 96)
+
+        let dataFormula = `${estFreq}`;
+        let levelFormula = `${estLevel}`;
+        if (i === 0) {
+          dataFormula = `${freqEmpty}`;
+          levelFormula = '0';
+        } else if (i === 94) {
+          dataFormula = `${freqFull}`;
+          levelFormula = `${H}`;
+        } else {
+          dataFormula = `ROUND($A$2 + (${excelRow}-2)*($A$96-$A$2)/94, 0)`;
+          levelFormula = `ROUND((${excelRow}-2)*$B$96/94, 0)`;
+        }
+
+        rows.push({
+          rowNum: i + 1,
+          slot: i,
+          dataVal: estFreq,
+          dataFormula: dataFormula,
+          levelVal: estLevel,
+          levelFormula: levelFormula,
+          volumeVal: estVol,
+          pct: V_total > 0 ? Number(((estVol / V_total) * 100).toFixed(1)) : 0,
+          data: estFreq,
+          level: estLevel,
+          volume: estVol
+        });
+      }
+    } else if (count === 30) {
       // EXACTAMENTE 30 FILAS EN TOTAL (Fila 1 Header + Filas 2 a 30)
       rows.push({
         rowNum: 2,
@@ -455,8 +493,8 @@
       const volStep1 = Number(getVolumeAtHeight(levelStep1).toFixed(1));
       rows.push({
         rowNum: 3,
-        dataVal: dataMin,
-        dataFormula: `${dataMin}`,
+        dataVal: freqEmpty,
+        dataFormula: `${freqEmpty}`,
         levelVal: levelStep1,
         levelFormula: `ROUND((3-2)*$B$30/28, 0)`,
         volumeVal: volStep1,
@@ -466,7 +504,7 @@
       for (let r = 4; r < 30; r++) {
         const dataFormula = `ROUND($A$3 + (${r}-3)*($A$30-$A$3)/27, 0)`;
         const levelFormula = `ROUND((${r}-2)*$B$30/28, 0)`;
-        const estData = Math.round(dataMin + (r - 3) * (dataMax - dataMin) / 27);
+        const estData = Math.round(freqEmpty + (r - 3) * (freqFull - freqEmpty) / 27);
         const estLevel = Math.round((r - 2) * H / 28);
         const estVol = Number(getVolumeAtHeight(estLevel).toFixed(1));
 
@@ -483,8 +521,8 @@
 
       rows.push({
         rowNum: 30,
-        dataVal: dataMax,
-        dataFormula: `${dataMax}`,
+        dataVal: freqFull,
+        dataFormula: `${freqFull}`,
         levelVal: H,
         levelFormula: `${H}`,
         volumeVal: V_total,
@@ -496,7 +534,7 @@
         const frac = i / 99;
         const estLevel = Math.round(frac * H);
         const estVol = Number(getVolumeAtHeight(estLevel).toFixed(1));
-        const estData = i === 0 ? 0 : Math.round(dataMin + frac * (dataMax - dataMin));
+        const estData = Math.round(freqEmpty + frac * (freqFull - freqEmpty));
 
         rows.push({
           rowNum: i + 1,
@@ -1729,7 +1767,7 @@
 
 
   // ==========================================================================
-  // 4. EXPORTACIÓN EXCEL (.XLSX) - EXACTAMENTE 30 FILAS EN TOTAL
+  // 4. EXPORTACIÓN EXCEL (.XLSX) Y CSV (95 PUNTOS POR FRECUENCIA HZ)
   // ==========================================================================
 
   async function exportAoooGExcel() {
@@ -1744,7 +1782,7 @@
       const ws = wb.addWorksheet('calibration');
 
       ws.columns = [
-        { header: 'Data', key: 'data', width: 11 },
+        { header: 'Data', key: 'data', width: 14 },
         { header: 'Level', key: 'level', width: 14 },
         { header: 'Volume', key: 'volume', width: 14 }
       ];
@@ -1754,48 +1792,59 @@
       headerRow.alignment = { horizontal: 'left', vertical: 'middle' };
 
       const rows = state.calcCache.calibrationRows;
-      const maxRow = 30;
+      const totalPoints = rows.length;
+      const maxRow = totalPoints + 1;
 
-      rows.forEach((r) => {
-        const row = ws.getRow(r.rowNum);
+      rows.forEach((r, idx) => {
+        const excelRowNum = idx + 2;
+        const row = ws.getRow(excelRowNum);
 
         if (state.isImported) {
           row.getCell(1).value = r.dataVal;
           row.getCell(2).value = r.levelVal;
           row.getCell(3).value = r.volumeVal;
-          row.getCell(1).numFmt = '0';
-          row.getCell(2).numFmt = '0';
-          row.getCell(3).numFmt = '0.0';
+          row.getCell(1).numFmt = '#,##0';
+          row.getCell(2).numFmt = '#,##0';
+          row.getCell(3).numFmt = '#,##0.0';
           row.font = { name: 'Calibri', size: 11, bold: false };
           return;
         }
 
-        if (r.rowNum === 2) {
-          row.getCell(1).value = 0;
-        } else if (r.rowNum === 3) {
-          row.getCell(1).value = Number(state.sensor.dataMin) || 100;
-        } else if (r.rowNum === maxRow) {
-          row.getCell(1).value = Number(state.sensor.dataMax) || 4660;
+        if (totalPoints === 30) {
+          if (excelRowNum === 2) {
+            row.getCell(1).value = 0;
+            row.getCell(2).value = 0;
+          } else if (excelRowNum === 3) {
+            row.getCell(1).value = r.dataVal;
+            row.getCell(2).value = { formula: `ROUND((3-2)*$B$30/28, 0)`, result: r.levelVal };
+          } else if (excelRowNum === 30) {
+            row.getCell(1).value = r.dataVal;
+            row.getCell(2).value = state.calcCache.effH;
+          } else {
+            row.getCell(1).value = { formula: `ROUND($A$3 + (${excelRowNum}-3)*($A$30-$A$3)/27, 0)`, result: r.dataVal };
+            row.getCell(2).value = { formula: `ROUND((${excelRowNum}-2)*$B$30/28, 0)`, result: r.levelVal };
+          }
         } else {
-          row.getCell(1).value = {
-            formula: `ROUND($A$3 + (${r.rowNum}-3)*($A$${maxRow}-$A$3)/27, 0)`,
-            result: r.dataVal
-          };
+          // Modo 95 Puntos (o cantidad personalizada)
+          if (idx === 0) {
+            row.getCell(1).value = r.dataVal;
+            row.getCell(2).value = 0;
+          } else if (idx === totalPoints - 1) {
+            row.getCell(1).value = r.dataVal;
+            row.getCell(2).value = state.calcCache.effH;
+          } else {
+            row.getCell(1).value = {
+              formula: `ROUND($A$2 + (${excelRowNum}-2)*($A$${maxRow}-$A$2)/${totalPoints - 1}, 0)`,
+              result: r.dataVal
+            };
+            row.getCell(2).value = {
+              formula: `ROUND((${excelRowNum}-2)*$B$${maxRow}/${totalPoints - 1}, 0)`,
+              result: r.levelVal
+            };
+          }
         }
-        row.getCell(1).numFmt = 'General';
-
-        if (r.rowNum === 2) {
-          row.getCell(2).value = 0;
-        } else if (r.rowNum === maxRow) {
-          row.getCell(2).value = state.calcCache.effH;
-        } else {
-          row.getCell(2).value = {
-            formula: `ROUND((${r.rowNum}-2)*$B$${maxRow}/28, 0)`,
-            result: r.levelVal
-          };
-        }
+        row.getCell(1).numFmt = '#,##0';
         row.getCell(2).numFmt = '#,##0';
-
         row.getCell(3).value = r.volumeVal;
         row.getCell(3).numFmt = '#,##0.0';
         row.font = { name: 'Calibri', size: 11, bold: false };
@@ -1803,7 +1852,7 @@
 
       const buffer = await wb.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const fileName = `calibracion_aooog_${state.vehicle.plate || 'tanque'}_${state.calcCache.totalVolume}L.xlsx`;
+      const fileName = `calibracion_aooog_${state.vehicle.plate || 'tanque'}_${totalPoints}pts_${state.calcCache.totalVolume}L.xlsx`;
 
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -1811,7 +1860,7 @@
       link.click();
       URL.revokeObjectURL(link.href);
 
-      showToast(`Excel descargado con éxito (${ws.rowCount} filas).`);
+      showToast(`Excel descargado con éxito (${ws.rowCount} filas: 1 encabezado + ${totalPoints} puntos).`);
     } catch (err) {
       console.error(err);
       showToast('Error al generar el archivo Excel.');
@@ -1829,10 +1878,10 @@
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `calibracion_aooog_${state.vehicle.plate || 'tanque'}.csv`;
+    link.download = `calibracion_aooog_${state.vehicle.plate || 'tanque'}_${rows.length}pts.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
-    showToast('CSV exportado con éxito.');
+    showToast(`CSV descargado (${rows.length} puntos).`);
   }
 
   function copyTableToClipboard() {
@@ -1872,9 +1921,9 @@
     const emptyVol = Math.max(0, totalVol - curVol);
     const pct = totalVol > 0 ? (curVol / totalVol) * 100 : 0;
 
-    const dataMin = Number(state.sensor.dataMin) || 100;
-    const dataMax = Number(state.sensor.dataMax) || 4660;
-    const curRaw = Math.round(dataMin + (state.currentLevelMm / H) * (dataMax - dataMin));
+    const freqEmpty = Number(state.sensor.freqEmpty != null ? state.sensor.freqEmpty : state.sensor.dataMin) || 15000;
+    const freqFull = Number(state.sensor.freqFull != null ? state.sensor.freqFull : state.sensor.dataMax) || 10000;
+    const curFreq = Math.round(freqEmpty + (state.currentLevelMm / (H || 1)) * (freqFull - freqEmpty));
 
     const curM3 = (curVol / 1000).toFixed(4);
     const totalM3 = (totalVol / 1000).toFixed(4);
@@ -1887,7 +1936,10 @@
     setText('telemetryTotalSub', `${totalM3} m³ (100%)`);
     setText('telemetryEmpty', `${emptyVol.toFixed(1)} L`);
     setText('telemetryEmptySub', `${emptyM3} m³ restante`);
-    setText('telemetryRaw', `${curRaw}`);
+    setText('telemetryFreq', `${curFreq.toLocaleString('es-CL')} Hz`);
+    setText('telemetryRaw', `${curFreq}`);
+
+    updateDeltaFreq();
 
     setText('sideTotalVolume', `${totalVol.toFixed(1)} L (${totalM3} m³)`);
     setText('sideCurrentLiquid', `${curVol.toFixed(1)} L (${curM3} m³)`);
@@ -1899,6 +1951,14 @@
     } else {
       renderCad();
     }
+  }
+
+  function updateDeltaFreq() {
+    const fEmpty = Number(state.sensor.freqEmpty != null ? state.sensor.freqEmpty : state.sensor.dataMin) || 15000;
+    const fFull = Number(state.sensor.freqFull != null ? state.sensor.freqFull : state.sensor.dataMax) || 10000;
+    const delta = Math.abs(fEmpty - fFull);
+    setText('lblDeltaFreq', `Δ ${delta.toLocaleString('es-CL')} Hz`);
+    setText('lblTableHzSummary', `Vacío: ${fEmpty.toLocaleString('es-CL')} Hz → Lleno: ${fFull.toLocaleString('es-CL')} Hz (Δ ${delta.toLocaleString('es-CL')} Hz)`);
   }
 
   function renderTable() {
@@ -1915,7 +1975,7 @@
       } else if (state.tableMode === 100) {
         lblTitle.innerText = 'Tabla de Calibración AoooG (100 Posiciones BLE - Slots 0 a 99)';
       } else {
-        lblTitle.innerText = 'Tabla de Calibración AoooG (30 Puntos Proporcionales)';
+        lblTitle.innerText = `Tabla de Calibración AoooG (${rows.length} Puntos por Frecuencia Hz)`;
       }
     }
 
@@ -1930,12 +1990,13 @@
     }
 
     let html = '';
+    const stepMm = Math.max(3, Math.round(state.calcCache.effH / (rows.length || 1)));
     rows.forEach(r => {
-      const isActive = Math.abs(r.levelVal - curLevel) <= 12;
+      const isActive = Math.abs(r.levelVal - curLevel) <= stepMm;
       html += `
         <tr class="${isActive ? 'active-row' : ''}">
           <td><strong>${r.rowNum}</strong></td>
-          <td>${r.dataVal} <span class="code-pill">${r.dataFormula}</span></td>
+          <td><strong>${Number(r.dataVal).toLocaleString('es-CL')} Hz</strong> <span class="code-pill">${r.dataFormula}</span></td>
           <td>${r.levelVal} mm</td>
           <td><strong>${r.volumeVal.toFixed(1)} L</strong></td>
           <td>${r.pct.toFixed(1)} %</td>
@@ -4233,8 +4294,32 @@
       });
     }
 
-    bindInput('sensorDataMin', (v) => { state.sensor.dataMin = v; });
-    bindInput('sensorDataMax', (v) => { state.sensor.dataMax = v; });
+    bindInput('sensorFreqEmpty', (v) => {
+      const num = Number(v) || 0;
+      state.sensor.freqEmpty = num;
+      state.sensor.dataMin = num;
+      setVal('sensorDataMin', num);
+      updateDeltaFreq();
+    });
+    bindInput('sensorFreqFull', (v) => {
+      const num = Number(v) || 0;
+      state.sensor.freqFull = num;
+      state.sensor.dataMax = num;
+      setVal('sensorDataMax', num);
+      updateDeltaFreq();
+    });
+    bindInput('sensorDataMin', (v) => {
+      state.sensor.dataMin = v;
+      state.sensor.freqEmpty = v;
+      setVal('sensorFreqEmpty', v);
+      updateDeltaFreq();
+    });
+    bindInput('sensorDataMax', (v) => {
+      state.sensor.dataMax = v;
+      state.sensor.freqFull = v;
+      setVal('sensorFreqFull', v);
+      updateDeltaFreq();
+    });
     bindInput('sensorBottomDead', (v) => { state.sensor.bottomDeadZone = v; });
 
     const slider = document.getElementById('levelSlider');
@@ -4329,6 +4414,8 @@
     if (p.sensor) {
       state.sensor.dataMin = p.sensor.dataMin ?? state.sensor.dataMin;
       state.sensor.dataMax = p.sensor.dataMax ?? state.sensor.dataMax;
+      state.sensor.freqEmpty = p.sensor.freqEmpty ?? p.sensor.dataMin ?? state.sensor.freqEmpty;
+      state.sensor.freqFull = p.sensor.freqFull ?? p.sensor.dataMax ?? state.sensor.freqFull;
     }
 
     syncInputsFromState();
@@ -4372,9 +4459,12 @@
     setVal('r_vert_pi', state.tank.r_vert_pi || 0);
     setVal('r_vert_pd', state.tank.r_vert_pd || 0);
 
+    setVal('sensorFreqEmpty', state.sensor.freqEmpty || state.sensor.dataMin || 15000);
+    setVal('sensorFreqFull', state.sensor.freqFull || state.sensor.dataMax || 10000);
     setVal('sensorDataMin', state.sensor.dataMin);
     setVal('sensorDataMax', state.sensor.dataMax);
     setVal('sensorBottomDead', state.sensor.bottomDeadZone);
+    updateDeltaFreq();
 
     setVal('recovecoWidth', state.tank.recovecoWidth || 190);
     setVal('recovecoHeight', state.tank.recovecoHeight || 175);
