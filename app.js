@@ -80,10 +80,10 @@
     },
 
     sensor: {
+      dataMin: 0,
+      dataMax: 5000,
       freqEmpty: 15000,
       freqFull: 10000,
-      dataMin: 15000,
-      dataMax: 10000,
       bottomDeadZone: 0
     },
 
@@ -436,27 +436,38 @@
 
     const H = state.calcCache.effH;
     const count = targetCount === 30 ? 30 : (targetCount === 100 ? 100 : 95);
-    const freqEmpty = Number(state.sensor.freqEmpty != null ? state.sensor.freqEmpty : state.sensor.dataMin) || 15000;
-    const freqFull = Number(state.sensor.freqFull != null ? state.sensor.freqFull : state.sensor.dataMax) || 10000;
+    const dataMin = Number(state.sensor.dataMin != null ? state.sensor.dataMin : 0);
+    const dataMax = Number(state.sensor.dataMax != null ? state.sensor.dataMax : 5000);
+    const freqEmpty = Number(state.sensor.freqEmpty != null ? state.sensor.freqEmpty : 15000);
+    const freqFull = Number(state.sensor.freqFull != null ? state.sensor.freqFull : 10000);
     const V_total = state.calcCache.totalVolume;
     const rows = [];
 
     if (count === 95) {
-      // EXACTAMENTE 95 PUNTOS POR FRECUENCIA HZ (Puntos 1 al 95)
+      // EXACTAMENTE 95 PUNTOS DE AFORO (Puntos 1 al 95)
       for (let i = 0; i < 95; i++) {
         const frac = i / 94; // 0 en vacío, 1.0 en lleno
         const estLevel = Math.round(frac * H);
         const estVol = Number(getVolumeAtHeight(estLevel).toFixed(1));
-        const estFreq = Math.round(freqEmpty + frac * (freqFull - freqEmpty));
-        const excelRow = i + 2; // Fila en Excel (Fila 1 Header, Filas 2 a 96)
+        const estData = Math.round(dataMin + frac * (dataMax - dataMin));
 
-        let dataFormula = `${estFreq}`;
+        // Curva capacitiva real: 1/f = 1/f_empty + frac * (1/f_full - 1/f_empty)
+        let estFreq;
+        if (freqEmpty > 0 && freqFull > 0) {
+          const inv = (1 / freqEmpty) + frac * ((1 / freqFull) - (1 / freqEmpty));
+          estFreq = inv > 0 ? Math.round(1 / inv) : Math.round(freqEmpty + frac * (freqFull - freqEmpty));
+        } else {
+          estFreq = Math.round(freqEmpty + frac * (freqFull - freqEmpty));
+        }
+
+        const excelRow = i + 2; // Fila en Excel (Fila 1 Header, Filas 2 a 96)
+        let dataFormula = `${estData}`;
         let levelFormula = `${estLevel}`;
         if (i === 0) {
-          dataFormula = `${freqEmpty}`;
+          dataFormula = `${dataMin}`;
           levelFormula = '0';
         } else if (i === 94) {
-          dataFormula = `${freqFull}`;
+          dataFormula = `${dataMax}`;
           levelFormula = `${H}`;
         } else {
           dataFormula = `ROUND($A$2 + (${excelRow}-2)*($A$96-$A$2)/94, 0)`;
@@ -466,13 +477,14 @@
         rows.push({
           rowNum: i + 1,
           slot: i,
-          dataVal: estFreq,
+          dataVal: estData, // DATO CRUDO (0-5000) QUE CONSUME EL SENSOR
           dataFormula: dataFormula,
+          freqVal: estFreq, // FRECUENCIA EN HZ PARA CALIBRAR EN TERRENO
           levelVal: estLevel,
           levelFormula: levelFormula,
           volumeVal: estVol,
           pct: V_total > 0 ? Number(((estVol / V_total) * 100).toFixed(1)) : 0,
-          data: estFreq,
+          data: estData,
           level: estLevel,
           volume: estVol
         });
@@ -483,6 +495,7 @@
         rowNum: 2,
         dataVal: 0,
         dataFormula: '0',
+        freqVal: freqEmpty,
         levelVal: 0,
         levelFormula: '0',
         volumeVal: 0.0,
@@ -491,10 +504,12 @@
 
       const levelStep1 = Math.round(1 * H / 28);
       const volStep1 = Number(getVolumeAtHeight(levelStep1).toFixed(1));
+      const startData = dataMin > 0 ? dataMin : 100;
       rows.push({
         rowNum: 3,
-        dataVal: freqEmpty,
-        dataFormula: `${freqEmpty}`,
+        dataVal: startData,
+        dataFormula: `${startData}`,
+        freqVal: Math.round(1 / ((1 / freqEmpty) + (1 / 28) * ((1 / freqFull) - (1 / freqEmpty)))),
         levelVal: levelStep1,
         levelFormula: `ROUND((3-2)*$B$30/28, 0)`,
         volumeVal: volStep1,
@@ -502,16 +517,20 @@
       });
 
       for (let r = 4; r < 30; r++) {
+        const frac = (r - 2) / 28;
         const dataFormula = `ROUND($A$3 + (${r}-3)*($A$30-$A$3)/27, 0)`;
         const levelFormula = `ROUND((${r}-2)*$B$30/28, 0)`;
-        const estData = Math.round(freqEmpty + (r - 3) * (freqFull - freqEmpty) / 27);
-        const estLevel = Math.round((r - 2) * H / 28);
+        const estData = Math.round(startData + (r - 3) * (dataMax - startData) / 27);
+        const estLevel = Math.round(frac * H);
         const estVol = Number(getVolumeAtHeight(estLevel).toFixed(1));
+        const inv = (1 / freqEmpty) + frac * ((1 / freqFull) - (1 / freqEmpty));
+        const estFreq = inv > 0 ? Math.round(1 / inv) : 0;
 
         rows.push({
           rowNum: r,
           dataVal: estData,
           dataFormula: dataFormula,
+          freqVal: estFreq,
           levelVal: estLevel,
           levelFormula: levelFormula,
           volumeVal: estVol,
@@ -521,8 +540,9 @@
 
       rows.push({
         rowNum: 30,
-        dataVal: freqFull,
-        dataFormula: `${freqFull}`,
+        dataVal: dataMax,
+        dataFormula: `${dataMax}`,
+        freqVal: freqFull,
         levelVal: H,
         levelFormula: `${H}`,
         volumeVal: V_total,
@@ -534,13 +554,16 @@
         const frac = i / 99;
         const estLevel = Math.round(frac * H);
         const estVol = Number(getVolumeAtHeight(estLevel).toFixed(1));
-        const estData = Math.round(freqEmpty + frac * (freqFull - freqEmpty));
+        const estData = Math.round(dataMin + frac * (dataMax - dataMin));
+        const inv = (1 / freqEmpty) + frac * ((1 / freqFull) - (1 / freqEmpty));
+        const estFreq = inv > 0 ? Math.round(1 / inv) : 0;
 
         rows.push({
           rowNum: i + 1,
           slot: i,
           dataVal: estData,
           dataFormula: `${estData}`,
+          freqVal: estFreq,
           levelVal: estLevel,
           levelFormula: `${estLevel}`,
           volumeVal: estVol,
@@ -1784,7 +1807,9 @@
       ws.columns = [
         { header: 'Data', key: 'data', width: 14 },
         { header: 'Level', key: 'level', width: 14 },
-        { header: 'Volume', key: 'volume', width: 14 }
+        { header: 'Volume', key: 'volume', width: 14 },
+        { header: 'Freq_Hz', key: 'freq', width: 14 },
+        { header: 'Pct', key: 'pct', width: 12 }
       ];
 
       const headerRow = ws.getRow(1);
@@ -1803,9 +1828,13 @@
           row.getCell(1).value = r.dataVal;
           row.getCell(2).value = r.levelVal;
           row.getCell(3).value = r.volumeVal;
+          row.getCell(4).value = r.freqVal || 0;
+          row.getCell(5).value = r.pct != null ? (r.pct / 100) : 0;
           row.getCell(1).numFmt = '#,##0';
           row.getCell(2).numFmt = '#,##0';
           row.getCell(3).numFmt = '#,##0.0';
+          row.getCell(4).numFmt = '#,##0';
+          row.getCell(5).numFmt = '0.0%';
           row.font = { name: 'Calibri', size: 11, bold: false };
           return;
         }
@@ -1847,6 +1876,10 @@
         row.getCell(2).numFmt = '#,##0';
         row.getCell(3).value = r.volumeVal;
         row.getCell(3).numFmt = '#,##0.0';
+        row.getCell(4).value = r.freqVal || 0;
+        row.getCell(4).numFmt = '#,##0';
+        row.getCell(5).value = r.pct != null ? (r.pct / 100) : 0;
+        row.getCell(5).numFmt = '0.0%';
         row.font = { name: 'Calibri', size: 11, bold: false };
       });
 
@@ -1921,9 +1954,21 @@
     const emptyVol = Math.max(0, totalVol - curVol);
     const pct = totalVol > 0 ? (curVol / totalVol) * 100 : 0;
 
-    const freqEmpty = Number(state.sensor.freqEmpty != null ? state.sensor.freqEmpty : state.sensor.dataMin) || 15000;
-    const freqFull = Number(state.sensor.freqFull != null ? state.sensor.freqFull : state.sensor.dataMax) || 10000;
-    const curFreq = Math.round(freqEmpty + (state.currentLevelMm / (H || 1)) * (freqFull - freqEmpty));
+    const dataMin = Number(state.sensor.dataMin != null ? state.sensor.dataMin : 0);
+    const dataMax = Number(state.sensor.dataMax != null ? state.sensor.dataMax : 5000);
+    const freqEmpty = Number(state.sensor.freqEmpty != null ? state.sensor.freqEmpty : 15000);
+    const freqFull = Number(state.sensor.freqFull != null ? state.sensor.freqFull : 10000);
+
+    const frac = state.currentLevelMm / (H || 1);
+    const curRaw = Math.round(dataMin + frac * (dataMax - dataMin));
+
+    let curFreq;
+    if (freqEmpty > 0 && freqFull > 0) {
+      const inv = (1 / freqEmpty) + frac * ((1 / freqFull) - (1 / freqEmpty));
+      curFreq = inv > 0 ? Math.round(1 / inv) : Math.round(freqEmpty + frac * (freqFull - freqEmpty));
+    } else {
+      curFreq = Math.round(freqEmpty + frac * (freqFull - freqEmpty));
+    }
 
     const curM3 = (curVol / 1000).toFixed(4);
     const totalM3 = (totalVol / 1000).toFixed(4);
@@ -1936,8 +1981,9 @@
     setText('telemetryTotalSub', `${totalM3} m³ (100%)`);
     setText('telemetryEmpty', `${emptyVol.toFixed(1)} L`);
     setText('telemetryEmptySub', `${emptyM3} m³ restante`);
+    setText('telemetryRaw', `${curRaw}`);
     setText('telemetryFreq', `${curFreq.toLocaleString('es-CL')} Hz`);
-    setText('telemetryRaw', `${curFreq}`);
+    setText('telemetryFreqSub', `Dato Crudo ${curRaw} • ${curFreq.toLocaleString('es-CL')} Hz`);
 
     updateDeltaFreq();
 
@@ -1954,11 +2000,13 @@
   }
 
   function updateDeltaFreq() {
-    const fEmpty = Number(state.sensor.freqEmpty != null ? state.sensor.freqEmpty : state.sensor.dataMin) || 15000;
-    const fFull = Number(state.sensor.freqFull != null ? state.sensor.freqFull : state.sensor.dataMax) || 10000;
+    const fEmpty = Number(state.sensor.freqEmpty != null ? state.sensor.freqEmpty : 15000);
+    const fFull = Number(state.sensor.freqFull != null ? state.sensor.freqFull : 10000);
+    const dMin = Number(state.sensor.dataMin != null ? state.sensor.dataMin : 0);
+    const dMax = Number(state.sensor.dataMax != null ? state.sensor.dataMax : 5000);
     const delta = Math.abs(fEmpty - fFull);
     setText('lblDeltaFreq', `Δ ${delta.toLocaleString('es-CL')} Hz`);
-    setText('lblTableHzSummary', `Vacío: ${fEmpty.toLocaleString('es-CL')} Hz → Lleno: ${fFull.toLocaleString('es-CL')} Hz (Δ ${delta.toLocaleString('es-CL')} Hz)`);
+    setText('lblTableHzSummary', `Data: ${dMin} → ${dMax} • Frecuencia: ${fEmpty.toLocaleString('es-CL')} Hz → ${fFull.toLocaleString('es-CL')} Hz (Δ ${delta.toLocaleString('es-CL')} Hz)`);
   }
 
   function renderTable() {
@@ -1975,7 +2023,7 @@
       } else if (state.tableMode === 100) {
         lblTitle.innerText = 'Tabla de Calibración AoooG (100 Posiciones BLE - Slots 0 a 99)';
       } else {
-        lblTitle.innerText = `Tabla de Calibración AoooG (${rows.length} Puntos por Frecuencia Hz)`;
+        lblTitle.innerText = `Tabla de Calibración AoooG (${rows.length} Puntos de Aforo)`;
       }
     }
 
@@ -1993,10 +2041,12 @@
     const stepMm = Math.max(3, Math.round(state.calcCache.effH / (rows.length || 1)));
     rows.forEach(r => {
       const isActive = Math.abs(r.levelVal - curLevel) <= stepMm;
+      const freqText = r.freqVal != null ? `${Number(r.freqVal).toLocaleString('es-CL')} Hz` : '-- Hz';
       html += `
         <tr class="${isActive ? 'active-row' : ''}">
           <td><strong>${r.rowNum}</strong></td>
-          <td><strong>${Number(r.dataVal).toLocaleString('es-CL')} Hz</strong> <span class="code-pill">${r.dataFormula}</span></td>
+          <td><strong style="color: #0284c7;">${r.dataVal}</strong> <span class="code-pill">${r.dataFormula}</span></td>
+          <td><span style="color: #475569; font-weight: 700;">${freqText}</span></td>
           <td>${r.levelVal} mm</td>
           <td><strong>${r.volumeVal.toFixed(1)} L</strong></td>
           <td>${r.pct.toFixed(1)} %</td>
@@ -4294,30 +4344,20 @@
       });
     }
 
-    bindInput('sensorFreqEmpty', (v) => {
-      const num = Number(v) || 0;
-      state.sensor.freqEmpty = num;
-      state.sensor.dataMin = num;
-      setVal('sensorDataMin', num);
-      updateDeltaFreq();
-    });
-    bindInput('sensorFreqFull', (v) => {
-      const num = Number(v) || 0;
-      state.sensor.freqFull = num;
-      state.sensor.dataMax = num;
-      setVal('sensorDataMax', num);
-      updateDeltaFreq();
-    });
     bindInput('sensorDataMin', (v) => {
-      state.sensor.dataMin = v;
-      state.sensor.freqEmpty = v;
-      setVal('sensorFreqEmpty', v);
+      state.sensor.dataMin = Number(v) || 0;
       updateDeltaFreq();
     });
     bindInput('sensorDataMax', (v) => {
-      state.sensor.dataMax = v;
-      state.sensor.freqFull = v;
-      setVal('sensorFreqFull', v);
+      state.sensor.dataMax = Number(v) || 5000;
+      updateDeltaFreq();
+    });
+    bindInput('sensorFreqEmpty', (v) => {
+      state.sensor.freqEmpty = Number(v) || 15000;
+      updateDeltaFreq();
+    });
+    bindInput('sensorFreqFull', (v) => {
+      state.sensor.freqFull = Number(v) || 10000;
       updateDeltaFreq();
     });
     bindInput('sensorBottomDead', (v) => { state.sensor.bottomDeadZone = v; });
@@ -4459,11 +4499,11 @@
     setVal('r_vert_pi', state.tank.r_vert_pi || 0);
     setVal('r_vert_pd', state.tank.r_vert_pd || 0);
 
-    setVal('sensorFreqEmpty', state.sensor.freqEmpty || state.sensor.dataMin || 15000);
-    setVal('sensorFreqFull', state.sensor.freqFull || state.sensor.dataMax || 10000);
-    setVal('sensorDataMin', state.sensor.dataMin);
-    setVal('sensorDataMax', state.sensor.dataMax);
-    setVal('sensorBottomDead', state.sensor.bottomDeadZone);
+    setVal('sensorDataMin', state.sensor.dataMin != null ? state.sensor.dataMin : 0);
+    setVal('sensorDataMax', state.sensor.dataMax != null ? state.sensor.dataMax : 5000);
+    setVal('sensorFreqEmpty', state.sensor.freqEmpty || 15000);
+    setVal('sensorFreqFull', state.sensor.freqFull || 10000);
+    setVal('sensorBottomDead', state.sensor.bottomDeadZone || 0);
     updateDeltaFreq();
 
     setVal('recovecoWidth', state.tank.recovecoWidth || 190);
