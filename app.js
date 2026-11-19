@@ -22,8 +22,11 @@
       date: new Date().toISOString().split('T')[0]
     },
 
+    isDualTank: false,
+    activeTank: 1, // 1 = Estanque 1, 2 = Estanque 2
+
     tank: {
-      type: 'rectangular', // rectangular simple
+      type: 'rectangular', // 'rectangular' | 'cylinder_horizontal'
       length: 1000,
       width: 600,
       height: 580,
@@ -72,6 +75,52 @@
       tank2Height: 650,
 
       // Forma D (Volvo / Scania)
+      d_r_bottom_front: 250,
+      d_r_top_front: 120,
+      d_r_back_corners: 40,
+
+      cyl_head: 'flat'
+    },
+
+    tank2: {
+      type: 'rectangular',
+      length: 1000,
+      width: 600,
+      height: 580,
+      thickness: 0.0,
+      dimType: 'internal',
+
+      r_inf_li: 200,
+      r_inf_ld: 200,
+      r_sup_li: 200,
+      r_sup_ld: 200,
+
+      r_inf_af: 0,
+      r_inf_ap: 0,
+      r_sup_af: 0,
+      r_sup_ap: 0,
+
+      r_vert: 0,
+      r_vert_fi: 0,
+      r_vert_fd: 0,
+      r_vert_pi: 0,
+      r_vert_pd: 0,
+
+      hasRecovecos: false,
+      texturaLevel: 50,
+      recovecoEnabled: true,
+      recovecoWidth: 190,
+      recovecoHeight: 175,
+      recovecoLength: 0,
+      recovecoSide: 'bottom_left',
+      cinchasCount: 2,
+      cinchasWidth: 70,
+      cinchasDepth: 25,
+
+      stepWidth: 200,
+      stepHeight: 250,
+      stepSide: 'bottom_right',
+
       d_r_bottom_front: 250,
       d_r_top_front: 120,
       d_r_back_corners: 40,
@@ -173,36 +222,42 @@
   // 1. MOTOR MATEMÁTICO DE GEOMETRÍA
   // ==========================================================================
 
-  function getEffectiveDimensions() {
-    const t = state.tank.dimType === 'external' ? (Number(state.tank.thickness) || 0) : 0;
-    let L = Math.max(10, (Number(state.tank.length) || 100) - 2 * t);
-    let W = Math.max(10, (Number(state.tank.width) || 100) - 2 * t);
-    let H = Math.max(10, (Number(state.tank.height) || 100) - 2 * t);
+  function getActiveTank() {
+    return (state.isDualTank && state.activeTank === 2) ? state.tank2 : state.tank;
+  }
 
-    if (state.tank.type === 'cylinder_horizontal') {
+  function getEffectiveDimensions(tankConfig) {
+    const tCfg = tankConfig || getActiveTank();
+    const t = tCfg.dimType === 'external' ? (Number(tCfg.thickness) || 0) : 0;
+    let L = Math.max(10, (Number(tCfg.length) || 100) - 2 * t);
+    let W = Math.max(10, (Number(tCfg.width) || 100) - 2 * t);
+    let H = Math.max(10, (Number(tCfg.height) || 100) - 2 * t);
+
+    if (tCfg.type === 'cylinder_horizontal') {
       W = H;
     }
 
     return { L, W, H, t };
   }
 
-  function getAreaAtZ(z, eff) {
+  function getAreaAtZ(z, eff, tankConfig) {
+    const tCfg = tankConfig || getActiveTank();
     const { L, W, H } = eff;
-    if (z < 0 || (state.tank.type !== 'double_tank' && z > H)) return 0;
+    if (z < 0 || (tCfg.type !== 'double_tank' && z > H)) return 0;
 
-    switch (state.tank.type) {
+    switch (tCfg.type) {
       case 'rectangular': {
         const t = eff.t || 0;
         // Radios efectivos descontando espesor si la medicion es externa
-        const r_inf_li = Math.max(0, Math.min(W / 2, H / 2, (Number(state.tank.r_inf_li) || 0) - t));
-        const r_inf_ld = Math.max(0, Math.min(W / 2, H / 2, (Number(state.tank.r_inf_ld) || 0) - t));
-        const r_inf_af = Math.max(0, Math.min(L / 2, H / 2, (Number(state.tank.r_inf_af) || 0) - t));
-        const r_inf_ap = Math.max(0, Math.min(L / 2, H / 2, (Number(state.tank.r_inf_ap) || 0) - t));
+        const r_inf_li = Math.max(0, Math.min(W / 2, H / 2, (Number(tCfg.r_inf_li) || 0) - t));
+        const r_inf_ld = Math.max(0, Math.min(W / 2, H / 2, (Number(tCfg.r_inf_ld) || 0) - t));
+        const r_inf_af = Math.max(0, Math.min(L / 2, H / 2, (Number(tCfg.r_inf_af) || 0) - t));
+        const r_inf_ap = Math.max(0, Math.min(L / 2, H / 2, (Number(tCfg.r_inf_ap) || 0) - t));
 
-        const r_sup_li = Math.max(0, Math.min(W / 2, H / 2, (Number(state.tank.r_sup_li) || 0) - t));
-        const r_sup_ld = Math.max(0, Math.min(W / 2, H / 2, (Number(state.tank.r_sup_ld) || 0) - t));
-        const r_sup_af = Math.max(0, Math.min(L / 2, H / 2, (Number(state.tank.r_sup_af) || 0) - t));
-        const r_sup_ap = Math.max(0, Math.min(L / 2, H / 2, (Number(state.tank.r_sup_ap) || 0) - t));
+        const r_sup_li = Math.max(0, Math.min(W / 2, H / 2, (Number(tCfg.r_sup_li) || 0) - t));
+        const r_sup_ld = Math.max(0, Math.min(W / 2, H / 2, (Number(tCfg.r_sup_ld) || 0) - t));
+        const r_sup_af = Math.max(0, Math.min(L / 2, H / 2, (Number(tCfg.r_sup_af) || 0) - t));
+        const r_sup_ap = Math.max(0, Math.min(L / 2, H / 2, (Number(tCfg.r_sup_ap) || 0) - t));
 
         let dx_l = 0;
         if (z < r_inf_li && r_inf_li > 0) {
@@ -371,35 +426,62 @@
     }
   }
 
-  function computeStrappingTable() {
-    const eff = getEffectiveDimensions();
+  function computeStrappingForConfig(tCfg) {
+    const eff = getEffectiveDimensions(tCfg);
     let maxH = eff.H;
-    if (state.tank.type === 'double_tank') {
-      const t = state.tank.dimType === 'external' ? (Number(state.tank.thickness) || 0) : 0;
-      const H2 = Math.max(10, (Number(state.tank.tank2Height) || eff.H) - 2 * t);
+    if (tCfg.type === 'double_tank') {
+      const t = tCfg.dimType === 'external' ? (Number(tCfg.thickness) || 0) : 0;
+      const H2 = Math.max(10, (Number(tCfg.tank2Height) || eff.H) - 2 * t);
       maxH = Math.max(eff.H, H2);
     }
 
     const H = Math.round(maxH);
-    state.calcCache.effH = H;
-
     const cumVol = new Float64Array(H + 1);
     cumVol[0] = 0;
 
     for (let z = 1; z <= H; z++) {
       const midZ = z - 0.5;
-      const area = getAreaAtZ(midZ, eff);
+      const area = getAreaAtZ(midZ, eff, tCfg);
       cumVol[z] = cumVol[z - 1] + (area / 1000000); // mm³ -> Litros
     }
 
-    state.calcCache.cumVol = cumVol;
-    state.calcCache.totalVolume = Number(cumVol[H].toFixed(1));
-    computeCalibrationRows();
+    const totalVolume = Number(cumVol[H].toFixed(1));
+    const calibrationRows = buildCalibrationRowsForTank(cumVol, H, totalVolume);
+
+    return { eff, H, cumVol, totalVolume, calibrationRows };
   }
 
-  function getVolumeAtHeight(h) {
-    const H = state.calcCache.effH;
-    const cum = state.calcCache.cumVol;
+  function computeStrappingTable() {
+    const calc1 = computeStrappingForConfig(state.tank);
+    state.calcCache.tank1 = calc1;
+
+    if (state.isDualTank) {
+      const calc2 = computeStrappingForConfig(state.tank2);
+      state.calcCache.tank2 = calc2;
+      state.calcCache.totalVolumeCombined = Number((calc1.totalVolume + calc2.totalVolume).toFixed(1));
+    } else {
+      state.calcCache.tank2 = null;
+      state.calcCache.totalVolumeCombined = calc1.totalVolume;
+    }
+
+    const activeCalc = (state.isDualTank && state.activeTank === 2) ? state.calcCache.tank2 : state.calcCache.tank1;
+    state.calcCache.effH = activeCalc.H;
+    state.calcCache.cumVol = activeCalc.cumVol;
+    state.calcCache.totalVolume = activeCalc.totalVolume;
+    state.calcCache.calibrationRows = activeCalc.calibrationRows;
+
+    const slider = document.getElementById('levelSlider');
+    const numInput = document.getElementById('levelNumberInput');
+    if (slider) slider.max = activeCalc.H;
+    if (numInput) numInput.max = activeCalc.H;
+    if (state.currentLevelMm > activeCalc.H) {
+      state.currentLevelMm = activeCalc.H;
+      if (slider) slider.value = activeCalc.H;
+      if (numInput) numInput.value = activeCalc.H;
+    }
+  }
+
+  function getVolumeAtHeight(h, cum = state.calcCache.cumVol, H = state.calcCache.effH) {
     if (!cum || H <= 0) return 0;
 
     const clamped = Math.max(0, Math.min(H, h));
@@ -411,172 +493,65 @@
     return cum[low] + frac * (cum[high] - cum[low]);
   }
 
-  function computeCalibrationRows(targetCount = state.tableMode || 95) {
-    if (state.isImported && state.importedTankSignature && state.importedTankSignature !== JSON.stringify(state.tank)) {
-      state.isImported = false;
-      state.importedRows = [];
-      state.importedTankSignature = null;
-      showToast('Cambió la geometría: la tabla importada dejó de ser la fuente activa. Recalcula o vuelve a importar la tabla.');
-    }
-    if (state.isImported && state.importedRows && state.importedRows.length > 0) {
-      const H = state.calcCache.effH;
-      const V_total = state.importedRows[state.importedRows.length - 1].volume || state.calcCache.totalVolume;
-      const rows = state.importedRows.map((r, idx) => ({
-        rowNum: idx + 1,
-        dataVal: r.data,
-        dataFormula: `${r.data}`,
-        levelVal: r.level,
-        levelFormula: `${r.level}`,
-        volumeVal: r.volume,
-        pct: V_total > 0 ? Number(((r.volume / V_total) * 100).toFixed(1)) : 0
-      }));
-      state.calcCache.calibrationRows = rows;
-      return rows;
-    }
-
-    const H = state.calcCache.effH;
-    const count = targetCount === 30 ? 30 : (targetCount === 100 ? 100 : 95);
+  function buildCalibrationRowsForTank(cumVol, H, totalVolume, targetCount = state.tableMode || 95) {
     const dataMin = Number(state.sensor.dataMin != null ? state.sensor.dataMin : 0);
     const dataMax = Number(state.sensor.dataMax != null ? state.sensor.dataMax : 5000);
     const freqEmpty = Number(state.sensor.freqEmpty != null ? state.sensor.freqEmpty : 15000);
     const freqFull = Number(state.sensor.freqFull != null ? state.sensor.freqFull : 10000);
-    const V_total = state.calcCache.totalVolume;
+    const V_total = totalVolume;
     const rows = [];
 
-    if (count === 95) {
-      // EXACTAMENTE 95 PUNTOS DE AFORO (Puntos 1 al 95)
-      for (let i = 0; i < 95; i++) {
-        const frac = i / 94; // 0 en vacío, 1.0 en lleno
-        const estLevel = Math.round(frac * H);
-        const estVol = Number(getVolumeAtHeight(estLevel).toFixed(1));
-        const estData = Math.round(dataMin + frac * (dataMax - dataMin));
+    // EXACTAMENTE 95 PUNTOS DE AFORO (Puntos 1 al 95)
+    for (let i = 0; i < 95; i++) {
+      const frac = i / 94; // 0 en vacío, 1.0 en lleno
+      const estLevel = Math.round(frac * H);
+      const estVol = Number(getVolumeAtHeight(estLevel, cumVol, H).toFixed(1));
+      const estData = Math.round(dataMin + frac * (dataMax - dataMin));
 
-        // Curva capacitiva real: 1/f = 1/f_empty + frac * (1/f_full - 1/f_empty)
-        let estFreq;
-        if (freqEmpty > 0 && freqFull > 0) {
-          const inv = (1 / freqEmpty) + frac * ((1 / freqFull) - (1 / freqEmpty));
-          estFreq = inv > 0 ? Math.round(1 / inv) : Math.round(freqEmpty + frac * (freqFull - freqEmpty));
-        } else {
-          estFreq = Math.round(freqEmpty + frac * (freqFull - freqEmpty));
-        }
-
-        const excelRow = i + 2; // Fila en Excel (Fila 1 Header, Filas 2 a 96)
-        let dataFormula = `${estData}`;
-        let levelFormula = `${estLevel}`;
-        if (i === 0) {
-          dataFormula = `${dataMin}`;
-          levelFormula = '0';
-        } else if (i === 94) {
-          dataFormula = `${dataMax}`;
-          levelFormula = `${H}`;
-        } else {
-          dataFormula = `ROUND($A$2 + (${excelRow}-2)*($A$96-$A$2)/94, 0)`;
-          levelFormula = `ROUND((${excelRow}-2)*$B$96/94, 0)`;
-        }
-
-        rows.push({
-          rowNum: i + 1,
-          slot: i,
-          dataVal: estData, // DATO CRUDO (0-5000) QUE CONSUME EL SENSOR
-          dataFormula: dataFormula,
-          freqVal: estFreq, // FRECUENCIA EN HZ PARA CALIBRAR EN TERRENO
-          levelVal: estLevel,
-          levelFormula: levelFormula,
-          volumeVal: estVol,
-          pct: V_total > 0 ? Number(((estVol / V_total) * 100).toFixed(1)) : 0,
-          data: estData,
-          level: estLevel,
-          volume: estVol
-        });
-      }
-    } else if (count === 30) {
-      // EXACTAMENTE 30 FILAS EN TOTAL (Fila 1 Header + Filas 2 a 30)
-      rows.push({
-        rowNum: 2,
-        dataVal: 0,
-        dataFormula: '0',
-        freqVal: freqEmpty,
-        levelVal: 0,
-        levelFormula: '0',
-        volumeVal: 0.0,
-        pct: 0.0
-      });
-
-      const levelStep1 = Math.round(1 * H / 28);
-      const volStep1 = Number(getVolumeAtHeight(levelStep1).toFixed(1));
-      const startData = dataMin > 0 ? dataMin : 100;
-      rows.push({
-        rowNum: 3,
-        dataVal: startData,
-        dataFormula: `${startData}`,
-        freqVal: Math.round(1 / ((1 / freqEmpty) + (1 / 28) * ((1 / freqFull) - (1 / freqEmpty)))),
-        levelVal: levelStep1,
-        levelFormula: `ROUND((3-2)*$B$30/28, 0)`,
-        volumeVal: volStep1,
-        pct: V_total > 0 ? Number(((volStep1 / V_total) * 100).toFixed(1)) : 0
-      });
-
-      for (let r = 4; r < 30; r++) {
-        const frac = (r - 2) / 28;
-        const dataFormula = `ROUND($A$3 + (${r}-3)*($A$30-$A$3)/27, 0)`;
-        const levelFormula = `ROUND((${r}-2)*$B$30/28, 0)`;
-        const estData = Math.round(startData + (r - 3) * (dataMax - startData) / 27);
-        const estLevel = Math.round(frac * H);
-        const estVol = Number(getVolumeAtHeight(estLevel).toFixed(1));
+      // Curva capacitiva real: 1/f = 1/f_empty + frac * (1/f_full - 1/f_empty)
+      let estFreq;
+      if (freqEmpty > 0 && freqFull > 0) {
         const inv = (1 / freqEmpty) + frac * ((1 / freqFull) - (1 / freqEmpty));
-        const estFreq = inv > 0 ? Math.round(1 / inv) : 0;
+        estFreq = inv > 0 ? Math.round(1 / inv) : Math.round(freqEmpty + frac * (freqFull - freqEmpty));
+      } else {
+        estFreq = Math.round(freqEmpty + frac * (freqFull - freqEmpty));
+      }
 
-        rows.push({
-          rowNum: r,
-          dataVal: estData,
-          dataFormula: dataFormula,
-          freqVal: estFreq,
-          levelVal: estLevel,
-          levelFormula: levelFormula,
-          volumeVal: estVol,
-          pct: V_total > 0 ? Number(((estVol / V_total) * 100).toFixed(1)) : 0
-        });
+      const excelRow = i + 2; // Fila en Excel
+      let dataFormula = `${estData}`;
+      let levelFormula = `${estLevel}`;
+      if (i === 0) {
+        dataFormula = `${dataMin}`;
+        levelFormula = '0';
+      } else if (i === 94) {
+        dataFormula = `${dataMax}`;
+        levelFormula = `${H}`;
+      } else {
+        dataFormula = `ROUND($A$2 + (${excelRow}-2)*($A$96-$A$2)/94, 0)`;
+        levelFormula = `ROUND((${excelRow}-2)*$B$96/94, 0)`;
       }
 
       rows.push({
-        rowNum: 30,
-        dataVal: dataMax,
-        dataFormula: `${dataMax}`,
-        freqVal: freqFull,
-        levelVal: H,
-        levelFormula: `${H}`,
-        volumeVal: V_total,
-        pct: 100.0
+        rowNum: i + 1,
+        slot: i,
+        dataVal: estData,
+        dataFormula: dataFormula,
+        freqVal: estFreq,
+        levelVal: estLevel,
+        levelFormula: levelFormula,
+        volumeVal: estVol,
+        pct: V_total > 0 ? Number(((estVol / V_total) * 100).toFixed(1)) : 0,
+        data: estData,
+        level: estLevel,
+        volume: estVol
       });
-    } else {
-      // 100 POSICIONES EXACTAS PARA MEMORIA DE SENSOR BLE (Slots 0 a 99)
-      for (let i = 0; i < 100; i++) {
-        const frac = i / 99;
-        const estLevel = Math.round(frac * H);
-        const estVol = Number(getVolumeAtHeight(estLevel).toFixed(1));
-        const estData = Math.round(dataMin + frac * (dataMax - dataMin));
-        const inv = (1 / freqEmpty) + frac * ((1 / freqFull) - (1 / freqEmpty));
-        const estFreq = inv > 0 ? Math.round(1 / inv) : 0;
-
-        rows.push({
-          rowNum: i + 1,
-          slot: i,
-          dataVal: estData,
-          dataFormula: `${estData}`,
-          freqVal: estFreq,
-          levelVal: estLevel,
-          levelFormula: `${estLevel}`,
-          volumeVal: estVol,
-          pct: V_total > 0 ? Number(((estVol / V_total) * 100).toFixed(1)) : 0,
-          data: estData,
-          level: estLevel,
-          volume: estVol
-        });
-      }
     }
 
-    state.calcCache.calibrationRows = rows;
     return rows;
+  }
+
+  function computeCalibrationRows() {
+    return state.calcCache.calibrationRows || [];
   }
 
   // ==========================================================================
@@ -638,9 +613,38 @@
   }
 
   function getActivePlaneConfig() {
-    const eff = getEffectiveDimensions();
     const isTransverse = state.viewMode === 'plane-transverse';
 
+    if (state.isDualTank) {
+      const eff1 = getEffectiveDimensions(state.tank);
+      const eff2 = getEffectiveDimensions(state.tank2);
+      let spanX = isTransverse ? (eff1.W + eff2.W + 140) : Math.max(eff1.L, eff2.L);
+      let spanY = Math.max(eff1.H, eff2.H);
+      const activeCfg = getActiveTank();
+      const activeEff = getEffectiveDimensions(activeCfg);
+      const labelX = isTransverse 
+        ? `T1: W=${Math.round(eff1.W)} | T2: W=${Math.round(eff2.W)} mm` 
+        : `L = ${Math.round(activeEff.L)} mm`;
+      const labelY = `H = ${Math.round(activeEff.H)} mm`;
+
+      let corners = [];
+      if (activeCfg.type === 'rectangular') {
+        corners = isTransverse ? [
+          { id: 'r_inf_li', name: 'Piso Izq', xCorner: 0, yCorner: 1, val: Number(activeCfg.r_inf_li) || 0 },
+          { id: 'r_inf_ld', name: 'Piso Der', xCorner: 1, yCorner: 1, val: Number(activeCfg.r_inf_ld) || 0 },
+          { id: 'r_sup_li', name: 'Techo Izq', xCorner: 0, yCorner: 0, val: Number(activeCfg.r_sup_li) || 0 },
+          { id: 'r_sup_ld', name: 'Techo Der', xCorner: 1, yCorner: 0, val: Number(activeCfg.r_sup_ld) || 0 }
+        ] : [
+          { id: 'r_inf_af', name: 'Piso Front', xCorner: 0, yCorner: 1, val: Number(activeCfg.r_inf_af) || 0 },
+          { id: 'r_inf_ap', name: 'Piso Post',  xCorner: 1, yCorner: 1, val: Number(activeCfg.r_inf_ap) || 0 },
+          { id: 'r_sup_af', name: 'Techo Front', xCorner: 0, yCorner: 0, val: Number(activeCfg.r_sup_af) || 0 },
+          { id: 'r_sup_ap', name: 'Techo Post',  xCorner: 1, yCorner: 0, val: Number(activeCfg.r_sup_ap) || 0 }
+        ];
+      }
+      return { spanX, spanY, labelX, labelY, corners, isTransverse };
+    }
+
+    const eff = getEffectiveDimensions();
     let spanX = isTransverse ? eff.W : eff.L;
     let spanY = eff.H;
 
@@ -683,6 +687,33 @@
     }
 
     return { spanX, spanY, labelX, labelY, corners, isTransverse };
+  }
+
+  function drawSingleTankProfile(ctx, tCfg, eff, ox, oy, dw, dh, scale, isTransverse) {
+    if (tCfg.type === 'cylinder_horizontal') {
+      if (isTransverse) {
+        const radius = Math.min(dw, dh) / 2;
+        ctx.arc(ox + dw / 2, oy - dh / 2, radius, 0, Math.PI * 2);
+      } else {
+        ctx.rect(ox, oy - dh, dw, dh);
+      }
+    } else {
+      const r_li = (Number(tCfg.r_inf_li) || 0) * scale;
+      const r_ld = (Number(tCfg.r_inf_ld) || 0) * scale;
+      const r_sli = (Number(tCfg.r_sup_li) || 0) * scale;
+      const r_sld = (Number(tCfg.r_sup_ld) || 0) * scale;
+
+      ctx.moveTo(ox + r_li, oy);
+      ctx.lineTo(ox + dw - r_ld, oy);
+      ctx.arcTo(ox + dw, oy, ox + dw, oy - r_ld, r_ld);
+      ctx.lineTo(ox + dw, oy - dh + r_sld);
+      ctx.arcTo(ox + dw, oy - dh, ox + dw - r_sld, oy - dh, r_sld);
+      ctx.lineTo(ox + r_sli, oy - dh);
+      ctx.arcTo(ox, oy - dh, ox, oy - dh + r_sli, r_sli);
+      ctx.lineTo(ox, oy - r_li);
+      ctx.arcTo(ox, oy, ox + r_li, oy, r_li);
+      ctx.closePath();
+    }
   }
 
   // ==========================================================================
@@ -740,6 +771,120 @@
     const oy = (h + dh) / 2;
 
     currentBounds = { ox, oy, dw, dh, scale };
+
+    if (state.isDualTank && isTransverse) {
+      const eff1 = getEffectiveDimensions(state.tank);
+      const eff2 = getEffectiveDimensions(state.tank2);
+      const gap = 140 * scale;
+      const w1 = eff1.W * scale;
+      const h1 = eff1.H * scale;
+      const w2 = eff2.W * scale;
+      const h2 = eff2.H * scale;
+
+      const x1 = ox;
+      const y1 = oy;
+      const x2 = ox + w1 + gap;
+      const y2 = oy;
+
+      const lvl1 = state.currentLevelMm1 != null ? state.currentLevelMm1 : state.currentLevelMm;
+      const lvl2 = state.currentLevelMm2 != null ? state.currentLevelMm2 : state.currentLevelMm;
+
+      // --- DIBUJO ESTANQUE 1 ---
+      ctx.save();
+      ctx.beginPath();
+      drawSingleTankProfile(ctx, state.tank, eff1, x1, y1, w1, h1, scale, true);
+      ctx.strokeStyle = state.activeTank === 1 ? '#0284c7' : '#94a3b8';
+      ctx.lineWidth = (state.activeTank === 1 ? 2.6 : 1.8) * dpr;
+      ctx.stroke();
+
+      ctx.save();
+      ctx.clip();
+      const lH1 = Math.min(h1, lvl1 * scale);
+      const lTopY1 = y1 - lH1;
+      ctx.fillStyle = 'rgba(217, 119, 6, 0.24)';
+      ctx.fillRect(x1 - 20, lTopY1, w1 + 40, lH1 + 20);
+      ctx.strokeStyle = '#b45309';
+      ctx.lineWidth = 1.8 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(x1 - 20, lTopY1);
+      ctx.lineTo(x1 + w1 + 20, lTopY1);
+      ctx.stroke();
+      ctx.restore();
+
+      const probe1X = x1 + w1 * 0.5;
+      const probe1Top = y1 - h1 - 16 * dpr;
+      const dead1 = (Number(state.sensor.bottomDeadZone) || 15) * scale;
+      ctx.fillStyle = '#0b1329';
+      ctx.fillRect(probe1X - 10 * dpr, probe1Top, 20 * dpr, 14 * dpr);
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 3 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(probe1X, probe1Top + 14 * dpr);
+      ctx.lineTo(probe1X, y1 - dead1);
+      ctx.stroke();
+
+      const v1Current = state.calcCache.tank1 ? getVolumeAtHeight(lvl1, state.calcCache.tank1.cumVol, eff1.H) : 0;
+      ctx.fillStyle = state.activeTank === 1 ? '#0284c7' : '#475569';
+      ctx.font = `bold ${10.5 * dpr}px sans-serif`;
+      ctx.fillText(`ESTANQUE 1 (SENSOR 1)${state.activeTank === 1 ? ' ★ ACTIVO' : ''}`, x1, y1 - h1 - 24 * dpr);
+      ctx.fillStyle = '#b45309';
+      ctx.fillRect(x1, y1 + 6 * dpr, 92 * dpr, 20 * dpr);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${10 * dpr}px sans-serif`;
+      ctx.fillText(`${lvl1} mm • ${v1Current.toFixed(0)}L`, x1 + 6 * dpr, y1 + 20 * dpr);
+
+      // --- DIBUJO ESTANQUE 2 ---
+      ctx.save();
+      ctx.beginPath();
+      drawSingleTankProfile(ctx, state.tank2, eff2, x2, y2, w2, h2, scale, true);
+      ctx.strokeStyle = state.activeTank === 2 ? '#0284c7' : '#94a3b8';
+      ctx.lineWidth = (state.activeTank === 2 ? 2.6 : 1.8) * dpr;
+      ctx.stroke();
+
+      ctx.save();
+      ctx.clip();
+      const lH2 = Math.min(h2, lvl2 * scale);
+      const lTopY2 = y2 - lH2;
+      ctx.fillStyle = 'rgba(217, 119, 6, 0.24)';
+      ctx.fillRect(x2 - 20, lTopY2, w2 + 40, lH2 + 20);
+      ctx.strokeStyle = '#b45309';
+      ctx.lineWidth = 1.8 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(x2 - 20, lTopY2);
+      ctx.lineTo(x2 + w2 + 20, lTopY2);
+      ctx.stroke();
+      ctx.restore();
+
+      const probe2X = x2 + w2 * 0.5;
+      const probe2Top = y2 - h2 - 16 * dpr;
+      const dead2 = (Number(state.sensor.bottomDeadZone) || 15) * scale;
+      ctx.fillStyle = '#0b1329';
+      ctx.fillRect(probe2X - 10 * dpr, probe2Top, 20 * dpr, 14 * dpr);
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 3 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(probe2X, probe2Top + 14 * dpr);
+      ctx.lineTo(probe2X, y2 - dead2);
+      ctx.stroke();
+
+      const v2Current = state.calcCache.tank2 ? getVolumeAtHeight(lvl2, state.calcCache.tank2.cumVol, eff2.H) : 0;
+      ctx.fillStyle = state.activeTank === 2 ? '#0284c7' : '#475569';
+      ctx.font = `bold ${10.5 * dpr}px sans-serif`;
+      ctx.fillText(`ESTANQUE 2 (SENSOR 2)${state.activeTank === 2 ? ' ★ ACTIVO' : ''}`, x2, y2 - h2 - 24 * dpr);
+      ctx.fillStyle = '#b45309';
+      ctx.fillRect(x2, y2 + 6 * dpr, 92 * dpr, 20 * dpr);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${10 * dpr}px sans-serif`;
+      ctx.fillText(`${lvl2} mm • ${v2Current.toFixed(0)}L`, x2 + 6 * dpr, y2 + 20 * dpr);
+
+      // Cota general inferior
+      ctx.fillStyle = '#64748b';
+      ctx.font = `800 ${11 * dpr}px sans-serif`;
+      ctx.fillText(`Camión Doble Estanque: W1=${Math.round(eff1.W)}mm (H1=${Math.round(eff1.H)}) | W2=${Math.round(eff2.W)}mm (H2=${Math.round(eff2.H)})`, ox, oy + 42 * dpr);
+
+      ctx.restore();
+      return;
+    }
 
     // DIBUJAR PERFIL Y LLENADO EXACTO
     ctx.save();
@@ -1802,7 +1947,8 @@
     try {
       const wb = new ExcelJS.Workbook();
       wb.creator = 'Vikar Calibración AoooG';
-      const ws = wb.addWorksheet('calibration');
+      const sheetName = state.isDualTank ? `Sensor_${state.activeTank}` : 'calibration';
+      const ws = wb.addWorksheet(sheetName);
 
       ws.columns = [
         { header: 'Data', key: 'data', width: 14 },
@@ -1885,7 +2031,8 @@
 
       const buffer = await wb.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const fileName = `calibracion_aooog_${state.vehicle.plate || 'tanque'}_${totalPoints}pts_${state.calcCache.totalVolume}L.xlsx`;
+      const sensorSuffix = state.isDualTank ? `_Sensor${state.activeTank}` : '';
+      const fileName = `calibracion_aooog_${state.vehicle.plate || 'tanque'}${sensorSuffix}_${totalPoints}pts_${state.calcCache.totalVolume}L.xlsx`;
 
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -1900,9 +2047,113 @@
     }
   }
 
+  async function exportBothAoooGExcel() {
+    if (!window.ExcelJS) {
+      showToast('Error: Librería ExcelJS no cargada.');
+      return;
+    }
+
+    try {
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'Vikar Calibración AoooG - Doble Estanque';
+
+      const t1Rows = (state.calcCache.tank1 && state.calcCache.tank1.calibrationRows) || [];
+      const t2Rows = (state.calcCache.tank2 && state.calcCache.tank2.calibrationRows) || [];
+
+      function fillSheet(ws, rows, effH) {
+        ws.columns = [
+          { header: 'Data', key: 'data', width: 14 },
+          { header: 'Level', key: 'level', width: 14 },
+          { header: 'Volume', key: 'volume', width: 14 },
+          { header: 'Freq_Hz', key: 'freq', width: 14 },
+          { header: 'Pct', key: 'pct', width: 12 }
+        ];
+        const hRow = ws.getRow(1);
+        hRow.font = { name: 'Calibri', size: 11, bold: true };
+        hRow.alignment = { horizontal: 'left', vertical: 'middle' };
+
+        const totalPoints = rows.length;
+        const maxRow = totalPoints + 1;
+
+        rows.forEach((r, idx) => {
+          const excelRowNum = idx + 2;
+          const row = ws.getRow(excelRowNum);
+
+          if (idx === 0) {
+            row.getCell(1).value = r.dataVal;
+            row.getCell(2).value = 0;
+          } else if (idx === totalPoints - 1) {
+            row.getCell(1).value = r.dataVal;
+            row.getCell(2).value = effH;
+          } else {
+            row.getCell(1).value = {
+              formula: `ROUND($A$2 + (${excelRowNum}-2)*($A$${maxRow}-$A$2)/${totalPoints - 1}, 0)`,
+              result: r.dataVal
+            };
+            row.getCell(2).value = {
+              formula: `ROUND((${excelRowNum}-2)*$B$${maxRow}/${totalPoints - 1}, 0)`,
+              result: r.levelVal
+            };
+          }
+
+          row.getCell(1).numFmt = '#,##0';
+          row.getCell(2).numFmt = '#,##0';
+          row.getCell(3).value = r.volumeVal;
+          row.getCell(3).numFmt = '#,##0.0';
+          row.getCell(4).value = r.freqVal || 0;
+          row.getCell(4).numFmt = '#,##0';
+          row.getCell(5).value = r.pct != null ? (r.pct / 100) : 0;
+          row.getCell(5).numFmt = '0.0%';
+          row.font = { name: 'Calibri', size: 11, bold: false };
+        });
+      }
+
+      const eff1H = state.calcCache.tank1 ? state.calcCache.tank1.H : state.calcCache.effH;
+      const eff2H = state.calcCache.tank2 ? state.calcCache.tank2.H : state.calcCache.effH;
+
+      const ws1 = wb.addWorksheet('Sensor_1');
+      fillSheet(ws1, t1Rows, eff1H);
+
+      const ws2 = wb.addWorksheet('Sensor_2');
+      fillSheet(ws2, t2Rows, eff2H);
+
+      // Hoja de Resumen Combinado
+      const wsSum = wb.addWorksheet('Resumen_Camion');
+      wsSum.columns = [
+        { header: 'Parámetro', key: 'param', width: 28 },
+        { header: 'Sensor 1 (Estanque 1)', key: 's1', width: 24 },
+        { header: 'Sensor 2 (Estanque 2)', key: 's2', width: 24 },
+        { header: 'Total Combinado Camión', key: 'total', width: 24 }
+      ];
+      wsSum.getRow(1).font = { bold: true };
+      const v1 = state.calcCache.tank1 ? state.calcCache.tank1.totalVolume : 0;
+      const v2 = state.calcCache.tank2 ? state.calcCache.tank2.totalVolume : 0;
+      wsSum.addRow(['Patente / Vehículo', state.vehicle.plate || 'Camión', state.vehicle.plate || 'Camión', state.vehicle.plate || 'Camión']);
+      wsSum.addRow(['Tipo Estanque', state.tank.type === 'cylinder_horizontal' ? 'Cilíndrico' : 'Rectangular', state.tank2.type === 'cylinder_horizontal' ? 'Cilíndrico' : 'Rectangular', 'Doble Estanque']);
+      wsSum.addRow(['Altura / Diámetro (mm)', eff1H, eff2H, '-']);
+      wsSum.addRow(['Capacidad (Litros)', v1, v2, Number((v1 + v2).toFixed(1))]);
+      wsSum.addRow(['Capacidad (m³)', Number((v1 / 1000).toFixed(4)), Number((v2 / 1000).toFixed(4)), Number(((v1 + v2) / 1000).toFixed(4))]);
+      wsSum.addRow(['Puntos de Aforo', t1Rows.length, t2Rows.length, t1Rows.length + t2Rows.length]);
+
+      const buffer = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const fileName = `calibracion_aooog_${state.vehicle.plate || 'camion'}_DobleEstanque_AmbosSensores_95pts.xlsx`;
+
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(link.href);
+
+      showToast(`Libro Excel descargado con 2 sensores independientes (Sensor 1 y Sensor 2).`);
+    } catch (err) {
+      console.error(err);
+      showToast('Error al exportar ambos sensores a Excel.');
+    }
+  }
+
   function exportCSV() {
     const rows = state.calcCache.calibrationRows;
-    // Directiva sep=, y BOM UTF-8 (\uFEFF) para que Microsoft Excel (especialmente en español) divida automáticamente en columnas A, B, C
     let csv = '\uFEFFsep=,\r\nData,Level,Volume\r\n';
     rows.forEach(r => {
       csv += `${r.dataVal},${r.levelVal},${r.volumeVal.toFixed(1)}\r\n`;
@@ -1911,7 +2162,8 @@
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `calibracion_aooog_${state.vehicle.plate || 'tanque'}_${rows.length}pts.csv`;
+    const sensorSuffix = state.isDualTank ? `_Sensor${state.activeTank}` : '';
+    link.download = `calibracion_aooog_${state.vehicle.plate || 'tanque'}${sensorSuffix}_${rows.length}pts.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
     showToast(`CSV descargado (${rows.length} puntos).`);
@@ -1991,6 +2243,67 @@
     setText('sideCurrentLiquid', `${curVol.toFixed(1)} L (${curM3} m³)`);
     setText('sideEmptySpace', `${emptyVol.toFixed(1)} L (${emptyM3} m³)`);
 
+    if (state.isDualTank) {
+      const v1 = state.calcCache.tank1 ? state.calcCache.tank1.totalVolume : 0;
+      const v2 = state.calcCache.tank2 ? state.calcCache.tank2.totalVolume : 0;
+      const h1 = state.calcCache.tank1 ? state.calcCache.tank1.H : 0;
+      const h2 = state.calcCache.tank2 ? state.calcCache.tank2.H : 0;
+      const vTotalComb = (v1 + v2).toFixed(1);
+      const m3Comb = ((v1 + v2) / 1000).toFixed(4);
+
+      setText('badgeVolTank1', `${v1.toFixed(1)} L`);
+      setText('badgeVolTank2', `${v2.toFixed(1)} L`);
+
+      setText('deckDualVol1', `${v1.toFixed(1)} L`);
+      setText('deckDualSub1', `H: ${h1} mm • ${(v1 / 1000).toFixed(4)} m³`);
+
+      setText('deckDualVol2', `${v2.toFixed(1)} L`);
+      setText('deckDualSub2', `H: ${h2} mm • ${(v2 / 1000).toFixed(4)} m³`);
+
+      setText('deckDualTotalCombined', `${vTotalComb} L`);
+      setText('deckDualTotalSub', `${m3Comb} m³ (Suma 2 Sensores)`);
+
+      const deckDual = document.getElementById('deckDualSummary');
+      if (deckDual) deckDual.style.display = 'grid';
+
+      const btnBoth = document.getElementById('btnExportBothExcel');
+      if (btnBoth) btnBoth.style.display = 'inline-flex';
+
+      const activeTag = document.getElementById('lblActiveTankTag');
+      if (activeTag) activeTag.innerText = `Estanque ${state.activeTank} (Sensor ${state.activeTank})`;
+
+      const lblVolTitle = document.getElementById('lblTelemetryVolTitle');
+      if (lblVolTitle) lblVolTitle.innerText = `Volumen Estanque ${state.activeTank}`;
+
+      const lblTotTitle = document.getElementById('lblTelemetryTotalTitle');
+      if (lblTotTitle) lblTotTitle.innerText = `Capacidad Estanque ${state.activeTank}`;
+
+      const lblBtnExport = document.getElementById('lblBtnTableExport');
+      if (lblBtnExport) {
+        lblBtnExport.innerText = `Descargar Excel Sensor ${state.activeTank} (.xlsx)`;
+      }
+    } else {
+      const deckDual = document.getElementById('deckDualSummary');
+      if (deckDual) deckDual.style.display = 'none';
+
+      const btnBoth = document.getElementById('btnExportBothExcel');
+      if (btnBoth) btnBoth.style.display = 'none';
+
+      const activeTag = document.getElementById('lblActiveTankTag');
+      if (activeTag) activeTag.innerText = 'Estanque 1';
+
+      const lblVolTitle = document.getElementById('lblTelemetryVolTitle');
+      if (lblVolTitle) lblVolTitle.innerText = 'Volumen Actual';
+
+      const lblTotTitle = document.getElementById('lblTelemetryTotalTitle');
+      if (lblTotTitle) lblTotTitle.innerText = 'Capacidad Total';
+
+      const lblBtnExport = document.getElementById('lblBtnTableExport');
+      if (lblBtnExport) {
+        lblBtnExport.innerText = 'Descargar Excel (.xlsx) [95 Puntos]';
+      }
+    }
+
     renderTable();
     if (state.viewMode === 'view-3d') {
       updateThreeTank();
@@ -2020,6 +2333,8 @@
     if (lblTitle) {
       if (state.isImported) {
         lblTitle.innerText = `Tabla de Calibración Importada (${rows.length} Puntos Oficiales)`;
+      } else if (state.isDualTank) {
+        lblTitle.innerText = `Tabla de Calibración AoooG - Estanque ${state.activeTank} (Sensor ${state.activeTank}) [${rows.length} Puntos]`;
       } else if (state.tableMode === 100) {
         lblTitle.innerText = 'Tabla de Calibración AoooG (100 Posiciones BLE - Slots 0 a 99)';
       } else {
@@ -4039,51 +4354,67 @@
       });
     });
 
-    bindInput('tankLength', (v) => { state.tank.length = v; });
-    bindInput('tankWidth', (v) => { state.tank.width = v; });
-    bindInput('tankHeight', (v) => { state.tank.height = v; });
-    bindInput('tankThickness', (v) => { state.tank.thickness = v; });
+    bindInput('tankLength', (v) => { getActiveTank().length = v; });
+    bindInput('tankWidth', (v) => {
+      const active = getActiveTank();
+      active.width = v;
+      if (active.type === 'cylinder_horizontal') {
+        active.height = v;
+        const hInput = document.getElementById('tankHeight');
+        if (hInput) hInput.value = v;
+      }
+    });
+    bindInput('tankHeight', (v) => {
+      const active = getActiveTank();
+      active.height = v;
+      if (active.type === 'cylinder_horizontal') {
+        active.width = v;
+        const wInput = document.getElementById('tankWidth');
+        if (wInput) wInput.value = v;
+      }
+    });
+    bindInput('tankThickness', (v) => { getActiveTank().thickness = v; });
 
     const dimTypeSelect = document.getElementById('tankDimType');
     if (dimTypeSelect) {
       dimTypeSelect.addEventListener('change', (e) => {
-        state.tank.dimType = e.target.value;
+        getActiveTank().dimType = e.target.value;
         updateAllUI();
       });
     }
 
-    bindInput('stepWidth', (v) => { state.tank.stepWidth = v; });
-    bindInput('stepHeight', (v) => { state.tank.stepHeight = v; });
+    bindInput('stepWidth', (v) => { getActiveTank().stepWidth = v; });
+    bindInput('stepHeight', (v) => { getActiveTank().stepHeight = v; });
     const stepSideSelect = document.getElementById('stepSide');
     if (stepSideSelect) {
       stepSideSelect.addEventListener('change', (e) => {
-        state.tank.stepSide = e.target.value;
+        getActiveTank().stepSide = e.target.value;
         updateAllUI();
       });
     }
 
-    bindInput('tank2Length', (v) => { state.tank.tank2Length = v; });
-    bindInput('tank2Width', (v) => { state.tank.tank2Width = v; });
-    bindInput('tank2Height', (v) => { state.tank.tank2Height = v; });
+    bindInput('tank2Length', (v) => { getActiveTank().tank2Length = v; });
+    bindInput('tank2Width', (v) => { getActiveTank().tank2Width = v; });
+    bindInput('tank2Height', (v) => { getActiveTank().tank2Height = v; });
 
-    bindInput('d_r_bottom_front', (v) => { state.tank.d_r_bottom_front = v; });
-    bindInput('d_r_top_front', (v) => { state.tank.d_r_top_front = v; });
-    bindInput('d_r_back_corners', (v) => { state.tank.d_r_back_corners = v; });
+    bindInput('d_r_bottom_front', (v) => { getActiveTank().d_r_bottom_front = v; });
+    bindInput('d_r_top_front', (v) => { getActiveTank().d_r_top_front = v; });
+    bindInput('d_r_back_corners', (v) => { getActiveTank().d_r_back_corners = v; });
 
-    bindInput('r_inf_li', (v) => { state.tank.r_inf_li = v; });
-    bindInput('r_inf_ld', (v) => { state.tank.r_inf_ld = v; });
-    bindInput('r_sup_li', (v) => { state.tank.r_sup_li = v; });
-    bindInput('r_sup_ld', (v) => { state.tank.r_sup_ld = v; });
+    bindInput('r_inf_li', (v) => { getActiveTank().r_inf_li = v; });
+    bindInput('r_inf_ld', (v) => { getActiveTank().r_inf_ld = v; });
+    bindInput('r_sup_li', (v) => { getActiveTank().r_sup_li = v; });
+    bindInput('r_sup_ld', (v) => { getActiveTank().r_sup_ld = v; });
 
-    bindInput('r_inf_af', (v) => { state.tank.r_inf_af = v; });
-    bindInput('r_inf_ap', (v) => { state.tank.r_inf_ap = v; });
-    bindInput('r_sup_af', (v) => { state.tank.r_sup_af = v; });
-    bindInput('r_sup_ap', (v) => { state.tank.r_sup_ap = v; });
-    bindInput('r_vert', (v) => { state.tank.r_vert = v; });
-    bindInput('r_vert_fi', (v) => { state.tank.r_vert_fi = v; });
-    bindInput('r_vert_fd', (v) => { state.tank.r_vert_fd = v; });
-    bindInput('r_vert_pi', (v) => { state.tank.r_vert_pi = v; });
-    bindInput('r_vert_pd', (v) => { state.tank.r_vert_pd = v; });
+    bindInput('r_inf_af', (v) => { getActiveTank().r_inf_af = v; });
+    bindInput('r_inf_ap', (v) => { getActiveTank().r_inf_ap = v; });
+    bindInput('r_sup_af', (v) => { getActiveTank().r_sup_af = v; });
+    bindInput('r_sup_ap', (v) => { getActiveTank().r_sup_ap = v; });
+    bindInput('r_vert', (v) => { getActiveTank().r_vert = v; });
+    bindInput('r_vert_fi', (v) => { getActiveTank().r_vert_fi = v; });
+    bindInput('r_vert_fd', (v) => { getActiveTank().r_vert_fd = v; });
+    bindInput('r_vert_pi', (v) => { getActiveTank().r_vert_pi = v; });
+    bindInput('r_vert_pd', (v) => { getActiveTank().r_vert_pd = v; });
 
     // Botón Toggle y Controles Simplificados de Estanque Plástico
     const btnToggleRecovecos = document.getElementById('btnToggleRecovecos');
@@ -4367,7 +4698,12 @@
 
     if (slider) {
       slider.addEventListener('input', (e) => {
-        state.currentLevelMm = Number(e.target.value) || 0;
+        const val = Number(e.target.value) || 0;
+        state.currentLevelMm = val;
+        if (state.isDualTank) {
+          if (state.activeTank === 1) state.currentLevelMm1 = val;
+          else state.currentLevelMm2 = val;
+        }
         if (numInput) numInput.value = state.currentLevelMm;
         updateAllUI();
       });
@@ -4378,6 +4714,10 @@
         let val = Number(e.target.value) || 0;
         val = Math.max(0, Math.min(state.calcCache.effH, val));
         state.currentLevelMm = val;
+        if (state.isDualTank) {
+          if (state.activeTank === 1) state.currentLevelMm1 = val;
+          else state.currentLevelMm2 = val;
+        }
         if (slider) slider.value = val;
         updateAllUI();
       });
@@ -4389,6 +4729,10 @@
         let next = state.currentLevelMm + step;
         next = Math.max(0, Math.min(state.calcCache.effH, next));
         state.currentLevelMm = next;
+        if (state.isDualTank) {
+          if (state.activeTank === 1) state.currentLevelMm1 = next;
+          else state.currentLevelMm2 = next;
+        }
         updateAllUI();
       });
     });
@@ -4407,6 +4751,8 @@
 
     const btnPrint = document.getElementById('btnPrintCertificate');
     if (btnPrint) btnPrint.addEventListener('click', () => window.print());
+
+    initDualTankControls();
   }
 
   function bindInput(id, callback) {
@@ -4465,39 +4811,40 @@
   }
 
   function syncInputsFromState() {
-    setVal('tankTypeSelect', state.tank.type);
-    setVal('tankLength', state.tank.length);
-    setVal('tankWidth', state.tank.width);
-    setVal('tankHeight', state.tank.height);
-    setVal('tankThickness', state.tank.thickness);
-    setVal('tankDimType', state.tank.dimType);
+    const t = getActiveTank();
+    setVal('tankTypeSelect', t.type);
+    setVal('tankLength', t.length);
+    setVal('tankWidth', t.width);
+    setVal('tankHeight', t.height);
+    setVal('tankThickness', t.thickness);
+    setVal('tankDimType', t.dimType || 'internal');
 
-    setVal('stepWidth', state.tank.stepWidth);
-    setVal('stepHeight', state.tank.stepHeight);
-    setVal('stepSide', state.tank.stepSide);
+    setVal('stepWidth', t.stepWidth);
+    setVal('stepHeight', t.stepHeight);
+    setVal('stepSide', t.stepSide);
 
-    setVal('tank2Length', state.tank.tank2Length);
-    setVal('tank2Width', state.tank.tank2Width);
-    setVal('tank2Height', state.tank.tank2Height);
+    setVal('tank2Length', t.tank2Length);
+    setVal('tank2Width', t.tank2Width);
+    setVal('tank2Height', t.tank2Height);
 
-    setVal('d_r_bottom_front', state.tank.d_r_bottom_front);
-    setVal('d_r_top_front', state.tank.d_r_top_front);
-    setVal('d_r_back_corners', state.tank.d_r_back_corners);
+    setVal('d_r_bottom_front', t.d_r_bottom_front);
+    setVal('d_r_top_front', t.d_r_top_front);
+    setVal('d_r_back_corners', t.d_r_back_corners);
 
-    setVal('r_inf_li', state.tank.r_inf_li);
-    setVal('r_inf_ld', state.tank.r_inf_ld);
-    setVal('r_sup_li', state.tank.r_sup_li);
-    setVal('r_sup_ld', state.tank.r_sup_ld);
+    setVal('r_inf_li', t.r_inf_li);
+    setVal('r_inf_ld', t.r_inf_ld);
+    setVal('r_sup_li', t.r_sup_li);
+    setVal('r_sup_ld', t.r_sup_ld);
 
-    setVal('r_inf_af', state.tank.r_inf_af);
-    setVal('r_inf_ap', state.tank.r_inf_ap);
-    setVal('r_sup_af', state.tank.r_sup_af);
-    setVal('r_sup_ap', state.tank.r_sup_ap);
-    setVal('r_vert', state.tank.r_vert || 0);
-    setVal('r_vert_fi', state.tank.r_vert_fi || 0);
-    setVal('r_vert_fd', state.tank.r_vert_fd || 0);
-    setVal('r_vert_pi', state.tank.r_vert_pi || 0);
-    setVal('r_vert_pd', state.tank.r_vert_pd || 0);
+    setVal('r_inf_af', t.r_inf_af);
+    setVal('r_inf_ap', t.r_inf_ap);
+    setVal('r_sup_af', t.r_sup_af);
+    setVal('r_sup_ap', t.r_sup_ap);
+    setVal('r_vert', t.r_vert || 0);
+    setVal('r_vert_fi', t.r_vert_fi || 0);
+    setVal('r_vert_fd', t.r_vert_fd || 0);
+    setVal('r_vert_pi', t.r_vert_pi || 0);
+    setVal('r_vert_pd', t.r_vert_pd || 0);
 
     setVal('sensorDataMin', state.sensor.dataMin != null ? state.sensor.dataMin : 0);
     setVal('sensorDataMax', state.sensor.dataMax != null ? state.sensor.dataMax : 5000);
@@ -4506,14 +4853,180 @@
     setVal('sensorBottomDead', state.sensor.bottomDeadZone || 0);
     updateDeltaFreq();
 
-    setVal('recovecoWidth', state.tank.recovecoWidth || 190);
-    setVal('recovecoHeight', state.tank.recovecoHeight || 175);
+    setVal('recovecoWidth', t.recovecoWidth || 190);
+    setVal('recovecoHeight', t.recovecoHeight || 175);
     const selSide = document.getElementById('recovecoSide');
-    if (selSide) selSide.value = state.tank.recovecoSide || 'bottom_left';
+    if (selSide) selSide.value = t.recovecoSide || 'bottom_left';
     const chkRec = document.getElementById('chkRecovecoChasis');
-    if (chkRec) chkRec.checked = state.tank.recovecoEnabled !== false;
+    if (chkRec) chkRec.checked = t.recovecoEnabled !== false;
 
     syncRecovecosUI();
+    updateShapeButtonsUI();
+  }
+
+  function updateShapeButtonsUI() {
+    const activeCfg = getActiveTank();
+    const isCyl = activeCfg.type === 'cylinder_horizontal';
+
+    const btnRect = document.getElementById('btnShapeRect');
+    const btnCyl = document.getElementById('btnShapeCyl');
+    const secRadii = document.getElementById('secRadiiContainer');
+    const wrapWidth = document.getElementById('wrapTankWidth');
+    const lblHeight = document.getElementById('lblTankHeight');
+
+    if (btnRect && btnCyl) {
+      if (isCyl) {
+        btnCyl.style.border = '2px solid #0284c7';
+        btnCyl.style.background = '#f0f9ff';
+        btnCyl.style.color = '#0369a1';
+        btnRect.style.border = '1px solid #cbd5e1';
+        btnRect.style.background = '#ffffff';
+        btnRect.style.color = '#64748b';
+      } else {
+        btnRect.style.border = '2px solid #0284c7';
+        btnRect.style.background = '#f0f9ff';
+        btnRect.style.color = '#0369a1';
+        btnCyl.style.border = '1px solid #cbd5e1';
+        btnCyl.style.background = '#ffffff';
+        btnCyl.style.color = '#64748b';
+      }
+    }
+
+    if (secRadii) secRadii.style.display = isCyl ? 'none' : 'block';
+    if (wrapWidth) wrapWidth.style.display = isCyl ? 'none' : 'block';
+    if (lblHeight) lblHeight.innerText = isCyl ? 'Diámetro (mm)' : 'Alto (mm)';
+  }
+
+  function initDualTankControls() {
+    const btnModeSingle = document.getElementById('btnModeSingle');
+    const btnModeDual = document.getElementById('btnModeDual');
+    const wrapSelector = document.getElementById('dualTankSelectorWrap');
+    const tabTank1 = document.getElementById('tabTank1');
+    const tabTank2 = document.getElementById('tabTank2');
+    const btnCopy = document.getElementById('btnCopyTank1To2');
+    const btnShapeRect = document.getElementById('btnShapeRect');
+    const btnShapeCyl = document.getElementById('btnShapeCyl');
+    const btnBothExcel = document.getElementById('btnExportBothExcel');
+
+    function syncModeButtons() {
+      if (!btnModeSingle || !btnModeDual) return;
+      if (state.isDualTank) {
+        btnModeDual.style.border = '2px solid #0284c7';
+        btnModeDual.style.background = '#f0f9ff';
+        btnModeDual.style.color = '#0369a1';
+        btnModeSingle.style.border = '1.5px solid transparent';
+        btnModeSingle.style.background = 'transparent';
+        btnModeSingle.style.color = '#64748b';
+        if (wrapSelector) wrapSelector.style.display = 'block';
+      } else {
+        btnModeSingle.style.border = '2px solid #0284c7';
+        btnModeSingle.style.background = '#f0f9ff';
+        btnModeSingle.style.color = '#0369a1';
+        btnModeDual.style.border = '1.5px solid transparent';
+        btnModeDual.style.background = 'transparent';
+        btnModeDual.style.color = '#64748b';
+        if (wrapSelector) wrapSelector.style.display = 'none';
+      }
+    }
+
+    function syncTankTabs() {
+      if (!tabTank1 || !tabTank2) return;
+      if (state.activeTank === 1) {
+        tabTank1.style.border = '2px solid #0284c7';
+        tabTank1.style.background = '#f0f9ff';
+        tabTank1.style.color = '#0369a1';
+        tabTank2.style.border = '1px solid #cbd5e1';
+        tabTank2.style.background = '#ffffff';
+        tabTank2.style.color = '#64748b';
+        if (btnCopy) btnCopy.style.display = 'none';
+      } else {
+        tabTank2.style.border = '2px solid #0284c7';
+        tabTank2.style.background = '#f0f9ff';
+        tabTank2.style.color = '#0369a1';
+        tabTank1.style.border = '1px solid #cbd5e1';
+        tabTank1.style.background = '#ffffff';
+        tabTank1.style.color = '#64748b';
+        if (btnCopy) btnCopy.style.display = 'block';
+      }
+    }
+
+    if (btnModeSingle) {
+      btnModeSingle.addEventListener('click', () => {
+        state.isDualTank = false;
+        state.activeTank = 1;
+        syncModeButtons();
+        syncTankTabs();
+        syncInputsFromState();
+        updateAllUI();
+      });
+    }
+
+    if (btnModeDual) {
+      btnModeDual.addEventListener('click', () => {
+        state.isDualTank = true;
+        syncModeButtons();
+        syncTankTabs();
+        syncInputsFromState();
+        updateAllUI();
+      });
+    }
+
+    if (tabTank1) {
+      tabTank1.addEventListener('click', () => {
+        state.activeTank = 1;
+        state.currentLevelMm = state.currentLevelMm1 || state.currentLevelMm;
+        syncTankTabs();
+        syncInputsFromState();
+        updateAllUI();
+      });
+    }
+
+    if (tabTank2) {
+      tabTank2.addEventListener('click', () => {
+        state.activeTank = 2;
+        state.currentLevelMm = state.currentLevelMm2 || state.currentLevelMm;
+        syncTankTabs();
+        syncInputsFromState();
+        updateAllUI();
+      });
+    }
+
+    if (btnCopy) {
+      btnCopy.addEventListener('click', () => {
+        state.tank2 = JSON.parse(JSON.stringify(state.tank));
+        syncInputsFromState();
+        updateAllUI();
+        showToast('Medidas copiadas de Estanque 1 a Estanque 2 (Gemelo).');
+      });
+    }
+
+    if (btnShapeRect) {
+      btnShapeRect.addEventListener('click', () => {
+        const active = getActiveTank();
+        active.type = 'rectangular';
+        updateShapeButtonsUI();
+        updateAllUI();
+      });
+    }
+
+    if (btnShapeCyl) {
+      btnShapeCyl.addEventListener('click', () => {
+        const active = getActiveTank();
+        active.type = 'cylinder_horizontal';
+        active.width = active.height;
+        setVal('tankWidth', active.width);
+        updateShapeButtonsUI();
+        updateAllUI();
+      });
+    }
+
+    if (btnBothExcel) {
+      btnBothExcel.addEventListener('click', exportBothAoooGExcel);
+    }
+
+    syncModeButtons();
+    syncTankTabs();
+    updateShapeButtonsUI();
   }
 
   function applyTextura() {
