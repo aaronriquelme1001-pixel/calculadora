@@ -296,22 +296,22 @@
         let area = effW * effL;
 
         // Radios de las bajadas de esquinas (aristas verticales)
-        const rvGlobal = Number(state.tank.r_vert) || 0;
-        const rv_fi = Math.max(0, Math.min(W / 2, L / 2, (Number(state.tank.r_vert_fi) || rvGlobal) - t));
-        const rv_fd = Math.max(0, Math.min(W / 2, L / 2, (Number(state.tank.r_vert_fd) || rvGlobal) - t));
-        const rv_pi = Math.max(0, Math.min(W / 2, L / 2, (Number(state.tank.r_vert_pi) || rvGlobal) - t));
-        const rv_pd = Math.max(0, Math.min(W / 2, L / 2, (Number(state.tank.r_vert_pd) || rvGlobal) - t));
+        const rvGlobal = Number(tCfg.r_vert) || 0;
+        const rv_fi = Math.max(0, Math.min(W / 2, L / 2, (Number(tCfg.r_vert_fi) || rvGlobal) - t));
+        const rv_fd = Math.max(0, Math.min(W / 2, L / 2, (Number(tCfg.r_vert_fd) || rvGlobal) - t));
+        const rv_pi = Math.max(0, Math.min(W / 2, L / 2, (Number(tCfg.r_vert_pi) || rvGlobal) - t));
+        const rv_pd = Math.max(0, Math.min(W / 2, L / 2, (Number(tCfg.r_vert_pd) || rvGlobal) - t));
 
         const cornerLostVert = (1 - Math.PI / 4) * (rv_fi * rv_fi + rv_fd * rv_fd + rv_pi * rv_pi + rv_pd * rv_pd);
         area = Math.max(0, area - cornerLostVert);
 
         // Descuento de Texturas, Canales y Chaflán de Chasis (Estanques Plásticos)
-        if (state.tank.hasRecovecos) {
-          const depthScale = (Number(state.tank.texturaLevel) || 50) / 50;
+        if (tCfg.hasRecovecos) {
+          const depthScale = (Number(tCfg.texturaLevel) || 50) / 50;
 
           // 1. Canales de las 2 cinchas / zunchos (hundidos en la pared)
           const cinchasW = 70;
-          const cinchasD = (Number(state.tank.cinchasDepth) || 22) * depthScale;
+          const cinchasD = (Number(tCfg.cinchasDepth) || 22) * depthScale;
           const cinchasLoss = 2 * cinchasW * (2 * cinchasD);
           area = Math.max(0, area - cinchasLoss);
 
@@ -328,9 +328,9 @@
           }
 
           // 4. Chaflán / Bisel Inferior de Chasis (Corte en diagonal para despeje de larguero de camión)
-          if (state.tank.recovecoEnabled !== false) {
-            const recW = Math.min(W * 0.75, Math.max(0, Number(state.tank.recovecoWidth) || 0));
-            const recH = Math.min(H * 0.85, Math.max(0, Number(state.tank.recovecoHeight) || 0));
+          if (tCfg.recovecoEnabled !== false) {
+            const recW = Math.min(W * 0.75, Math.max(0, Number(tCfg.recovecoWidth) || 0));
+            const recH = Math.min(H * 0.85, Math.max(0, Number(tCfg.recovecoHeight) || 0));
             if (recW > 0 && recH > 0 && z < recH) {
               const u = z / recH;
               const stepW = Math.round(recW * 0.22);
@@ -344,16 +344,16 @@
       }
 
       case 'step_notch': {
-        const sw = Math.min(W * 0.9, Number(state.tank.stepWidth) || 0);
-        const sh = Math.min(H * 0.9, Number(state.tank.stepHeight) || 0);
+        const sw = Math.min(W * 0.9, Number(tCfg.stepWidth) || 0);
+        const sh = Math.min(H * 0.9, Number(tCfg.stepHeight) || 0);
         let effW = W;
-        if (state.tank.stepSide === 'bottom_right' || state.tank.stepSide === 'bottom_left') {
+        if (tCfg.stepSide === 'bottom_right' || tCfg.stepSide === 'bottom_left') {
           if (z < sh) {
             effW = Math.max(0, W - sw);
           } else {
             effW = W;
           }
-        } else if (state.tank.stepSide === 'top_right') {
+        } else if (tCfg.stepSide === 'top_right') {
           if (z > (H - sh)) {
             effW = Math.max(0, W - sw);
           } else {
@@ -364,10 +364,10 @@
       }
 
       case 'double_tank': {
-        const t = state.tank.dimType === 'external' ? (Number(state.tank.thickness) || 0) : 0;
-        const L2 = Math.max(10, (Number(state.tank.tank2Length) || L) - 2 * t);
-        const W2 = Math.max(10, (Number(state.tank.tank2Width) || W) - 2 * t);
-        const H2 = Math.max(10, (Number(state.tank.tank2Height) || H) - 2 * t);
+        const t = tCfg.dimType === 'external' ? (Number(tCfg.thickness) || 0) : 0;
+        const L2 = Math.max(10, (Number(tCfg.tank2Length) || L) - 2 * t);
+        const W2 = Math.max(10, (Number(tCfg.tank2Width) || W) - 2 * t);
+        const H2 = Math.max(10, (Number(tCfg.tank2Height) || H) - 2 * t);
 
         const area1 = (z <= H) ? (W * L) : 0;
         const area2 = (z <= H2) ? (W2 * L2) : 0;
@@ -380,7 +380,7 @@
         if (dist >= R) return 0;
         const chordW = 2 * Math.sqrt(Math.max(0, R * R - dist * dist));
         let area = chordW * L;
-        if (state.tank.cyl_head === 'hemispherical') {
+        if (tCfg.cyl_head === 'hemispherical') {
           const r_slice = Math.sqrt(Math.max(0, R * R - dist * dist));
           area += Math.PI * r_slice * r_slice;
         }
@@ -397,9 +397,9 @@
       }
 
       case 'd_shape': {
-        const r_bf = Math.min(W * 0.8, H * 0.8, Number(state.tank.d_r_bottom_front) || 200);
-        const r_tf = Math.min(W * 0.8, H * 0.8, Number(state.tank.d_r_top_front) || 100);
-        const r_back = Math.min(W * 0.2, H * 0.2, Number(state.tank.d_r_back_corners) || 40);
+        const r_bf = Math.min(W * 0.8, H * 0.8, Number(tCfg.d_r_bottom_front) || 200);
+        const r_tf = Math.min(W * 0.8, H * 0.8, Number(tCfg.d_r_top_front) || 100);
+        const r_back = Math.min(W * 0.2, H * 0.2, Number(tCfg.d_r_back_corners) || 40);
 
         let dx_front = 0;
         if (z < r_bf && r_bf > 0) {
