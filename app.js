@@ -665,24 +665,25 @@
     const labelY = `H = ${Math.round(eff.H)} mm`;
 
     let corners = [];
-    if (state.tank.type === 'rectangular') {
+    const activeCfg = getActiveTank();
+    if (activeCfg.type === 'rectangular') {
       corners = isTransverse ? [
-        { id: 'r_inf_li', name: 'Piso Izq', xCorner: 0, yCorner: 1, val: Number(state.tank.r_inf_li) || 0 },
-        { id: 'r_inf_ld', name: 'Piso Der', xCorner: 1, yCorner: 1, val: Number(state.tank.r_inf_ld) || 0 },
-        { id: 'r_sup_li', name: 'Techo Izq', xCorner: 0, yCorner: 0, val: Number(state.tank.r_sup_li) || 0 },
-        { id: 'r_sup_ld', name: 'Techo Der', xCorner: 1, yCorner: 0, val: Number(state.tank.r_sup_ld) || 0 }
+        { id: 'r_inf_li', name: 'Piso Izq', xCorner: 0, yCorner: 1, val: Number(activeCfg.r_inf_li) || 0 },
+        { id: 'r_inf_ld', name: 'Piso Der', xCorner: 1, yCorner: 1, val: Number(activeCfg.r_inf_ld) || 0 },
+        { id: 'r_sup_li', name: 'Techo Izq', xCorner: 0, yCorner: 0, val: Number(activeCfg.r_sup_li) || 0 },
+        { id: 'r_sup_ld', name: 'Techo Der', xCorner: 1, yCorner: 0, val: Number(activeCfg.r_sup_ld) || 0 }
       ] : [
-        { id: 'r_inf_af', name: 'Piso Front', xCorner: 0, yCorner: 1, val: Number(state.tank.r_inf_af) || 0 },
-        { id: 'r_inf_ap', name: 'Piso Post',  xCorner: 1, yCorner: 1, val: Number(state.tank.r_inf_ap) || 0 },
-        { id: 'r_sup_af', name: 'Techo Front', xCorner: 0, yCorner: 0, val: Number(state.tank.r_sup_af) || 0 },
-        { id: 'r_sup_ap', name: 'Techo Post',  xCorner: 1, yCorner: 0, val: Number(state.tank.r_sup_ap) || 0 }
+        { id: 'r_inf_af', name: 'Piso Front', xCorner: 0, yCorner: 1, val: Number(activeCfg.r_inf_af) || 0 },
+        { id: 'r_inf_ap', name: 'Piso Post',  xCorner: 1, yCorner: 1, val: Number(activeCfg.r_inf_ap) || 0 },
+        { id: 'r_sup_af', name: 'Techo Front', xCorner: 0, yCorner: 0, val: Number(activeCfg.r_sup_af) || 0 },
+        { id: 'r_sup_ap', name: 'Techo Post',  xCorner: 1, yCorner: 0, val: Number(activeCfg.r_sup_ap) || 0 }
       ];
-    } else if (state.tank.type === 'd_shape' && isTransverse) {
+    } else if (activeCfg.type === 'd_shape' && isTransverse) {
       corners = [
-        { id: 'd_r_bottom_front', name: 'Frente Inf', xCorner: 1, yCorner: 1, val: Number(state.tank.d_r_bottom_front) || 250 },
-        { id: 'd_r_top_front',    name: 'Frente Sup', xCorner: 1, yCorner: 0, val: Number(state.tank.d_r_top_front) || 120 },
-        { id: 'd_r_back_corners', name: 'Dorso Inf',  xCorner: 0, yCorner: 1, val: Number(state.tank.d_r_back_corners) || 40 },
-        { id: 'd_r_back_corners', name: 'Dorso Sup',  xCorner: 0, yCorner: 0, val: Number(state.tank.d_r_back_corners) || 40 }
+        { id: 'd_r_bottom_front', name: 'Frente Inf', xCorner: 1, yCorner: 1, val: Number(activeCfg.d_r_bottom_front) || 250 },
+        { id: 'd_r_top_front',    name: 'Frente Sup', xCorner: 1, yCorner: 0, val: Number(activeCfg.d_r_top_front) || 120 },
+        { id: 'd_r_back_corners', name: 'Dorso Inf',  xCorner: 0, yCorner: 1, val: Number(activeCfg.d_r_back_corners) || 40 },
+        { id: 'd_r_back_corners', name: 'Dorso Sup',  xCorner: 0, yCorner: 0, val: Number(activeCfg.d_r_back_corners) || 40 }
       ];
     }
 
@@ -1017,24 +1018,25 @@
   }
 
   function drawCadProfile(ctx, ox, oy, dw, dh, scale, corners, isTransverse) {
-    if (state.tank.type === 'cylinder_horizontal') {
+    const activeCfg = getActiveTank();
+    if (activeCfg.type === 'cylinder_horizontal') {
       if (isTransverse) {
-        const radius = dw / 2;
-        ctx.arc(ox + radius, oy - radius, radius, 0, Math.PI * 2);
+        const radius = Math.min(dw, dh) / 2;
+        ctx.arc(ox + dw / 2, oy - dh / 2, radius, 0, Math.PI * 2);
       } else {
         ctx.rect(ox, oy - dh, dw, dh);
       }
-    } else if (state.tank.type === 'elliptical_horizontal') {
+    } else if (activeCfg.type === 'elliptical_horizontal') {
       if (isTransverse) {
         ctx.ellipse(ox + dw / 2, oy - dh / 2, dw / 2, dh / 2, 0, 0, Math.PI * 2);
       } else {
         ctx.rect(ox, oy - dh, dw, dh);
       }
-    } else if (state.tank.type === 'step_notch') {
+    } else if (activeCfg.type === 'step_notch') {
       if (isTransverse) {
-        const sw = (Number(state.tank.stepWidth) || 200) * scale;
-        const sh = (Number(state.tank.stepHeight) || 250) * scale;
-        if (state.tank.stepSide === 'bottom_right') {
+        const sw = (Number(activeCfg.stepWidth) || 200) * scale;
+        const sh = (Number(activeCfg.stepHeight) || 250) * scale;
+        if (activeCfg.stepSide === 'bottom_right') {
           ctx.moveTo(ox, oy);
           ctx.lineTo(ox + dw - sw, oy);
           ctx.lineTo(ox + dw - sw, oy - sh);
@@ -1042,7 +1044,7 @@
           ctx.lineTo(ox + dw, oy - dh);
           ctx.lineTo(ox, oy - dh);
           ctx.closePath();
-        } else if (state.tank.stepSide === 'bottom_left') {
+        } else if (activeCfg.stepSide === 'bottom_left') {
           ctx.moveTo(ox + sw, oy);
           ctx.lineTo(ox + dw, oy);
           ctx.lineTo(ox + dw, oy - dh);
@@ -1062,14 +1064,14 @@
       } else {
         ctx.rect(ox, oy - dh, dw, dh);
       }
-    } else if (state.tank.type === 'double_tank') {
+    } else if (activeCfg.type === 'double_tank') {
       if (isTransverse) {
         const eff = getEffectiveDimensions();
-        const t = state.tank.dimType === 'external' ? (Number(state.tank.thickness) || 0) : 0;
+        const t = activeCfg.dimType === 'external' ? (Number(activeCfg.thickness) || 0) : 0;
         const W1 = eff.W * scale;
         const H1 = eff.H * scale;
-        const W2 = Math.max(10, (Number(state.tank.tank2Width) || eff.W) - 2 * t) * scale;
-        const H2 = Math.max(10, (Number(state.tank.tank2Height) || eff.H) - 2 * t) * scale;
+        const W2 = Math.max(10, (Number(activeCfg.tank2Width) || eff.W) - 2 * t) * scale;
+        const H2 = Math.max(10, (Number(activeCfg.tank2Height) || eff.H) - 2 * t) * scale;
         const gap = 100 * scale;
 
         ctx.rect(ox, oy - H1, W1, H1);
@@ -1078,10 +1080,10 @@
       } else {
         ctx.rect(ox, oy - dh, dw, dh);
       }
-    } else if (state.tank.type === 'd_shape' && isTransverse) {
-      const r_bf = (Number(state.tank.d_r_bottom_front) || 250) * scale;
-      const r_tf = (Number(state.tank.d_r_top_front) || 120) * scale;
-      const r_bk = (Number(state.tank.d_r_back_corners) || 40) * scale;
+    } else if (activeCfg.type === 'd_shape' && isTransverse) {
+      const r_bf = (Number(activeCfg.d_r_bottom_front) || 250) * scale;
+      const r_tf = (Number(activeCfg.d_r_top_front) || 120) * scale;
+      const r_bk = (Number(activeCfg.d_r_back_corners) || 40) * scale;
 
       ctx.moveTo(ox + r_bk, oy);
       ctx.lineTo(ox + dw - r_bf, oy);
@@ -1099,31 +1101,26 @@
         const r_sli = corners[2].val * scale;
         const r_sld = corners[3].val * scale;
 
-        if (state.tank.hasRecovecos && isTransverse && (state.tank.recovecoEnabled !== false)) {
+        if (activeCfg.hasRecovecos && isTransverse && (activeCfg.recovecoEnabled !== false)) {
           // Chaflán de Chasis en el corte transversal (fiel a la Imagen 2)
-          const recW = Math.min(dw * 0.75, (Number(state.tank.recovecoWidth) || 190) * scale);
-          const recH = Math.min(dh * 0.85, (Number(state.tank.recovecoHeight) || 175) * scale);
+          const recW = Math.min(dw * 0.75, (Number(activeCfg.recovecoWidth) || 190) * scale);
+          const recH = Math.min(dh * 0.85, (Number(activeCfg.recovecoHeight) || 175) * scale);
           const stepW = Math.round(recW * 0.22);
-          const isLeft = state.tank.recovecoSide !== 'bottom_right';
+          const isLeft = activeCfg.recovecoSide !== 'bottom_right';
 
           if (isLeft) {
-            // Suelo plano desde el chaflán hasta la pared derecha
             ctx.moveTo(ox + recW, oy);
             ctx.lineTo(ox + dw - r_ld, oy);
             ctx.arcTo(ox + dw, oy, ox + dw, oy - r_ld, r_ld);
-            // Pared derecha hasta techo
             ctx.lineTo(ox + dw, oy - dh + r_sld);
             ctx.arcTo(ox + dw, oy - dh, ox + dw - r_sld, oy - dh, r_sld);
             ctx.lineTo(ox + r_sli, oy - dh);
             ctx.arcTo(ox, oy - dh, ox, oy - dh + r_sli, r_sli);
-            // Pared izquierda hasta inicio del chaflán
             ctx.lineTo(ox, oy - recH);
             ctx.lineTo(ox + stepW, oy - recH);
-            // Diagonal hacia el piso
             ctx.lineTo(ox + recW, oy);
             ctx.closePath();
           } else {
-            // Chaflán en lado derecho
             ctx.moveTo(ox + r_li, oy);
             ctx.lineTo(ox + dw - recW, oy);
             ctx.lineTo(ox + dw - stepW, oy - recH);
@@ -1141,8 +1138,7 @@
           ctx.lineTo(ox + dw - r_ld, oy);
           ctx.arcTo(ox + dw, oy, ox + dw, oy - r_ld, r_ld);
 
-          if (state.tank.hasRecovecos && isTransverse) {
-            // Nicho de boca de carga en esquina superior derecha
+          if (activeCfg.hasRecovecos && isTransverse) {
             const neckDepth = 20 * scale;
             const neckH = 32 * scale;
             ctx.lineTo(ox + dw, oy - dh + neckH);
@@ -2422,6 +2418,7 @@
   let threeCamera = null;
   let threeRenderer = null;
   let threeControls = null;
+  let threeTankGroup = null;
   let threeTankMesh = null;
   let threeTankEdges = null;
   let threeLiquidMesh = null;
@@ -2549,256 +2546,263 @@
     }
   }
 
-  function updateThreeTank() {
-    if (!threeScene || !window.THREE) return;
+  function create3DCylinderTankGeometry(radius, length, radialSegments = 64) {
+    const geom = new THREE.CylinderGeometry(radius, radius, length, radialSegments, 16);
+    geom.rotateX(Math.PI / 2);
+    geom.translate(0, radius, 0);
+    geom.computeVertexNormals();
+    return geom;
+  }
 
-    if (threeTankMesh) {
-      threeScene.remove(threeTankMesh);
-      threeTankMesh.geometry.dispose();
-      threeTankMesh = null;
-    }
-    if (threeTankEdges) {
-      threeScene.remove(threeTankEdges);
-      threeTankEdges.geometry.dispose();
-      threeTankEdges = null;
-    }
-    if (threeLiquidMesh) {
-      threeScene.remove(threeLiquidMesh);
-      threeLiquidMesh.geometry.dispose();
-      threeLiquidMesh = null;
-    }
-    if (threeProbeMesh) {
-      threeScene.remove(threeProbeMesh);
-      threeProbeMesh = null;
-    }
-    if (threeStrapsMesh) {
-      threeScene.remove(threeStrapsMesh);
-      threeStrapsMesh = null;
-    }
-    if (threeGrid) {
-      threeScene.remove(threeGrid);
-      threeGrid.geometry.dispose();
-      threeGrid = null;
-    }
+  function create3DCylinderLiquidGeometry(radius, length, curLevel, radialSegments = 48) {
+    const R = Math.max(1, radius - 2);
+    const L = Math.max(1, length - 4);
+    const H = 2 * radius;
+    const clampedLevel = Math.max(0, Math.min(H, curLevel));
+    if (clampedLevel <= 1) return null;
 
-    const eff = getEffectiveDimensions();
-    const L = Math.max(10, eff.L);
-    const W = Math.max(10, eff.W);
-    const H = Math.max(10, eff.H);
-
-    const w = W;
-    const h = H;
-    const rInf = {
-      li: Math.min(Number(state.tank.r_inf_li) || 0, W / 2 - 1, H / 2 - 1),
-      ld: Math.min(Number(state.tank.r_inf_ld) || 0, W / 2 - 1, H / 2 - 1),
-      af: Math.min(Number(state.tank.r_inf_af) || 0, L / 2 - 1, H / 2 - 1),
-      ap: Math.min(Number(state.tank.r_inf_ap) || 0, L / 2 - 1, H / 2 - 1)
-    };
-    const rSup = {
-      li: Math.min(Number(state.tank.r_sup_li) || 0, W / 2 - 1, H / 2 - 1),
-      ld: Math.min(Number(state.tank.r_sup_ld) || 0, W / 2 - 1, H / 2 - 1),
-      af: Math.min(Number(state.tank.r_sup_af) || 0, L / 2 - 1, H / 2 - 1),
-      ap: Math.min(Number(state.tank.r_sup_ap) || 0, L / 2 - 1, H / 2 - 1)
-    };
-    const rvGlobal = Number(state.tank.r_vert) || 0;
-    const rVerts = {
-      fi: Math.min(Number(state.tank.r_vert_fi) || rvGlobal, W / 2 - 1, L / 2 - 1),
-      fd: Math.min(Number(state.tank.r_vert_fd) || rvGlobal, W / 2 - 1, L / 2 - 1),
-      pi: Math.min(Number(state.tank.r_vert_pi) || rvGlobal, W / 2 - 1, L / 2 - 1),
-      pd: Math.min(Number(state.tank.r_vert_pd) || rvGlobal, W / 2 - 1, L / 2 - 1)
-    };
-
-    function create3DTankGeometry(w, h, l, rI, rS, rV, seg = 44, isLiquid = false, liqH = h) {
-      const geom = new THREE.BoxGeometry(w, h, l, seg, seg, seg);
-      const pos = geom.attributes.position;
-      const v = new THREE.Vector3();
-      const maxR = Math.min(w / 2 - 0.5, l / 2 - 0.5, h / 2 - 0.5);
-
-      for (let i = 0; i < pos.count; i++) {
-        v.fromBufferAttribute(pos, i);
-
-        const isFront = v.z >= 0;
-        const isRight = v.x >= 0;
-        const isRoof = v.y >= 0;
-
-        // Radio vertical específico de la esquina (bajada)
-        let rv = 0;
-        if (isFront && !isRight) rv = rV.fi;
-        else if (isFront && isRight) rv = rV.fd;
-        else if (!isFront && !isRight) rv = rV.pi;
-        else rv = rV.pd;
-        rv = Math.max(0, Math.min(maxR, rv || 0));
-
-        let rx = 0, rz = 0, ry = 0;
-        if (isRoof) {
-          if (isLiquid && liqH < H - 1) {
-            rx = 0; rz = 0; ry = 0;
-          } else {
-            rx = isRight ? rS.ld : rS.li;
-            rz = isFront ? rS.af : rS.ap;
-            ry = Math.max(rx, rz);
-          }
-        } else {
-          rx = isRight ? rI.ld : rI.li;
-          rz = isFront ? rI.af : rI.ap;
-          ry = Math.max(rx, rz);
-        }
-
-        rx = Math.max(0, Math.min(maxR, rx || 0));
-        rz = Math.max(0, Math.min(maxR, rz || 0));
-        ry = Math.max(0, Math.min(maxR, ry || 0));
-
-        const effRx = Math.max(rx, rv);
-        const effRz = Math.max(rz, rv);
-        const effRy = ry;
-
-        if (effRx > 0 || effRy > 0 || effRz > 0) {
-          const halfX = w / 2 - effRx;
-          const halfZ = l / 2 - effRz;
-          const halfY = h / 2 - effRy;
-
-          const cx = Math.max(-halfX, Math.min(halfX, v.x));
-          const cy = Math.max(-halfY, Math.min(halfY, v.y));
-          const cz = Math.max(-halfZ, Math.min(halfZ, v.z));
-
-          const dx = v.x - cx;
-          const dy = v.y - cy;
-          const dz = v.z - cz;
-
-          const nx = effRx > 0 ? dx / effRx : 0;
-          const ny = effRy > 0 ? dy / effRy : 0;
-          const nz = effRz > 0 ? dz / effRz : 0;
-          const d = Math.sqrt(nx * nx + ny * ny + nz * nz);
-
-          if (d > 0.001) {
-            if (effRx > 0) v.x = cx + (nx / d) * effRx;
-            if (effRy > 0) v.y = cy + (ny / d) * effRy;
-            if (effRz > 0) v.z = cz + (nz / d) * effRz;
-          }
-        }
-
-        // Texturas y hendiduras estructurales de estanque plástico rotomoldeado (estilo Bepô / Caren / Volvo / Scania)
-        if (state.tank.hasRecovecos) {
-          const depthScale = (Number(state.tank.texturaLevel) || 50) / 50;
-
-          // 1. Canales para las 2 Cinchas / Zunchos (hendiduras continuas perimetrales)
-          const z1 = -l * 0.26;
-          const z2 = l * 0.26;
-          const strapHalfW = 46;
-          const strapDepth = (Number(state.tank.cinchasDepth) || 24) * depthScale;
-
-          const distZ1 = Math.abs(v.z - z1);
-          const distZ2 = Math.abs(v.z - z2);
-          const minDistZ = Math.min(distZ1, distZ2);
-
-          if (minDistZ < strapHalfW) {
-            const factor = Math.cos((minDistZ / strapHalfW) * (Math.PI / 2));
-            const indent = factor * factor * strapDepth;
-
-            // Indentar paredes frontal y trasera
-            if (v.x > w * 0.18) {
-              v.x = Math.max(0, v.x - indent);
-            } else if (v.x < -w * 0.18) {
-              v.x = Math.min(0, v.x + indent);
-            }
-
-            // Indentar techo y piso suavemente
-            if (v.y > h * 0.18) {
-              v.y = Math.max(0, v.y - indent * 0.55);
-            } else if (v.y < -h * 0.18) {
-              v.y = Math.min(0, v.y + indent * 0.55);
-            }
-          }
-
-          // 2. Nicho / Alojamiento de Boca de Carga (Centro-frontal superior, como en foto real)
-          const isFrontWall = v.x > w * 0.22;
-          const isTopRoof = v.y > h * 0.18;
-          const isCenterZ = Math.abs(v.z) < (l * 0.18);
-
-          if (isFrontWall && isTopRoof && isCenterZ) {
-            const zNorm = Math.abs(v.z) / (l * 0.18);
-            const yNorm = Math.max(0, (v.y - h * 0.18) / (h * 0.32));
-            const neckIndent = (1 - zNorm) * Math.min(1, yNorm) * 28 * depthScale;
-            v.x = Math.max(0, v.x - neckIndent);
-
-            // Depresión suave en la cara superior
-            if (v.y > h * 0.32) {
-              v.y = Math.max(0, v.y - (1 - zNorm) * 18 * depthScale);
-            }
-          }
-
-          // 3. Paneles estructurales y nervaduras de refuerzo frontales (idénticas a Imagen 2)
-          if (v.x > w * 0.30) {
-            // Panel central rehundido entre las 2 cinchas
-            if (Math.abs(v.z) < l * 0.18 && v.y > -h * 0.32 && v.y < h * 0.10) {
-              const pz = Math.cos((Math.abs(v.z) / (l * 0.18)) * (Math.PI / 2));
-              const py = Math.cos(((v.y + h * 0.11) / (h * 0.21)) * (Math.PI / 2));
-              const centerIndent = pz * py * 14 * depthScale;
-              v.x = Math.max(0, v.x - centerIndent);
-            }
-
-            // Nervadura horizontal de rigidez a media altura
-            const yDistMid = Math.abs(v.y);
-            const ribSpan = h * 0.12;
-            if (yDistMid < ribSpan) {
-              const ribFactor = Math.cos((yDistMid / ribSpan) * (Math.PI / 2));
-              const ribIndent = ribFactor * ribFactor * 8 * depthScale;
-              v.x = Math.max(0, v.x - ribIndent);
-            }
-          }
-
-          // 4. Chaflán / Bisel Inferior de Chasis (Corte diagonal para despeje de larguero de camión)
-          if (state.tank.recovecoEnabled !== false) {
-            const recW = Math.min(w * 0.75, Math.max(0, Number(state.tank.recovecoWidth) || 0));
-            const recH = Math.min(H * 0.85, Math.max(0, Number(state.tank.recovecoHeight) || 0));
-            const stepW = Math.round(recW * 0.22);
-            const isLeft = state.tank.recovecoSide !== 'bottom_right';
-
-            // Altura real acumulada desde la base del estanque [0, H]
-            const curY = isLiquid ? (v.y + liqH / 2) : (v.y + h / 2);
-
-            if (recW > 0 && recH > 0 && curY < recH) {
-              const u = Math.max(0, Math.min(1, curY / recH));
-              const cutOffset = recW * (1 - u) + stepW * u;
-
-              if (isLeft && v.x < 0) {
-                const tx = (v.x - (-w / 2)) / (w / 2);
-                if (tx >= 0 && tx <= 1) {
-                  v.x += cutOffset * Math.pow(1 - tx, 1.25);
-                }
-              } else if (!isLeft && v.x > 0) {
-                const tx = (w / 2 - v.x) / (w / 2);
-                if (tx >= 0 && tx <= 1) {
-                  v.x -= cutOffset * Math.pow(1 - tx, 1.25);
-                }
-              }
-            }
-          }
-        }
-
-        pos.setXYZ(i, v.x, v.y, v.z);
-      }
-      geom.translate(0, h / 2, 0);
+    if (clampedLevel >= H - 2) {
+      const geom = new THREE.CylinderGeometry(R, R, L, radialSegments);
+      geom.rotateX(Math.PI / 2);
+      geom.translate(0, radius, 0);
       geom.computeVertexNormals();
       return geom;
     }
 
-    const isPlastic = Boolean(state.tank.hasRecovecos);
-    const rotomoldTex = getRotomoldTexture();
-    const depthScale = (Number(state.tank.texturaLevel) || 50) / 50;
+    const yCenter = radius;
+    const ySurface = clampedLevel;
+    const dy = ySurface - yCenter;
+    const halfChord = Math.sqrt(Math.max(0, R * R - dy * dy));
 
-    // Escala del relieve bump según slider de textura: 10 (Menos) -> 0.35, 50 (Normal) -> 0.95, 90 (Más) -> 1.75
-    const plasticBumpScale = (0.35 + ((Number(state.tank.texturaLevel) || 50) - 10) * (1.4 / 80));
+    const angleRight = Math.atan2(dy, halfChord);
+    const angleLeft = Math.atan2(dy, -halfChord);
+
+    const shape = new THREE.Shape();
+    shape.moveTo(halfChord, ySurface);
+    shape.absarc(0, yCenter, R, angleRight, angleLeft, true);
+    shape.lineTo(halfChord, ySurface);
+
+    const geom = new THREE.ExtrudeGeometry(shape, {
+      depth: L,
+      bevelEnabled: false,
+      curveSegments: 36
+    });
+    geom.translate(0, 0, -L / 2);
+    geom.computeVertexNormals();
+    return geom;
+  }
+
+  function create3DTankGeometry(w, h, l, rI, rS, rV, seg = 44, isLiquid = false, liqH = h, tCfg = getActiveTank()) {
+    const geom = new THREE.BoxGeometry(w, h, l, seg, seg, seg);
+    const pos = geom.attributes.position;
+    const v = new THREE.Vector3();
+    const maxR = Math.min(w / 2 - 0.5, l / 2 - 0.5, h / 2 - 0.5);
+
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+
+      const isFront = v.z >= 0;
+      const isRight = v.x >= 0;
+      const isRoof = v.y >= 0;
+
+      let rv = 0;
+      if (isFront && !isRight) rv = rV.fi;
+      else if (isFront && isRight) rv = rV.fd;
+      else if (!isFront && !isRight) rv = rV.pi;
+      else rv = rV.pd;
+      rv = Math.max(0, Math.min(maxR, rv || 0));
+
+      let rx = 0, rz = 0, ry = 0;
+      if (isRoof) {
+        if (isLiquid && liqH < h - 1) {
+          rx = 0; rz = 0; ry = 0;
+        } else {
+          rx = isRight ? rS.ld : rS.li;
+          rz = isFront ? rS.af : rS.ap;
+          ry = Math.max(rx, rz);
+        }
+      } else {
+        rx = isRight ? rI.ld : rI.li;
+        rz = isFront ? rI.af : rI.ap;
+        ry = Math.max(rx, rz);
+      }
+
+      rx = Math.max(0, Math.min(maxR, rx || 0));
+      rz = Math.max(0, Math.min(maxR, rz || 0));
+      ry = Math.max(0, Math.min(maxR, ry || 0));
+
+      const effRx = Math.max(rx, rv);
+      const effRz = Math.max(rz, rv);
+      const effRy = ry;
+
+      if (effRx > 0 || effRy > 0 || effRz > 0) {
+        const halfX = w / 2 - effRx;
+        const halfZ = l / 2 - effRz;
+        const halfY = h / 2 - effRy;
+
+        const cx = Math.max(-halfX, Math.min(halfX, v.x));
+        const cy = Math.max(-halfY, Math.min(halfY, v.y));
+        const cz = Math.max(-halfZ, Math.min(halfZ, v.z));
+
+        const dx = v.x - cx;
+        const dy = v.y - cy;
+        const dz = v.z - cz;
+
+        const nx = effRx > 0 ? dx / effRx : 0;
+        const ny = effRy > 0 ? dy / effRy : 0;
+        const nz = effRz > 0 ? dz / effRz : 0;
+        const d = Math.sqrt(nx * nx + ny * ny + nz * nz);
+
+        if (d > 0.001) {
+          if (effRx > 0) v.x = cx + (nx / d) * effRx;
+          if (effRy > 0) v.y = cy + (ny / d) * effRy;
+          if (effRz > 0) v.z = cz + (nz / d) * effRz;
+        }
+      }
+
+      // Texturas y hendiduras estructurales de estanque plástico
+      if (tCfg && tCfg.hasRecovecos) {
+        const depthScale = (Number(tCfg.texturaLevel) || 50) / 50;
+
+        // 1. Canales para las 2 Cinchas
+        const z1 = -l * 0.26;
+        const z2 = l * 0.26;
+        const strapHalfW = 46;
+        const strapDepth = (Number(tCfg.cinchasDepth) || 24) * depthScale;
+
+        const distZ1 = Math.abs(v.z - z1);
+        const distZ2 = Math.abs(v.z - z2);
+        const minDistZ = Math.min(distZ1, distZ2);
+
+        if (minDistZ < strapHalfW) {
+          const factor = Math.cos((minDistZ / strapHalfW) * (Math.PI / 2));
+          const indent = factor * factor * strapDepth;
+
+          if (v.x > w * 0.18) {
+            v.x = Math.max(0, v.x - indent);
+          } else if (v.x < -w * 0.18) {
+            v.x = Math.min(0, v.x + indent);
+          }
+
+          if (v.y > h * 0.18) {
+            v.y = Math.max(0, v.y - indent * 0.55);
+          } else if (v.y < -h * 0.18) {
+            v.y = Math.min(0, v.y + indent * 0.55);
+          }
+        }
+
+        // 2. Nicho / Boca de carga
+        const isFrontWall = v.x > w * 0.22;
+        const isTopRoof = v.y > h * 0.18;
+        const isCenterZ = Math.abs(v.z) < (l * 0.18);
+
+        if (isFrontWall && isTopRoof && isCenterZ) {
+          const zNorm = Math.abs(v.z) / (l * 0.18);
+          const yNorm = Math.max(0, (v.y - h * 0.18) / (h * 0.32));
+          const neckIndent = (1 - zNorm) * Math.min(1, yNorm) * 28 * depthScale;
+          v.x = Math.max(0, v.x - neckIndent);
+
+          if (v.y > h * 0.32) {
+            v.y = Math.max(0, v.y - (1 - zNorm) * 18 * depthScale);
+          }
+        }
+
+        // 3. Paneles estructurales
+        if (v.x > w * 0.30) {
+          if (Math.abs(v.z) < l * 0.18 && v.y > -h * 0.32 && v.y < h * 0.10) {
+            const pz = Math.cos((Math.abs(v.z) / (l * 0.18)) * (Math.PI / 2));
+            const py = Math.cos(((v.y + h * 0.11) / (h * 0.21)) * (Math.PI / 2));
+            const centerIndent = pz * py * 14 * depthScale;
+            v.x = Math.max(0, v.x - centerIndent);
+          }
+
+          const yDistMid = Math.abs(v.y);
+          const ribSpan = h * 0.12;
+          if (yDistMid < ribSpan) {
+            const ribFactor = Math.cos((yDistMid / ribSpan) * (Math.PI / 2));
+            const ribIndent = ribFactor * ribFactor * 8 * depthScale;
+            v.x = Math.max(0, v.x - ribIndent);
+          }
+        }
+
+        // 4. Chaflán de Chasis
+        if (tCfg.recovecoEnabled !== false) {
+          const recW = Math.min(w * 0.75, Math.max(0, Number(tCfg.recovecoWidth) || 0));
+          const recH = Math.min(h * 0.85, Math.max(0, Number(tCfg.recovecoHeight) || 0));
+          const stepW = Math.round(recW * 0.22);
+          const isLeft = tCfg.recovecoSide !== 'bottom_right';
+          const curY = isLiquid ? (v.y + liqH / 2) : (v.y + h / 2);
+
+          if (recW > 0 && recH > 0 && curY < recH) {
+            const u = Math.max(0, Math.min(1, curY / recH));
+            const cutOffset = recW * (1 - u) + stepW * u;
+
+            if (isLeft && v.x < 0) {
+              const tx = (v.x - (-w / 2)) / (w / 2);
+              if (tx >= 0 && tx <= 1) {
+                v.x += cutOffset * Math.pow(1 - tx, 1.25);
+              }
+            } else if (!isLeft && v.x > 0) {
+              const tx = (w / 2 - v.x) / (w / 2);
+              if (tx >= 0 && tx <= 1) {
+                v.x -= cutOffset * Math.pow(1 - tx, 1.25);
+              }
+            }
+          }
+        }
+      }
+
+      pos.setXYZ(i, v.x, v.y, v.z);
+    }
+    geom.translate(0, h / 2, 0);
+    geom.computeVertexNormals();
+    return geom;
+  }
+
+  function buildSingleTank3D(tCfg, eff, levelMm, isTankActive) {
+    const group = new THREE.Group();
+    const isCyl = tCfg.type === 'cylinder_horizontal';
+    const isPlastic = !isCyl && Boolean(tCfg.hasRecovecos);
     const isSolid = state.view3DShading !== 'xray';
+    const rotomoldTex = getRotomoldTexture();
+    const plasticBumpScale = (0.35 + ((Number(tCfg.texturaLevel) || 50) - 10) * (1.4 / 80));
 
-    const tankGeom = create3DTankGeometry(W, H, L, rInf, rSup, rVerts, 44);
+    const L = Math.max(10, eff.L);
+    const W = Math.max(10, eff.W);
+    const H = Math.max(10, eff.H);
+
+    let tankGeom;
+    if (isCyl) {
+      const radius = H / 2;
+      tankGeom = create3DCylinderTankGeometry(radius, L, 64);
+    } else {
+      const rInf = {
+        li: Math.min(Number(tCfg.r_inf_li) || 0, W / 2 - 1, H / 2 - 1),
+        ld: Math.min(Number(tCfg.r_inf_ld) || 0, W / 2 - 1, H / 2 - 1),
+        af: Math.min(Number(tCfg.r_inf_af) || 0, L / 2 - 1, H / 2 - 1),
+        ap: Math.min(Number(tCfg.r_inf_ap) || 0, L / 2 - 1, H / 2 - 1)
+      };
+      const rSup = {
+        li: Math.min(Number(tCfg.r_sup_li) || 0, W / 2 - 1, H / 2 - 1),
+        ld: Math.min(Number(tCfg.r_sup_ld) || 0, W / 2 - 1, H / 2 - 1),
+        af: Math.min(Number(tCfg.r_sup_af) || 0, L / 2 - 1, H / 2 - 1),
+        ap: Math.min(Number(tCfg.r_sup_ap) || 0, L / 2 - 1, H / 2 - 1)
+      };
+      const rvGlobal = Number(tCfg.r_vert) || 0;
+      const rVerts = {
+        fi: Math.min(Number(tCfg.r_vert_fi) || rvGlobal, W / 2 - 1, L / 2 - 1),
+        fd: Math.min(Number(tCfg.r_vert_fd) || rvGlobal, W / 2 - 1, L / 2 - 1),
+        pi: Math.min(Number(tCfg.r_vert_pi) || rvGlobal, W / 2 - 1, L / 2 - 1),
+        pd: Math.min(Number(tCfg.r_vert_pd) || rvGlobal, W / 2 - 1, L / 2 - 1)
+      };
+      tankGeom = create3DTankGeometry(W, H, L, rInf, rSup, rVerts, 44, false, H, tCfg);
+    }
+
     let tankMat;
-
     if (isPlastic) {
       if (isSolid) {
-        // MODO REALISTA SÓLIDO (Idéntico a foto real de estanque rotomoldeado PEHD negro)
         tankMat = new THREE.MeshPhysicalMaterial({
-          color: 0x1f2125, // Negro antracita / grafito PEHD
+          color: isTankActive ? 0x1f2125 : 0x334155,
           metalness: 0.04,
           roughness: 0.74,
           bumpMap: rotomoldTex,
@@ -2812,7 +2816,6 @@
           side: THREE.DoubleSide
         });
       } else {
-        // MODO RAYOS X (Permite inspeccionar diesel ámbar y sonda AoooG interior)
         tankMat = new THREE.MeshPhysicalMaterial({
           color: 0x1e293b,
           metalness: 0.1,
@@ -2820,18 +2823,17 @@
           bumpMap: rotomoldTex,
           bumpScale: plasticBumpScale * 0.35,
           transparent: true,
-          opacity: 0.40,
+          opacity: isTankActive ? 0.40 : 0.25,
           depthWrite: false,
           side: THREE.DoubleSide
         });
       }
     } else {
-      // Estanque metálico estándar (aluminio / acero pulido)
       if (isSolid) {
         tankMat = new THREE.MeshStandardMaterial({
-          color: 0x94a3b8,
-          metalness: 0.75,
-          roughness: 0.25,
+          color: isTankActive ? (isCyl ? 0xa8b8c8 : 0x94a3b8) : 0x64748b,
+          metalness: 0.82,
+          roughness: 0.22,
           transparent: false,
           opacity: 1.0,
           depthWrite: true,
@@ -2839,53 +2841,77 @@
         });
       } else {
         tankMat = new THREE.MeshPhysicalMaterial({
-          color: 0x64748b,
+          color: isCyl ? 0x38bdf8 : 0x64748b,
           metalness: 0.5,
           roughness: 0.2,
           transparent: true,
-          opacity: 0.38,
+          opacity: isTankActive ? 0.38 : 0.22,
           depthWrite: false,
           side: THREE.DoubleSide
         });
       }
     }
 
-    threeTankMesh = new THREE.Mesh(tankGeom, tankMat);
-    threeScene.add(threeTankMesh);
+    const tankMesh = new THREE.Mesh(tankGeom, tankMat);
+    group.add(tankMesh);
 
-    // Malla de alambre (Wireframe): NO SE MUESTRA por defecto en modo realista
-    // Sólo si el usuario activa explícitamente state.show3DWireframe, y en color grafito sobrio (no fluor)
     if (state.show3DWireframe) {
-      const edgesGeom = new THREE.EdgesGeometry(tankGeom, 35);
+      const edgesGeom = new THREE.EdgesGeometry(tankGeom, isCyl ? 20 : 35);
       const edgesMat = new THREE.LineBasicMaterial({
-        color: 0x475569, // Grafito oscuro sobrio
+        color: isTankActive ? 0x38bdf8 : 0x475569,
         linewidth: 1.0,
         transparent: true,
-        opacity: 0.45
+        opacity: isTankActive ? 0.65 : 0.35
       });
-      threeTankEdges = new THREE.LineSegments(edgesGeom, edgesMat);
-      threeScene.add(threeTankEdges);
+      const tankEdges = new THREE.LineSegments(edgesGeom, edgesMat);
+      group.add(tankEdges);
     }
 
-    // Líquido Diésel Ámbar (se renderiza en modo Rayos X o en estanque metálico)
-    const curLevel = Math.max(0, Math.min(H, state.currentLevelMm));
+    // Líquido Diésel Ámbar
+    const curLevel = Math.max(0, Math.min(H, levelMm));
     if (curLevel > 1 && (!isSolid || !isPlastic)) {
-      const liqGeom = create3DTankGeometry(W - 4, curLevel, L - 4, rInf, rSup, rVerts, 32, true, curLevel);
-      const liqMat = new THREE.MeshStandardMaterial({
-        color: 0xd97706,
-        roughness: 0.15,
-        metalness: 0.12,
-        transparent: true,
-        opacity: 0.85,
-        side: THREE.DoubleSide
-      });
-      threeLiquidMesh = new THREE.Mesh(liqGeom, liqMat);
-      threeScene.add(threeLiquidMesh);
+      let liqGeom = null;
+      if (isCyl) {
+        liqGeom = create3DCylinderLiquidGeometry(H / 2, L, curLevel);
+      } else {
+        const rInf = {
+          li: Math.min(Number(tCfg.r_inf_li) || 0, W / 2 - 1, H / 2 - 1),
+          ld: Math.min(Number(tCfg.r_inf_ld) || 0, W / 2 - 1, H / 2 - 1),
+          af: Math.min(Number(tCfg.r_inf_af) || 0, L / 2 - 1, H / 2 - 1),
+          ap: Math.min(Number(tCfg.r_inf_ap) || 0, L / 2 - 1, H / 2 - 1)
+        };
+        const rSup = {
+          li: Math.min(Number(tCfg.r_sup_li) || 0, W / 2 - 1, H / 2 - 1),
+          ld: Math.min(Number(tCfg.r_sup_ld) || 0, W / 2 - 1, H / 2 - 1),
+          af: Math.min(Number(tCfg.r_sup_af) || 0, L / 2 - 1, H / 2 - 1),
+          ap: Math.min(Number(tCfg.r_sup_ap) || 0, L / 2 - 1, H / 2 - 1)
+        };
+        const rvGlobal = Number(tCfg.r_vert) || 0;
+        const rVerts = {
+          fi: Math.min(Number(tCfg.r_vert_fi) || rvGlobal, W / 2 - 1, L / 2 - 1),
+          fd: Math.min(Number(tCfg.r_vert_fd) || rvGlobal, W / 2 - 1, L / 2 - 1),
+          pi: Math.min(Number(tCfg.r_vert_pi) || rvGlobal, W / 2 - 1, L / 2 - 1),
+          pd: Math.min(Number(tCfg.r_vert_pd) || rvGlobal, W / 2 - 1, L / 2 - 1)
+        };
+        liqGeom = create3DTankGeometry(W - 4, curLevel, L - 4, rInf, rSup, rVerts, 32, true, curLevel, tCfg);
+      }
+
+      if (liqGeom) {
+        const liqMat = new THREE.MeshStandardMaterial({
+          color: 0xd97706,
+          roughness: 0.15,
+          metalness: 0.12,
+          transparent: true,
+          opacity: 0.85,
+          side: THREE.DoubleSide
+        });
+        const liquidMesh = new THREE.Mesh(liqGeom, liqMat);
+        group.add(liquidMesh);
+      }
     }
 
     // Sonda y sensor AoooG
     const probeGroup = new THREE.Group();
-    // La varilla interna sólo se renderiza cuando es visible (Rayos X o corte)
     if (!isSolid || !isPlastic) {
       const rodGeom = new THREE.CylinderGeometry(3, 3, H + 10, 16);
       const rodMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.1 });
@@ -2893,29 +2919,25 @@
       rodMesh.position.set(0, H / 2, 0);
       probeGroup.add(rodMesh);
     }
-
-    // Cabezal exterior del sensor (siempre visible sobre el techo del estanque)
     const headGeom = new THREE.CylinderGeometry(14, 14, 28, 24);
-    const headMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8, roughness: 0.2 });
+    const headMat = new THREE.MeshStandardMaterial({ color: isTankActive ? 0x0284c7 : 0x0f172a, metalness: 0.8, roughness: 0.2 });
     const headMesh = new THREE.Mesh(headGeom, headMat);
     headMesh.position.set(0, H + 14, 0);
     probeGroup.add(headMesh);
 
     const ringGeom = new THREE.TorusGeometry(13, 1.5, 8, 24);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0x2563eb });
+    const ringMat = new THREE.MeshBasicMaterial({ color: isTankActive ? 0x38bdf8 : 0x64748b });
     const ringMesh = new THREE.Mesh(ringGeom, ringMat);
     ringMesh.rotation.x = Math.PI / 2;
     ringMesh.position.set(0, H + 20, 0);
     probeGroup.add(ringMesh);
+    group.add(probeGroup);
 
-    threeProbeMesh = probeGroup;
-    threeScene.add(threeProbeMesh);
-
-    // 2 Cintas / Zunchos de Sujeción y Tapa de Llenado (Estanques Plásticos)
-    if (state.tank.hasRecovecos) {
+    // Cinchas para plástico
+    if (isPlastic) {
       const strapsGroup = new THREE.Group();
       const strapMat = new THREE.MeshStandardMaterial({
-        color: 0x181a1d, // Acero negro satinado
+        color: 0x181a1d,
         metalness: 0.85,
         roughness: 0.32
       });
@@ -2923,7 +2945,14 @@
       const strapThick = 4.5;
       const zOffset = L * 0.26;
 
-      // Forma continua que abraza los radios del estanque sin sobresalir
+      const rInf = {
+        li: Math.min(Number(tCfg.r_inf_li) || 0, W / 2 - 1, H / 2 - 1),
+        ld: Math.min(Number(tCfg.r_inf_ld) || 0, W / 2 - 1, H / 2 - 1)
+      };
+      const rSup = {
+        li: Math.min(Number(tCfg.r_sup_li) || 0, W / 2 - 1, H / 2 - 1),
+        ld: Math.min(Number(tCfg.r_sup_ld) || 0, W / 2 - 1, H / 2 - 1)
+      };
       const rI = Math.min(W / 2 - 2, H / 2 - 2, (rInf.li + rInf.ld) / 2 || 60);
       const rS = Math.min(W / 2 - 2, H / 2 - 2, (rSup.li + rSup.ld) / 2 || 50);
 
@@ -2953,74 +2982,81 @@
         mesh.position.set(0, 0, zPos);
         strapsGroup.add(mesh);
       });
-
-      // Tapa y cuello de boca de carga rotomoldeada en el nicho frontal (como en foto Bepô)
-      const capGroup = new THREE.Group();
-      const capMat = new THREE.MeshStandardMaterial({
-        color: 0x181a1d,
-        metalness: 0.1,
-        roughness: 0.65,
-        bumpMap: rotomoldTex,
-        bumpScale: 0.5
-      });
-      const neckMesh = new THREE.Mesh(new THREE.CylinderGeometry(18, 22, 24, 24), capMat);
-      neckMesh.rotation.z = Math.PI * 0.10;
-      neckMesh.position.set(W / 2 - 20, H - 2, 0);
-      capGroup.add(neckMesh);
-
-      const capMesh = new THREE.Mesh(new THREE.CylinderGeometry(26, 26, 12, 24), capMat);
-      capMesh.rotation.z = Math.PI * 0.10;
-      capMesh.position.set(W / 2 - 17, H + 10, 0);
-      capGroup.add(capMesh);
-
-      const gripMesh = new THREE.Mesh(new THREE.BoxGeometry(32, 6, 10), capMat);
-      gripMesh.rotation.z = Math.PI * 0.10;
-      gripMesh.position.set(W / 2 - 17, H + 16, 0);
-      capGroup.add(gripMesh);
-
-      strapsGroup.add(capGroup);
-
-      // Soportes / Patas de Chasis (para montaje de larguero)
-      if (state.tank.recovecoEnabled !== false) {
-        const recW = Math.min(W * 0.75, Math.max(0, Number(state.tank.recovecoWidth) || 0));
-        const recH = Math.min(H * 0.85, Math.max(0, Number(state.tank.recovecoHeight) || 0));
-        const stepW = Math.round(recW * 0.22);
-        const isLeft = state.tank.recovecoSide !== 'bottom_right';
-
-        const bracketMat = new THREE.MeshStandardMaterial({
-          color: 0x181a1d, // Acero negro chasis
-          metalness: 0.8,
-          roughness: 0.35
-        });
-
-        const bW = 18;
-        const bD = 36;
-        const bH = recH;
-        const bGeom = new THREE.BoxGeometry(bW, bH, bD);
-        const posX = isLeft ? (-W / 2 + stepW / 2 + 10) : (W / 2 - stepW / 2 - 10);
-
-        [-L * 0.26, L * 0.26].forEach(zPos => {
-          const mesh = new THREE.Mesh(bGeom, bracketMat);
-          mesh.position.set(posX, bH / 2, zPos);
-          strapsGroup.add(mesh);
-        });
-      }
-
-      threeStrapsMesh = strapsGroup;
-      threeScene.add(threeStrapsMesh);
+      group.add(strapsGroup);
     }
 
-    // Suelo
-    const maxDim = Math.max(L, W, H);
-    threeGrid = new THREE.GridHelper(maxDim * 2.5, 20, 0x334155, 0x1e293b);
-    threeGrid.position.set(0, -1, 0);
-    threeScene.add(threeGrid);
+    return group;
+  }
 
-    if (threeControls) {
-      threeControls.target.set(0, H / 2, 0);
-      const camDist = maxDim * 2.1;
-      threeCamera.position.set(camDist * 0.85, H + camDist * 0.45, camDist * 0.85);
-      threeControls.update();
+  function updateThreeTank() {
+    if (!threeScene || !window.THREE) return;
+
+    if (threeTankGroup) {
+      threeScene.remove(threeTankGroup);
+      threeTankGroup.traverse(obj => {
+        if (obj.geometry) obj.geometry.dispose();
+      });
+      threeTankGroup = null;
+    }
+    if (threeGrid) {
+      threeScene.remove(threeGrid);
+      threeGrid.geometry.dispose();
+      threeGrid = null;
+    }
+
+    threeTankGroup = new THREE.Group();
+
+    if (state.isDualTank) {
+      const eff1 = getEffectiveDimensions(state.tank);
+      const eff2 = getEffectiveDimensions(state.tank2);
+      const gap = 160;
+      const posX1 = -(eff1.W / 2 + gap / 2);
+      const posX2 = +(eff2.W / 2 + gap / 2);
+
+      const lvl1 = state.currentLevelMm1 != null ? state.currentLevelMm1 : state.currentLevelMm;
+      const lvl2 = state.currentLevelMm2 != null ? state.currentLevelMm2 : state.currentLevelMm;
+
+      const group1 = buildSingleTank3D(state.tank, eff1, lvl1, state.activeTank === 1);
+      group1.position.set(posX1, 0, 0);
+      threeTankGroup.add(group1);
+
+      const group2 = buildSingleTank3D(state.tank2, eff2, lvl2, state.activeTank === 2);
+      group2.position.set(posX2, 0, 0);
+      threeTankGroup.add(group2);
+
+      const maxDim = Math.max(eff1.L, eff2.L, eff1.W + eff2.W + gap, eff1.H, eff2.H);
+      threeGrid = new THREE.GridHelper(maxDim * 2.2, 24, 0x334155, 0x1e293b);
+      threeGrid.position.set(0, -1, 0);
+      threeScene.add(threeGrid);
+
+      threeScene.add(threeTankGroup);
+
+      if (threeControls) {
+        const midH = Math.max(eff1.H, eff2.H) / 2;
+        threeControls.target.set(0, midH, 0);
+        const camDist = maxDim * 1.8;
+        threeCamera.position.set(camDist * 0.75, midH + camDist * 0.45, camDist * 0.95);
+        threeControls.update();
+      }
+    } else {
+      const activeCfg = getActiveTank();
+      const eff = getEffectiveDimensions(activeCfg);
+      const group = buildSingleTank3D(activeCfg, eff, state.currentLevelMm, true);
+      threeTankGroup.add(group);
+
+      const maxDim = Math.max(eff.L, eff.W, eff.H);
+      threeGrid = new THREE.GridHelper(maxDim * 2.2, 20, 0x334155, 0x1e293b);
+      threeGrid.position.set(0, -1, 0);
+      threeScene.add(threeGrid);
+
+      threeScene.add(threeTankGroup);
+
+      if (threeControls) {
+        threeControls.target.set(0, eff.H / 2, 0);
+        const camDist = maxDim * 2.0;
+        threeCamera.position.set(camDist * 0.85, eff.H + camDist * 0.45, camDist * 0.85);
+        threeControls.update();
+      }
     }
   }
 
