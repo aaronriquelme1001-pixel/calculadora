@@ -294,34 +294,36 @@
             <div style="font-size: 0.74rem; font-weight: 800; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 5px;">
               Configuración de Estanque
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: #f1f5f9; padding: 4px; border-radius: 8px; border: 1px solid #cbd5e1;">
-              <button type="button" id="btnModeSingle" class="btn" style="font-size: 0.75rem; font-weight: 800; padding: 7px 4px; border-radius: 6px; cursor: pointer; text-align: center; border: 1.5px solid #0284c7; background: #ffffff; color: #0284c7; box-shadow: 0 1px 2px rgba(0,0,0,0.06);">
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; background: #f1f5f9; padding: 4px; border-radius: 8px; border: 1px solid #cbd5e1; box-sizing: border-box;">
+              <button type="button" id="btnModeSingle" class="btn" style="display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 800; padding: 7px 4px; border-radius: 6px; cursor: pointer; text-align: center; white-space: normal; line-height: 1.15; border: 1.5px solid #0284c7; background: #ffffff; color: #0284c7; box-shadow: 0 1px 2px rgba(0,0,0,0.06); width: 100%; min-width: 0; box-sizing: border-box;">
                 1 Estanque (Simple)
               </button>
-              <button type="button" id="btnModeDual" class="btn" style="font-size: 0.75rem; font-weight: 800; padding: 7px 4px; border-radius: 6px; cursor: pointer; text-align: center; border: 1.5px solid transparent; background: transparent; color: #64748b;">
+              <button type="button" id="btnModeDual" class="btn" style="display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 800; padding: 7px 4px; border-radius: 6px; cursor: pointer; text-align: center; white-space: normal; line-height: 1.15; border: 1.5px solid transparent; background: transparent; color: #64748b; width: 100%; min-width: 0; box-sizing: border-box;">
                 2 Estanques (2 Sensores)
               </button>
             </div>
           </div>
 
           <!-- PESTAÑAS DE ESTANQUES (VISIBLE SOLO EN MODO DOBLE) -->
-          <div id="dualTankSelectorWrap" style="display: none; margin-bottom: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px;">
-            <div style="font-size: 0.7rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 6px;">
+          <div id="dualTankSelectorWrap" style="display: none; margin-bottom: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px; box-sizing: border-box; width: 100%;">
+            <div style="font-size: 0.68rem; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.02em;">
               Seleccionar Estanque a Calibrar:
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-              <button type="button" id="tabTank1" class="btn" style="padding: 8px 4px; font-weight: 800; font-size: 0.76rem; border-radius: 8px; border: 2px solid #0284c7; background: #f0f9ff; color: #0369a1; cursor: pointer; text-align: center;">
-                <div>🚛 Estanque 1 (Sensor 1)</div>
-                <div id="badgeVolTank1" style="font-size: 0.75rem; font-weight: 900; color: #0284c7; margin-top: 2px;">313.7 L</div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%; box-sizing: border-box;">
+              <button type="button" id="tabTank1" class="btn" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 7px 4px; border-radius: 8px; border: 2px solid #0284c7; background: #f0f9ff; color: #0369a1; cursor: pointer; text-align: center; width: 100%; min-width: 0; box-sizing: border-box; white-space: normal;">
+                <div style="font-size: 0.74rem; font-weight: 800; line-height: 1.15; width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🚛 Estanque 1</div>
+                <div style="font-size: 0.66rem; font-weight: 600; opacity: 0.85; margin-top: 2px; line-height: 1;">(Sensor 1)</div>
+                <div id="badgeVolTank1" style="font-size: 0.78rem; font-weight: 900; color: #0284c7; margin-top: 3px; line-height: 1;">313.7 L</div>
               </button>
-              <button type="button" id="tabTank2" class="btn" style="padding: 8px 4px; font-weight: 800; font-size: 0.76rem; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #64748b; cursor: pointer; text-align: center;">
-                <div>🚚 Estanque 2 (Sensor 2)</div>
-                <div id="badgeVolTank2" style="font-size: 0.75rem; font-weight: 900; color: #64748b; margin-top: 2px;">313.7 L</div>
+              <button type="button" id="tabTank2" class="btn" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 7px 4px; border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #64748b; cursor: pointer; text-align: center; width: 100%; min-width: 0; box-sizing: border-box; white-space: normal;">
+                <div style="font-size: 0.74rem; font-weight: 800; line-height: 1.15; width: 100%; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">🚚 Estanque 2</div>
+                <div style="font-size: 0.66rem; font-weight: 600; opacity: 0.85; margin-top: 2px; line-height: 1;">(Sensor 2)</div>
+                <div id="badgeVolTank2" style="font-size: 0.78rem; font-weight: 900; color: #64748b; margin-top: 3px; line-height: 1;">313.7 L</div>
               </button>
             </div>
 
             <!-- Botón copiar medidas cuando está activo el estanque 2 -->
-            <button type="button" id="btnCopyTank1To2" class="btn" style="display: none; width: 100%; margin-top: 8px; font-size: 0.74rem; font-weight: 700; background: #eff6ff; color: #1d4ed8; border: 1px dashed #93c5fd; padding: 6px; border-radius: 6px; cursor: pointer;">
+            <button type="button" id="btnCopyTank1To2" class="btn" style="display: none; width: 100%; margin-top: 8px; font-size: 0.72rem; font-weight: 700; background: #eff6ff; color: #1d4ed8; border: 1px dashed #93c5fd; padding: 6px 4px; border-radius: 6px; cursor: pointer; white-space: normal; text-align: center; justify-content: center; box-sizing: border-box;">
               📋 Copiar medidas de Estanque 1 (Gemelo)
             </button>
           </div>
@@ -336,11 +338,11 @@
                 Estanque 1
               </span>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-              <button type="button" id="btnShapeRect" class="btn" style="font-size: 0.74rem; font-weight: 800; padding: 6px 4px; border-radius: 6px; border: 2px solid #0284c7; background: #f0f9ff; color: #0369a1; cursor: pointer; text-align: center;">
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%; box-sizing: border-box;">
+              <button type="button" id="btnShapeRect" class="btn" style="display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 800; padding: 6px 4px; border-radius: 6px; border: 2px solid #0284c7; background: #f0f9ff; color: #0369a1; cursor: pointer; text-align: center; white-space: normal; line-height: 1.15; width: 100%; min-width: 0; box-sizing: border-box;">
                 🔲 Cuadrado / Rectangular
               </button>
-              <button type="button" id="btnShapeCyl" class="btn" style="font-size: 0.74rem; font-weight: 800; padding: 6px 4px; border-radius: 6px; border: 1px solid #cbd5e1; background: #ffffff; color: #64748b; cursor: pointer; text-align: center;">
+              <button type="button" id="btnShapeCyl" class="btn" style="display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 800; padding: 6px 4px; border-radius: 6px; border: 1px solid #cbd5e1; background: #ffffff; color: #64748b; cursor: pointer; text-align: center; white-space: normal; line-height: 1.15; width: 100%; min-width: 0; box-sizing: border-box;">
                 ⚪ Cilíndrico Horizontal
               </button>
             </div>

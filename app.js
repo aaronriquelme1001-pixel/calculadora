@@ -4967,21 +4967,27 @@
 
     function syncTankTabs() {
       if (!tabTank1 || !tabTank2) return;
+      const b1 = document.getElementById('badgeVolTank1');
+      const b2 = document.getElementById('badgeVolTank2');
       if (state.activeTank === 1) {
         tabTank1.style.border = '2px solid #0284c7';
         tabTank1.style.background = '#f0f9ff';
         tabTank1.style.color = '#0369a1';
+        if (b1) b1.style.color = '#0284c7';
         tabTank2.style.border = '1px solid #cbd5e1';
         tabTank2.style.background = '#ffffff';
         tabTank2.style.color = '#64748b';
+        if (b2) b2.style.color = '#64748b';
         if (btnCopy) btnCopy.style.display = 'none';
       } else {
         tabTank2.style.border = '2px solid #0284c7';
         tabTank2.style.background = '#f0f9ff';
         tabTank2.style.color = '#0369a1';
+        if (b2) b2.style.color = '#0284c7';
         tabTank1.style.border = '1px solid #cbd5e1';
         tabTank1.style.background = '#ffffff';
         tabTank1.style.color = '#64748b';
+        if (b1) b1.style.color = '#64748b';
         if (btnCopy) btnCopy.style.display = 'block';
       }
     }
