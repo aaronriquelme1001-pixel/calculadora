@@ -79,7 +79,20 @@
       d_r_top_front: 120,
       d_r_back_corners: 40,
 
-      cyl_head: 'flat'
+      cyl_head: 'flat',
+
+      // Calibración de Campo / Ajuste por Carga Real de Surtidor
+      fieldCorrection: {
+        enabled: false,
+        inputData: null,
+        inputLevel: null,
+        inputLiters: null,
+        factorVol: 1.0,
+        factorLevel: 1.0,
+        correctedMaxLevel: null,
+        correctedMaxVol: null,
+        summary: ''
+      }
     },
 
     tank2: {
@@ -125,7 +138,19 @@
       d_r_top_front: 120,
       d_r_back_corners: 40,
 
-      cyl_head: 'flat'
+      cyl_head: 'flat',
+
+      fieldCorrection: {
+        enabled: false,
+        inputData: null,
+        inputLevel: null,
+        inputLiters: null,
+        factorVol: 1.0,
+        factorLevel: 1.0,
+        correctedMaxLevel: null,
+        correctedMaxVol: null,
+        summary: ''
+      }
     },
 
     sensor: {
@@ -426,6 +451,16 @@
     }
   }
 
+  function getRawVolumeAtHeight(h, cum, H) {
+    if (!cum || H <= 0) return 0;
+    const clamped = Math.max(0, Math.min(H, h));
+    const low = Math.floor(clamped);
+    const high = Math.min(H, Math.ceil(clamped));
+    if (low === high) return cum[low];
+    const frac = clamped - low;
+    return cum[low] + frac * (cum[high] - cum[low]);
+  }
+
   function computeStrappingForConfig(tCfg) {
     const eff = getEffectiveDimensions(tCfg);
     let maxH = eff.H;
@@ -446,9 +481,13 @@
     }
 
     const totalVolume = Number(cumVol[H].toFixed(1));
-    const calibrationRows = buildCalibrationRowsForTank(cumVol, H, totalVolume);
+    const calibrationRows = buildCalibrationRowsForTank(cumVol, H, totalVolume, state.tableMode || 95, tCfg);
 
-    return { eff, H, cumVol, totalVolume, calibrationRows };
+    const isFieldCorr = Boolean(tCfg && tCfg.fieldCorrection && tCfg.fieldCorrection.enabled);
+    const finalH = isFieldCorr ? (Number(tCfg.fieldCorrection.correctedMaxLevel) || H) : H;
+    const finalVol = isFieldCorr ? (Number(tCfg.fieldCorrection.correctedMaxVol) || Number((totalVolume * (Number(tCfg.fieldCorrection.factorVol) || 1.0)).toFixed(1))) : totalVolume;
+
+    return { eff, H: finalH, theoH: H, cumVol, totalVolume: finalVol, theoTotalVolume: totalVolume, calibrationRows };
   }
 
   function computeStrappingTable() {
@@ -484,6 +523,25 @@
   function getVolumeAtHeight(h, cum = state.calcCache.cumVol, H = state.calcCache.effH) {
     if (!cum || H <= 0) return 0;
 
+    const tCfg = getActiveTank();
+    const isFieldCorr = Boolean(tCfg && tCfg.fieldCorrection && tCfg.fieldCorrection.enabled);
+    if (isFieldCorr) {
+      const corrH = Number(tCfg.fieldCorrection.correctedMaxLevel) || H;
+      const factorVol = Number(tCfg.fieldCorrection.factorVol) || 1.0;
+      const theoH = (state.calcCache.tank1 && state.calcCache.tank1.theoH) ? ((state.isDualTank && state.activeTank === 2 && state.calcCache.tank2) ? state.calcCache.tank2.theoH : state.calcCache.tank1.theoH) : corrH;
+      const frac = corrH > 0 ? Math.max(0, Math.min(1, h / corrH)) : 0;
+      const clampedTheo = frac * theoH;
+      const low = Math.floor(clampedTheo);
+      const high = Math.min(theoH, Math.ceil(clampedTheo));
+      let rawVol = 0;
+      if (low === high) rawVol = cum[low] || 0;
+      else {
+        const f = clampedTheo - low;
+        rawVol = (cum[low] || 0) + f * ((cum[high] || 0) - (cum[low] || 0));
+      }
+      return rawVol * factorVol;
+    }
+
     const clamped = Math.max(0, Math.min(H, h));
     const low = Math.floor(clamped);
     const high = Math.min(H, Math.ceil(clamped));
@@ -493,19 +551,25 @@
     return cum[low] + frac * (cum[high] - cum[low]);
   }
 
-  function buildCalibrationRowsForTank(cumVol, H, totalVolume, targetCount = state.tableMode || 95) {
+  function buildCalibrationRowsForTank(cumVol, H, totalVolume, targetCount = state.tableMode || 95, tCfg = null) {
     const dataMin = Number(state.sensor.dataMin != null ? state.sensor.dataMin : 0);
     const dataMax = Number(state.sensor.dataMax != null ? state.sensor.dataMax : 5000);
     const freqEmpty = Number(state.sensor.freqEmpty != null ? state.sensor.freqEmpty : 15000);
     const freqFull = Number(state.sensor.freqFull != null ? state.sensor.freqFull : 10000);
-    const V_total = totalVolume;
+
+    const isFieldCorr = Boolean(tCfg && tCfg.fieldCorrection && tCfg.fieldCorrection.enabled);
+    const corrH = isFieldCorr ? (Number(tCfg.fieldCorrection.correctedMaxLevel) || H) : H;
+    const factorVol = isFieldCorr ? (Number(tCfg.fieldCorrection.factorVol) || 1.0) : 1.0;
+    const V_total = isFieldCorr ? Number((totalVolume * factorVol).toFixed(1)) : totalVolume;
     const rows = [];
 
     // EXACTAMENTE 95 PUNTOS DE AFORO (Puntos 1 al 95)
     for (let i = 0; i < 95; i++) {
       const frac = i / 94; // 0 en vacío, 1.0 en lleno
-      const estLevel = Math.round(frac * H);
-      const estVol = Number(getVolumeAtHeight(estLevel, cumVol, H).toFixed(1));
+      const estLevel = isFieldCorr ? Math.round(frac * corrH) : Math.round(frac * H);
+      const theoLevel = Math.round(frac * H);
+      const rawVol = getRawVolumeAtHeight(theoLevel, cumVol, H);
+      const estVol = isFieldCorr ? (i === 94 ? V_total : Number((rawVol * factorVol).toFixed(1))) : Number(rawVol.toFixed(1));
       const estData = Math.round(dataMin + frac * (dataMax - dataMin));
 
       // Curva capacitiva real: 1/f = 1/f_empty + frac * (1/f_full - 1/f_empty)
@@ -525,7 +589,7 @@
         levelFormula = '0';
       } else if (i === 94) {
         dataFormula = `${dataMax}`;
-        levelFormula = `${H}`;
+        levelFormula = `${estLevel}`;
       } else {
         dataFormula = `ROUND($A$2 + (${excelRow}-2)*($A$96-$A$2)/94, 0)`;
         levelFormula = `ROUND((${excelRow}-2)*$B$96/94, 0)`;
@@ -2306,6 +2370,7 @@
     } else {
       renderCad();
     }
+    syncFieldCorrectionUI();
   }
 
   function updateDeltaFreq() {
@@ -4789,6 +4854,7 @@
     if (btnPrint) btnPrint.addEventListener('click', () => window.print());
 
     initDualTankControls();
+    initFieldCorrectionControls();
   }
 
   function bindInput(id, callback) {
@@ -5069,6 +5135,145 @@
     syncModeButtons();
     syncTankTabs();
     updateShapeButtonsUI();
+  }
+
+  function applyFieldCorrection() {
+    const tCfg = getActiveTank();
+    const dataInput = document.getElementById('inputFieldData');
+    const levelInput = document.getElementById('inputFieldLevel');
+    const litersInput = document.getElementById('inputFieldLiters');
+
+    const valData = dataInput && dataInput.value !== '' ? Number(dataInput.value) : null;
+    const valLevel = levelInput && levelInput.value !== '' ? Number(levelInput.value) : null;
+    const valLiters = litersInput && litersInput.value !== '' ? Number(litersInput.value) : null;
+
+    if (!valLiters || valLiters <= 0) {
+      showToast('Por favor ingresa los litros reales marcados por el surtidor.');
+      return;
+    }
+
+    if (valData === null && valLevel === null) {
+      showToast('Ingresa al menos el Dato del Sensor (Data) o el Nivel medido (mm).');
+      return;
+    }
+
+    // 1. Desactivar temporalmente cualquier corrección previa para obtener la geometría teórica limpia
+    tCfg.fieldCorrection = { enabled: false };
+    const theoCalc = computeStrappingForConfig(tCfg);
+    const theoH = theoCalc.theoH || theoCalc.H;
+    const theoTotVol = theoCalc.theoTotalVolume || theoCalc.totalVolume;
+    const cumVol = theoCalc.cumVol;
+
+    let factorVol = 1.0;
+    let factorLevel = 1.0;
+    let corrMaxLevel = theoH;
+
+    const dataMin = Number(state.sensor.dataMin != null ? state.sensor.dataMin : 0);
+    const dataMax = Number(state.sensor.dataMax != null ? state.sensor.dataMax : 5000);
+
+    // Si se especificó el Dato del sensor (ej: 2523)
+    if (valData !== null && valData >= dataMin && valData <= dataMax) {
+      const frac = (valData - dataMin) / (dataMax - dataMin);
+      const theoLevelAtData = frac * theoH;
+      const theoVolAtData = getRawVolumeAtHeight(theoLevelAtData, cumVol, theoH);
+
+      if (theoVolAtData > 0) {
+        factorVol = valLiters / theoVolAtData;
+      }
+
+      // Si además se midió el nivel físico real con varilla (ej: 295 mm vs los 319 mm teóricos)
+      if (valLevel !== null && valLevel > 0 && theoLevelAtData > 0) {
+        factorLevel = valLevel / theoLevelAtData;
+        corrMaxLevel = Math.max(10, Math.round(theoH * factorLevel));
+      }
+    } else if (valLevel !== null && valLevel > 0) {
+      // Si solo se ingresó nivel en mm (ej: 360 mm) y litros (172 L)
+      const theoVolAtLevel = getRawVolumeAtHeight(valLevel, cumVol, theoH);
+      if (theoVolAtLevel > 0) {
+        factorVol = valLiters / theoVolAtLevel;
+      }
+    }
+
+    const corrMaxVol = Number((theoTotVol * factorVol).toFixed(1));
+    const pctDif = ((factorVol - 1) * 100).toFixed(1);
+    const sign = factorVol >= 1 ? '+' : '';
+    const summary = `✓ Calibrado en terreno: Factor Vol = ${factorVol.toFixed(4)} (${sign}${pctDif}%) • Capacidad = ${corrMaxVol} L • Nivel = ${corrMaxLevel} mm`;
+
+    tCfg.fieldCorrection = {
+      enabled: true,
+      inputData: valData,
+      inputLevel: valLevel,
+      inputLiters: valLiters,
+      factorVol: factorVol,
+      factorLevel: factorLevel,
+      correctedMaxLevel: corrMaxLevel,
+      correctedMaxVol: corrMaxVol,
+      summary: summary
+    };
+
+    updateAllUI();
+    showToast(`Ajuste de terreno aplicado con éxito (${sign}${pctDif}%).`);
+  }
+
+  function resetFieldCorrection() {
+    const tCfg = getActiveTank();
+    tCfg.fieldCorrection = {
+      enabled: false,
+      inputData: null,
+      inputLevel: null,
+      inputLiters: null,
+      factorVol: 1.0,
+      factorLevel: 1.0,
+      correctedMaxLevel: null,
+      correctedMaxVol: null,
+      summary: ''
+    };
+    updateAllUI();
+    showToast('Ajuste de terreno restablecido a los cálculos teóricos.');
+  }
+
+  function syncFieldCorrectionUI() {
+    const tCfg = getActiveTank();
+    const isDual = state.isDualTank;
+    const tankNum = state.activeTank;
+
+    const lblBadge = document.getElementById('lblFieldTankBadge');
+    if (lblBadge) {
+      lblBadge.innerText = isDual ? `Aplicando a: Estanque ${tankNum} (Sensor ${tankNum})` : 'Aplicando a: Estanque 1';
+    }
+
+    const banner = document.getElementById('fieldCorrectionBanner');
+    const summaryText = document.getElementById('fieldCorrectionSummaryText');
+    const inputData = document.getElementById('inputFieldData');
+    const inputLevel = document.getElementById('inputFieldLevel');
+    const inputLiters = document.getElementById('inputFieldLiters');
+
+    const corr = tCfg && tCfg.fieldCorrection;
+    if (corr && corr.enabled) {
+      if (banner) banner.style.display = 'block';
+      if (summaryText) summaryText.innerText = corr.summary || '✓ Corrección de campo activa';
+      if (inputData && corr.inputData != null) inputData.value = corr.inputData;
+      if (inputLevel && corr.inputLevel != null) inputLevel.value = corr.inputLevel;
+      if (inputLiters && corr.inputLiters != null) inputLiters.value = corr.inputLiters;
+    } else {
+      if (banner) banner.style.display = 'none';
+      if (inputData) inputData.value = '';
+      if (inputLevel) inputLevel.value = '';
+      if (inputLiters) inputLiters.value = '';
+    }
+  }
+
+  function initFieldCorrectionControls() {
+    const btnApply = document.getElementById('btnApplyFieldCorrection');
+    const btnReset = document.getElementById('btnResetFieldCorrection');
+
+    if (btnApply) {
+      btnApply.addEventListener('click', applyFieldCorrection);
+    }
+    if (btnReset) {
+      btnReset.addEventListener('click', resetFieldCorrection);
+    }
+    syncFieldCorrectionUI();
   }
 
   function applyTextura() {

@@ -720,6 +720,66 @@
           </div>
         </div>
 
+        <!-- PANEL DE CALIBRACIÓN DE CAMPO (AJUSTE POR CARGA REAL DE SURTIDOR) -->
+        <div class="card no-print" style="margin-bottom: 20px; border: 1.5px solid #93c5fd; background: #f0f9ff; border-radius: 12px; padding: 16px 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 1.25rem;">⛽</span>
+              <div>
+                <div style="font-weight: 800; color: #1e40af; font-size: 0.94rem;">
+                  Ajuste Fino por Carga Real de Surtidor (Calibración en Terreno)
+                </div>
+                <div style="font-size: 0.73rem; color: #3b82f6; font-weight: 600;">
+                  Corrige discrepancias por tapas embutidas de aluminio, sensor cortado o despeje de fondo con 1 solo punto de carga
+                </div>
+              </div>
+            </div>
+            <span id="lblFieldTankBadge" style="font-size: 0.72rem; font-weight: 800; background: #dbeafe; color: #1d4ed8; padding: 4px 12px; border-radius: 20px; border: 1px solid #bfdbfe;">
+              Aplicando a: Estanque 1 (Sensor 1)
+            </span>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; align-items: end; background: #ffffff; padding: 14px 16px; border-radius: 8px; border: 1px solid #bfdbfe; box-sizing: border-box; width: 100%;">
+            <div style="min-width: 0;">
+              <label style="font-size: 0.74rem; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;">
+                Dato Sensor (Data 0–5000)
+              </label>
+              <input type="number" id="inputFieldData" placeholder="Ej: 2523" min="0" max="5000" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-weight: 700; box-sizing: border-box;">
+              <span style="font-size: 0.65rem; color: #64748b; display: block; margin-top: 2px;">Lectura que marca el sensor</span>
+            </div>
+            <div style="min-width: 0;">
+              <label style="font-size: 0.74rem; font-weight: 700; color: #334155; display: block; margin-bottom: 4px;">
+                Nivel Varilla / Huincha (mm)
+              </label>
+              <input type="number" id="inputFieldLevel" placeholder="Ej: 295 o 360" min="0" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; font-weight: 700; box-sizing: border-box;">
+              <span style="font-size: 0.65rem; color: #64748b; display: block; margin-top: 2px;">Nivel medido físicamente</span>
+            </div>
+            <div style="min-width: 0;">
+              <label style="font-size: 0.74rem; font-weight: 700; color: #1e3a8a; display: block; margin-bottom: 4px;">
+                Litros Reales Surtidor (L) <span style="color: #dc2626;">*</span>
+              </label>
+              <input type="number" id="inputFieldLiters" placeholder="Ej: 172.0" step="0.1" min="0" style="width: 100%; padding: 8px 10px; border: 2px solid #2563eb; border-radius: 6px; font-size: 0.85rem; font-weight: 800; color: #1e40af; box-sizing: border-box;">
+              <span style="font-size: 0.65rem; color: #2563eb; font-weight: 600; display: block; margin-top: 2px;">Litros marcados por la pistola</span>
+            </div>
+            <div style="display: flex; gap: 6px; width: 100%; min-width: 0; box-sizing: border-box;">
+              <button type="button" id="btnApplyFieldCorrection" class="btn" style="flex: 1; min-width: 0; background: #2563eb; color: #ffffff; font-weight: 800; font-size: 0.76rem; padding: 8px 8px; border-radius: 6px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap;">
+                <span>✨ Aplicar Ajuste</span>
+              </button>
+              <button type="button" id="btnResetFieldCorrection" class="btn" style="background: #f1f5f9; color: #64748b; font-weight: 700; font-size: 0.76rem; padding: 8px 8px; border-radius: 6px; border: 1px solid #cbd5e1; cursor: pointer; white-space: nowrap;" title="Restablecer a valores teóricos">
+                <span>↺ Restablecer</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Banner de estado del ajuste -->
+          <div id="fieldCorrectionBanner" style="display: none; margin-top: 12px; padding: 10px 14px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; font-size: 0.75rem; color: #065f46; font-weight: 600;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <span id="fieldCorrectionSummaryText">✓ Corrección de campo activa</span>
+              <span style="background: #059669; color: #ffffff; padding: 2px 8px; border-radius: 4px; font-size: 0.68rem; font-weight: 800;">CALIBRADO EN TERRENO</span>
+            </div>
+          </div>
+        </div>
+
         <!-- TABLA DE CALIBRACIÓN: EXACTAMENTE 95 PUNTOS POR FRECUENCIA HZ -->
         <div class="card">
           <div class="card-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">

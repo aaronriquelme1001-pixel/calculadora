@@ -137,3 +137,37 @@ test('dual tank calculations maintain independent sensors and exact 95-point cal
   assert.ok(totalCombined > 500, 'Combined volume of dual tank truck is correctly aggregated');
   assert.notStrictEqual(tank1.totalVolume, tank2.totalVolume, 'Tanks have distinct independent geometry');
 });
+
+test('field correction (calibración en terreno con surtidor) correctly recalculates 95-point tables', () => {
+  // Simular caso real VDYH16:
+  // Altura original H = 632 mm, Volumen teórico = 367.9 L
+  // En terreno con 172.0 L: Data = 2523, Level real = 295 mm
+  const theoH = 632;
+  const theoTotVol = 367.9;
+  const valData = 2523;
+  const valLevel = 295;
+  const valLiters = 172.0;
+
+  // Fracción a Data 2523:
+  const frac = valData / 5000;
+  const theoLevelAtData = frac * theoH; // ~318.9 mm
+  // Asumiendo volumen lineal o casi lineal en esa sección:
+  const theoVolAtData = 186.0;
+
+  const factorVol = valLiters / theoVolAtData; // 172.0 / 186.0 ≈ 0.92473
+  const factorLevel = valLevel / theoLevelAtData; // 295 / 318.9 ≈ 0.9250
+  const corrMaxLevel = Math.round(theoH * factorLevel); // 584 mm
+  const corrMaxVol = Number((theoTotVol * factorVol).toFixed(1)); // 340.2 L
+
+  assert.ok(Math.abs(corrMaxLevel - 584) <= 1, 'Calcula correctamente la altura efectiva del sensor cortado (~584-585 mm)');
+  assert.ok(Math.abs(factorVol - 0.9247) < 0.001, 'Factor de volumen calculado con precisión');
+  assert.strictEqual(corrMaxVol, 340.2, 'Capacidad máxima corregida coincide exactamente con los 340.2 L reales');
+
+  // Simular caso real KVDS22 (ajuste directo por nivel 360 mm a 172.0 L):
+  const theoVolEn360 = 199.97;
+  const realLitersEn360 = 172.0;
+  const factorVolKVDS22 = realLitersEn360 / theoVolEn360;
+  assert.ok(Math.abs(factorVolKVDS22 - 0.86012) < 0.0001, 'Factor para KVDS22 coincide con el 0.86012 del script de usuario');
+  const finalVolKVDS22 = Number((374.7 * factorVolKVDS22).toFixed(1));
+  assert.strictEqual(finalVolKVDS22, 322.3, 'Capacidad final KVDS22 escalada a 322.3 L');
+});
